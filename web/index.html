@@ -5,7 +5,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="Safety Lens - AI-powered industrial safety for SAIL by IS 14489 standards">
+  <meta name="description" content="Safety Lens - AI-powered industrial safety for SAIL">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -17,7 +17,6 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#0D47A1">
 
-  <!-- Viewport -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
   <link rel="manifest" href="manifest.json">
@@ -94,18 +93,27 @@
     <div class="spinner"></div>
   </div>
 
+  <script src="flutter.js" defer></script>
   <script>
-    // Remove loading screen when Flutter is ready
-    window.addEventListener('flutter-first-frame', function () {
-      var loading = document.getElementById('loading');
-      if (loading) {
-        loading.style.opacity = '0';
-        loading.style.transition = 'opacity 0.4s';
-        setTimeout(function() { loading.remove(); }, 400);
-      }
+    window.addEventListener('load', function(ev) {
+      _flutter.loader.loadEntrypoint({
+        serviceWorker: {
+          serviceWorkerVersion: null
+        },
+        onEntrypointLoaded: function(engineInitializer) {
+          engineInitializer.initializeEngine().then(function(appRunner) {
+            appRunner.runApp().then(function() {
+              var loading = document.getElementById('loading');
+              if (loading) {
+                loading.style.opacity = '0';
+                loading.style.transition = 'opacity 0.4s';
+                setTimeout(function() { loading.remove(); }, 400);
+              }
+            });
+          });
+        }
+      });
     });
   </script>
-
-  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
