@@ -1,0 +1,22 @@
+workflows:
+  android-debug:
+    name: Build Safety Lens APK
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: 3.19.6
+      java: 17
+    scripts:
+      - name: Set up local.properties
+        script: |
+          cd android
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+          echo "flutter.sdk=$FLUTTER_ROOT" >> local.properties
+          echo "flutter.versionCode=1" >> local.properties
+          echo "flutter.versionName=1.0.0" >> local.properties
+      - name: Get Flutter packages
+        script: flutter pub get
+      - name: Build debug APK
+        script: flutter build apk --debug
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk

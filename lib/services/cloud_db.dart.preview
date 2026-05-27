@@ -1,0 +1,270 @@
+// ============================================================
+// Safety Lens — Cloud Database Service (Firebase Firestore)
+// ============================================================
+// IMPORTANT: This file replaces local_db.dart once Firebase is set up.
+// All data now syncs to cloud in real-time across devices.
+//
+// SETUP STEPS:
+// 1. Complete Firebase setup (steps 1-8 in DEPLOYMENT.md)
+// 2. Place `google-services.json` in `android/app/`
+// 3. Run: flutterfire configure --project=safety-lens-sail
+// 4. Uncomment Firebase dependencies in pubspec.yaml
+// 5. In main.dart, replace LocalDB.init() with Firebase.initializeApp()
+// ============================================================
+
+import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+class CloudDB {
+  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  static final FirebaseStorage _storage = FirebaseStorage.instance;
+  static final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+
+  static CollectionReference get _users => _firestore.collection('users');
+  static CollectionReference get _incidents => _firestore.collection('incidents');
+  static CollectionReference get _plants => _firestore.collection('plants');
+
+  // =====================================================
+  // INITIALIZATION
+  // =====================================================
+  static Future<void> init() async {
+    // Request notification permission
+    await _messaging.requestPermission(alert: true, badge: true, sound: true);
+
+    // Get FCM token (for push notifications)
+    final token = await _messaging.getToken();
+    print('FCM Token: $token');
+
+    // Update token in user doc if signed in
+    final user = _auth.currentUser;
+    if (user != null && token != null) {
+      await _users.doc(user.uid).set({'fcmToken': token}, SetOptions(merge: true));
+    }
+
+    // Seed plants if missing
+    await _seedPlantsIfEmpty();
+  }
+
+  static Future<void> _seedPlantsIfEmpty() async {
+    final snapshot = await _plants.limit(1).get();
+    if (snapshot.docs.isEmpty) {
+      final plants = [
+        {'code': 'BSP', 'name': 'BSP Bhilai', 'location': 'Bhilai, Chhattisgarh'},
+        {'code': 'DSP', 'name': 'DSP Durgapur', 'location': 'Durgapur, West Bengal'},
+        {'code': 'RSP', 'name': 'RSP Rourkela', 'location': 'Rourkela, Odisha'},
+        {'code': 'BSL', 'name': 'BSL Bokaro', 'location': 'Bokaro, Jharkhand'},
+        {'code': 'ISP', 'name': 'ISP Burnpur', 'location': 'Burnpur, West Bengal'},
+        {'code': 'SSO', 'name': 'SAIL Safety Organisation', 'location': 'Ranchi, Jharkhand'},
+      ];
+      for (final p in plants) {
+        await _plants.doc(p['code']).set(p);
+      }
+    }
+  }
+
+  // =====================================================
+  // AUTHENTICATION
+  // =====================================================
+  static Future<Map<String, dynamic>?> signIn(String email, String password) async {
+    try {
+      final cred = await _auth.signInWithEmailAndPassword(
+        email: email, password: password);
+      if (cred.user != null) {
+        return await getUserProfile(cred.user!.uid);
+      }
+      return null;
+    } on FirebaseAuthException catch (e) {
+      throw _authError(e);
+    }
+  }
+
+  static Future<Map<String, dynamic>?> register(Map<String, dynamic> userData) async {
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: userData['email'], password: userData['password']);
+      if (cred.user == null) return null;
+
+      final uid = cred.user!.uid;
+      final profile = {
+        'uid': uid,
+        'name': userData['name'] ?? '',
+        'designation': userData['designation'] ?? '',
+        'plant': userData['plant'] ?? '',
+        'pno': userData['pno'] ?? '',
+        'mobile': userData['mobile'] ?? '',
+        'email': userData['email'] ?? '',
+        'isAdmin': userData['isAdmin'] ?? false,
+        'fcmToken': await _messaging.getToken(),
+        'createdAt': FieldValue.serverTimestamp(),
+      };
+
+      await _users.doc(uid).set(profile);
+      return profile;
+    } on FirebaseAuthException catch (e) {
+      throw _authError(e);
+    }
+  }
+
+  static Future<void> signOut() async {
+    await _auth.signOut();
+  }
+
+  static Future<Map<String, dynamic>?> getCurrentUser() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+    return await getUserProfile(user.uid);
+  }
+
+  static Future<Map<String, dynamic>?> getUserProfile(String uid) async {
+    final doc = await _users.doc(uid).get();
+    if (!doc.exists) return null;
+    return {...doc.data() as Map<String, dynamic>, 'uid': uid};
+  }
+
+  // =====================================================
+  // INCIDENTS
+  // =====================================================
+  /// Returns a real-time stream of incidents (sorted by date desc)
+  static Stream<List<Map<String, dynamic>>> incidentsStream({
+    String? plantFilter,
+    String? severityFilter,
+    String? statusFilter,
+    int limit = 100,
+  }) {
+    Query query = _incidents.orderBy('createdAt', descending: true).limit(limit);
+    if (plantFilter != null) query = query.where('plant', isEqualTo: plantFilter);
+    if (severityFilter != null) query = query.where('severity', isEqualTo: severityFilter);
+    if (statusFilter != null) query = query.where('status', isEqualTo: statusFilter);
+
+    return query.snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return {
+          ...data,
+          'id': doc.id,
+          'date': (data['createdAt'] as Timestamp?)?.toDate().toIso8601String() ?? '',
+        };
+      }).toList();
+    });
+  }
+
+  /// One-time fetch (use stream for live updates)
+  static Future<List<Map<String, dynamic>>> getIncidents({int limit = 100}) async {
+    final snapshot = await _incidents
+        .orderBy('createdAt', descending: true)
+        .limit(limit).get();
+    return snapshot.docs.map((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return {
+        ...data,
+        'id': doc.id,
+        'date': (data['createdAt'] as Timestamp?)?.toDate().toIso8601String() ?? '',
+      };
+    }).toList();
+  }
+
+  /// Save a new incident. If image file is provided, uploads to Cloud Storage first.
+  static Future<String> saveIncident(Map<String, dynamic> incident, {File? imageFile}) async {
+    final user = _auth.currentUser;
+    if (user == null) throw 'Not signed in';
+
+    final profile = await getUserProfile(user.uid);
+
+    // Upload image if provided
+    String? imageUrl;
+    if (imageFile != null) {
+      imageUrl = await uploadIncidentImage(imageFile);
+    }
+
+    final docData = {
+      ...incident,
+      'reportedById': user.uid,
+      'reportedBy': profile?['name'] ?? 'Unknown',
+      'reporterPno': profile?['pno'] ?? '',
+      'reporterPlant': profile?['plant'] ?? '',
+      'imageUrl': imageUrl,
+      'status': incident['status'] ?? 'OPEN',
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    final docRef = await _incidents.add(docData);
+    return docRef.id;
+  }
+
+  static Future<void> updateIncidentStatus(String incidentId, String newStatus) async {
+    await _incidents.doc(incidentId).update({
+      'status': newStatus,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  // =====================================================
+  // CLOUD STORAGE (Images)
+  // =====================================================
+  static Future<String> uploadIncidentImage(File file) async {
+    final uid = _auth.currentUser?.uid ?? 'anonymous';
+    final filename = 'incident_images/${uid}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final ref = _storage.ref(filename);
+    final uploadTask = await ref.putFile(file);
+    return await uploadTask.ref.getDownloadURL();
+  }
+
+  // =====================================================
+  // PLANT STATS (real-time aggregation)
+  // =====================================================
+  static Future<Map<String, Map<String, int>>> getPlantStats() async {
+    final snapshot = await _incidents.get();
+    final result = <String, Map<String, int>>{};
+
+    final plants = ['BSP Bhilai', 'DSP Durgapur', 'RSP Rourkela', 'BSL Bokaro', 'ISP Burnpur'];
+    for (final p in plants) {
+      result[p] = {'total': 0, 'open': 0, 'critical': 0, 'high': 0};
+    }
+
+    for (final doc in snapshot.docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final plant = data['plant']?.toString() ?? '';
+      if (!result.containsKey(plant)) continue;
+
+      result[plant]!['total'] = result[plant]!['total']! + 1;
+      if (data['status'] == 'OPEN') result[plant]!['open'] = result[plant]!['open']! + 1;
+      if (data['severity'] == 'CRITICAL') result[plant]!['critical'] = result[plant]!['critical']! + 1;
+      if (data['severity'] == 'HIGH') result[plant]!['high'] = result[plant]!['high']! + 1;
+    }
+    return result;
+  }
+
+  static int calcSafetyScore(int critical, int high, int medium, int open) {
+    return (100 - critical * 15 - high * 8 - medium * 3 - open * 2).clamp(0, 100);
+  }
+
+  // =====================================================
+  // PUSH NOTIFICATIONS
+  // =====================================================
+  static Future<void> setupForegroundMessaging() async {
+    FirebaseMessaging.onMessage.listen((message) {
+      print('Foreground notification: ${message.notification?.title}');
+      // TODO: Show in-app notification UI
+    });
+  }
+
+  // =====================================================
+  // ERROR HANDLING
+  // =====================================================
+  static String _authError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'user-not-found': return 'No account exists with this email';
+      case 'wrong-password': return 'Incorrect password';
+      case 'email-already-in-use': return 'Email already registered. Please sign in.';
+      case 'weak-password': return 'Password must be at least 6 characters';
+      case 'invalid-email': return 'Invalid email format';
+      case 'network-request-failed': return 'No internet connection';
+      default: return e.message ?? 'Authentication error';
+    }
+  }
+}

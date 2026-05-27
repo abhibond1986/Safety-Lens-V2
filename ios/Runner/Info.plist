@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Safety Lens</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>safety_lens</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+
+	<!-- ============================================================ -->
+	<!-- SAFETY LENS PERMISSIONS — Required for app functionality      -->
+	<!-- ============================================================ -->
+
+	<key>NSCameraUsageDescription</key>
+	<string>Safety Lens needs camera access to capture workplace photos for AI-powered safety hazard analysis using Gemini Vision and IS 14489 standards.</string>
+
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Safety Lens needs photo library access to select existing workplace photos for safety analysis and incident documentation.</string>
+
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Safety Lens needs permission to save annotated safety reports and analysed photos to your photo library.</string>
+
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Safety Lens needs microphone access for voice-to-text input when reporting near miss incidents in English (India) and other supported languages.</string>
+
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Safety Lens uses speech recognition to convert your verbal description of safety incidents into text for faster reporting.</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Safety Lens optionally uses your location to auto-fill the plant location of safety incidents being reported.</string>
+
+	<!-- App Transport Security — allow Gemini API HTTPS -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>generativelanguage.googleapis.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSTemporaryExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSTemporaryExceptionMinimumTLSVersion</key>
+				<string>TLSv1.2</string>
+			</dict>
+		</dict>
+	</dict>
+
+	<!-- iOS 14+ track tracking transparency (not used, but declared) -->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Safety Lens does not track users. This declaration is required by iOS for App Store submission.</string>
+</dict>
+</plist>
