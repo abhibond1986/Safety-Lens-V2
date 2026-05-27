@@ -30,8 +30,9 @@ jobs:
         run: flutter pub get
 
       - name: Build web (release)
-       run: flutter build web --release --base-href "/Safety-Lens-V2/" --no-tree-shake-icons
-        - name: List web output
+        run: flutter build web --release --base-href "/Safety-Lens-V2/" --no-tree-shake-icons
+
+      - name: List web output
         run: ls -la build/web/
 
       - name: Add SPA fallback for routing
