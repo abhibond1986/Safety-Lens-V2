@@ -1,0 +1,62 @@
+name: Build Safety Lens APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter version (sanity check)
+        run: flutter --version
+
+      - name: Setup local.properties
+        run: |
+          cd android
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "flutter.sdk=$FLUTTER_ROOT" >> local.properties
+          echo "flutter.versionCode=17" >> local.properties
+          echo "flutter.versionName=1.0.0" >> local.properties
+          cat local.properties
+
+      - name: Clean
+        run: flutter clean
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Run Flutter analyzer (non-blocking)
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
+
+      - name: Build debug APK
+        run: flutter build apk --debug --no-tree-shake-icons
+
+      - name: List APK output
+        run: ls -la build/app/outputs/flutter-apk/
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: safety-lens-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 90
+          if-no-files-found: error
