@@ -4,77 +4,62 @@ import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'local_ai.dart';
 
-/// Gemini Vision API service for SAIL Safety Lens.
-/// Uses Google Gemini 1.5 Flash — free tier 1500 req/day.
-/// IS 14489:1998 + Ministry of Steel + Factories Act 1948 compliant.
+/// Hugging Face Vision API service for SAIL Safety Lens.
+/// 
+/// Uses two HF models:
+/// 1. Salesforce/blip-image-captioning-large -> describes the image
+/// 2. Qwen/Qwen2.5-72B-Instruct -> generates IS 14489 safety report from description
+///
+/// Get free token at: https://huggingface.co/settings/tokens
 class GeminiVision {
   // ============================================================
-  // PASTE YOUR GEMINI API KEY HERE (between the quotes):
-  // Get a free key at: https://aistudio.google.com/apikey
+  // PASTE YOUR HUGGING FACE TOKEN HERE (between the quotes):
+  // Get a free token at: https://huggingface.co/settings/tokens
+  // Token starts with: hf_...
   // ============================================================
-  static const String _apiKey ='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';
+  static const String _hfToken = 'YOUR_HUGGINGFACE_TOKEN_HERE';
 
-  static const String _endpoint =
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+  // Vision model - describes what's in the image
+  static const String _visionModel = 'Salesforce/blip-image-captioning-large';
+
+  // Text generation model - analyses the description against IS 14489
+  static const String _textModel = 'Qwen/Qwen2.5-72B-Instruct';
+
+  static const String _hfBaseUrl = 'https://api-inference.huggingface.co/models';
 
   static const String _safetyPrompt = '''
 You are an expert industrial safety inspector for Steel Authority of India Limited (SAIL).
-Conduct an EXHAUSTIVE safety audit using these authoritative standards:
+Based on the image description provided, conduct a safety audit using these authoritative standards:
 
 AUTHORITATIVE FRAMEWORK:
 1. IS 14489:1998 — Code of Practice on Occupational Safety & Health Audit (Iron & Steel Industry)
-2. Ministry of Steel Govt of India — Safety Guidelines for Iron & Steel Sector (2023)
-3. Factories Act 1948 — Sections 21-41 (machinery, hoists, lifting, PPE, fire, height, gas)
-4. SAIL Standard Operating Procedures
-5. Indian Standards: IS 2925 (helmet), IS 3521 (harness), IS 5852 (shoes), IS 6994 (gloves), IS 4770 (eye), IS 9167 (ear), IS 8519 (respiratory), IS 2750 (scaffolding), IS 7689 (LOTO), IS 4912 (guardrails)
-6. WSA 13 Causes framework
-7. DGMS guidelines for confined space and explosive atmospheres
+2. Ministry of Steel Govt of India — Safety Guidelines for Iron & Steel Sector
+3. Factories Act 1948 — Sections 21-41
+4. Indian Standards: IS 2925 (helmet), IS 3521 (harness), IS 5852 (shoes), IS 6994 (gloves), IS 4770 (eye), IS 9167 (ear), IS 8519 (respiratory), IS 2750 (scaffolding), IS 7689 (LOTO)
+5. WSA 13 Causes framework
 
-CRITICAL — DO NOT HALLUCINATE:
-- Only report hazards ACTUALLY visible in the photo
-- DO NOT invent details like "liquid on floor" if no liquid is visible
-- DO NOT add generic hazards that are not present
-- LOOK CAREFULLY at: worker postures, what they stand on, what is in hands, edges, heights, machinery exposure, PPE worn vs missing, electrical exposures, fire/heat sources, ergonomics
-
-EXHAUSTIVE CHECKLIST (apply to EVERY photo):
-1. PPE — helmet (IS 2925), shoes (IS 5852), gloves (IS 6994), eye/face (IS 4770), hi-vis, hearing (IS 9167), respiratory (IS 8519), harness (IS 3521 required for >2m height)
-2. Working at Height — anchor points, double lanyard, edge protection, scaffolding tagged (IS 2750), ladder 3-point contact
-3. Posture/Ergonomics — twisted spine, stretching, awkward reach, unstable surface
-4. Structural — guardrails (IS 4912), toe-boards, edge protection, scaffold integrity
-5. Housekeeping (only if VISIBLY present) — actual debris/spills/cables/blocked aisles you can SEE
-6. Machinery Guarding (Factories Act §21) — exposed moving parts, pinch points
-7. Electrical — exposed conductors, missing covers, no LOTO, IE Rules §51 distances
-8. Hot Work — welding screens, fire watch, combustibles cleared, extinguishers
-9. Confined Space — PTW, ventilation, atmosphere test
-10. Material Handling — improper lifting, unstable stacks, sharp edges, suspended loads
-11. Environmental — visible smoke/dust/heat, lighting (§17 — 50 lux min)
-12. Signage — missing hazard signs, blocked emergency exits
-
-For EACH hazard ACTUALLY seen provide:
-- name (5 words max, specific to what you see)
-- severity (CRITICAL/HIGH/MEDIUM/LOW per IS 14489 risk matrix)
-- description (1-2 sentences describing EXACTLY what you observe in this photo, no generic content)
-- regulation (cite specific: "IS 14489 § / Factories Act § / IS 3521 / MoS Ch.")
-- correctiveAction (concrete action per SAIL SOP)
-- box: {l, t, w, h} as 0-1 decimals (precise bounding box)
+For EACH hazard provide:
+- name (5 words max)
+- severity (CRITICAL/HIGH/MEDIUM/LOW)
+- description (1-2 sentences)
+- regulation (cite specific section)
+- correctiveAction (concrete action)
 
 ALSO provide:
-- overallRisk (CRITICAL/HIGH/MEDIUM/LOW — highest of all hazards)
-- riskScore (0-100 per IS 14489 quantitative matrix)
+- overallRisk (CRITICAL/HIGH/MEDIUM/LOW)
+- riskScore (0-100)
 - confidence (0-100)
-- summary (3-4 sentences SPECIFIC to this photo)
-- wsa (array from WSA 13: "1. Failure to follow procedure", "2. Lack of hazard awareness", "3. Improper PPE", "4. Unsafe positioning", "5. Equipment failure", "6. Communication gaps", "7. Human error", "8. Poor housekeeping", "9. Lack of supervision", "10. Fatigue", "11. Unauthorized operation", "12. Inadequate isolation", "13. Environmental conditions")
-- preventive (4-5 measures referencing IS 14489 audit elements)
+- summary (3-4 sentences)
+- wsa (array from WSA 13 causes)
+- preventive (4-5 preventive measures)
 
-Aim for 3-8 distinct hazards in workplace photos. Zero is fine for safe scenes.
+Respond with ONLY valid JSON, no markdown:
+{"overallRisk":"HIGH","riskScore":70,"confidence":80,"summary":"...","hazards":[{"name":"...","severity":"HIGH","description":"...","regulation":"...","correctiveAction":"..."}],"wsa":[],"preventive":[]}
 
-Respond with ONLY valid JSON (no markdown):
-{"overallRisk":"CRITICAL","riskScore":85,"confidence":92,"summary":"...","hazards":[{"name":"...","severity":"CRITICAL","description":"...","regulation":"...","correctiveAction":"...","box":{"l":0.2,"t":0.1,"w":0.3,"h":0.4}}],"wsa":[...],"preventive":[...]}
-
-If the image is NOT a workplace photo, return overallRisk LOW with empty hazards.
+If image shows no workplace hazards, return overallRisk LOW with empty hazards array.
 ''';
 
-  /// Analyse an image file using Gemini Vision (mobile/desktop).
+  /// Analyse an image file (mobile/desktop).
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
     return analyseImageBytes(bytes);
@@ -82,71 +67,183 @@ If the image is NOT a workplace photo, return overallRisk LOW with empty hazards
 
   /// Analyse image bytes — works on web AND mobile.
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
-    if (_apiKey == 'YOUR_GEMINI_API_KEY_HERE' || _apiKey.isEmpty) {
+    if (_hfToken == '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' || _hfToken.isEmpty) {
       throw Exception(
-        'Gemini API key not configured. Please paste your key in lib/services/gemini_vision.dart line 14.',
+        'Hugging Face token not configured. Please paste your token in lib/services/gemini_vision.dart line 22.',
       );
     }
 
     try {
-      final base64Image = base64Encode(bytes);
+      // Step 1: Get image description from BLIP vision model
+      final description = await _getImageDescription(bytes);
 
-      final response = await http.post(
-        Uri.parse('$_endpoint?key=$_apiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'contents': [
-            {
-              'parts': [
-                {'text': _safetyPrompt},
-                {
-                  'inline_data': {
-                    'mime_type': 'image/jpeg',
-                    'data': base64Image,
-                  }
-                }
-              ]
-            }
-          ],
-          'generationConfig': {
-            'temperature': 0.2,
-            'maxOutputTokens': 4000,
-            'responseMimeType': 'application/json',
-          },
-          'safetySettings': [
-            {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_NONE'},
-            {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_NONE'},
-            {'category': 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'threshold': 'BLOCK_NONE'},
-            {'category': 'HARM_CATEGORY_DANGEROUS_CONTENT', 'threshold': 'BLOCK_NONE'},
-          ],
-        }),
+      // Step 2: Generate safety report from description using LLM
+      final report = await _generateSafetyReport(description);
+
+      return report;
+    } catch (e) {
+      final errMsg = e.toString();
+      return {
+        'overallRisk': 'UNKNOWN',
+        'riskScore': 0,
+        'confidence': 0,
+        'summary': 'Hugging Face API call failed.\n\n'
+            'Possible reasons:\n'
+            '1. Token invalid or expired\n'
+            '2. Model loading (HF cold-starts can take 20s — try again)\n'
+            '3. Rate limit reached (free tier)\n'
+            '4. Network connection issue\n\n'
+            'Error: $errMsg',
+        'hazards': [
+          {
+            'name': 'AI analysis unavailable',
+            'description': errMsg.length > 200 ? errMsg.substring(0, 200) : errMsg,
+            'severity': 'MEDIUM',
+            'type': 'System error',
+            'regulation': 'N/A',
+            'correctiveAction': 'Verify token at https://huggingface.co/settings/tokens and try again. If model is loading, wait 30s and retry.',
+          }
+        ],
+        'preventive': [
+          'Use a valid Hugging Face Pro token for production',
+          'Wait for model to warm up on first call',
+          'Consider Firebase backend proxy for reliability',
+        ],
+        '_source': 'api_error',
+        '_error': errMsg,
+      };
+    }
+  }
+
+  /// Call BLIP model to get a caption/description of the image
+  static Future<String> _getImageDescription(Uint8List bytes) async {
+    final url = Uri.parse('$_hfBaseUrl/$_visionModel');
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $_hfToken',
+        'Content-Type': 'application/octet-stream',
+      },
+      body: bytes,
+    ).timeout(const Duration(seconds: 30));
+
+    if (response.statusCode == 503) {
+      // Model is loading — try once more after delay
+      await Future.delayed(const Duration(seconds: 10));
+      final retry = await http.post(
+        url,
+        headers: {
+          'Authorization': 'Bearer $_hfToken',
+          'Content-Type': 'application/octet-stream',
+        },
+        body: bytes,
       ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200) {
-        throw Exception('Gemini HTTP ${response.statusCode}: ${response.body}');
+      if (retry.statusCode != 200) {
+        throw Exception('HF Vision API error ${retry.statusCode}: ${retry.body}');
       }
+      return _parseCaption(retry.body);
+    }
 
-      final data = jsonDecode(response.body);
-      String text = data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
-      text = text.trim();
-      if (text.startsWith('```json')) text = text.substring(7);
-      if (text.startsWith('```')) text = text.substring(3);
-      if (text.endsWith('```')) text = text.substring(0, text.length - 3);
+    if (response.statusCode != 200) {
+      throw Exception('HF Vision API error ${response.statusCode}: ${response.body}');
+    }
 
-      final result = jsonDecode(text.trim());
-      result['_source'] = 'gemini';
+    return _parseCaption(response.body);
+  }
+
+  static String _parseCaption(String body) {
+    try {
+      final data = jsonDecode(body);
+      if (data is List && data.isNotEmpty) {
+        return data[0]['generated_text']?.toString() ?? 'Image content';
+      }
+      if (data is Map && data['generated_text'] != null) {
+        return data['generated_text'].toString();
+      }
+      return body;
+    } catch (_) {
+      return body;
+    }
+  }
+
+  /// Call text LLM to generate IS 14489 compliant safety report from description
+  static Future<Map<String, dynamic>> _generateSafetyReport(String imageDescription) async {
+    final url = Uri.parse('$_hfBaseUrl/$_textModel');
+
+    final fullPrompt = '$_safetyPrompt\n\nImage description: $imageDescription\n\nSafety report (JSON only):';
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $_hfToken',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'inputs': fullPrompt,
+        'parameters': {
+          'max_new_tokens': 2000,
+          'temperature': 0.2,
+          'return_full_text': false,
+        },
+        'options': {'wait_for_model': true},
+      }),
+    ).timeout(const Duration(seconds: 60));
+
+    if (response.statusCode != 200) {
+      throw Exception('HF Text API error ${response.statusCode}: ${response.body}');
+    }
+
+    final data = jsonDecode(response.body);
+    String text = '';
+    if (data is List && data.isNotEmpty) {
+      text = data[0]['generated_text']?.toString() ?? '';
+    } else if (data is Map) {
+      text = data['generated_text']?.toString() ?? '';
+    }
+
+    // Extract JSON from response
+    text = text.trim();
+    if (text.startsWith('```json')) text = text.substring(7);
+    if (text.startsWith('```')) text = text.substring(3);
+    if (text.endsWith('```')) text = text.substring(0, text.length - 3);
+
+    // Find first { and last } to extract JSON object
+    final jsonStart = text.indexOf('{');
+    final jsonEnd = text.lastIndexOf('}');
+    if (jsonStart >= 0 && jsonEnd > jsonStart) {
+      text = text.substring(jsonStart, jsonEnd + 1);
+    }
+
+    try {
+      final result = jsonDecode(text.trim()) as Map<String, dynamic>;
+      result['_source'] = 'huggingface';
+      result['_imageDescription'] = imageDescription;
       return result;
     } catch (e) {
-      // On network error or any failure: fall back to demo analysis
-      if (kIsWeb || e is SocketException) {
-        final fallback = LocalAI.demoAnalysis();
-        fallback['_source'] = 'offline_fallback';
-        return fallback;
-      }
-      rethrow;
+      // If JSON parsing fails, return a partially-structured result with the description
+      return {
+        'overallRisk': 'MEDIUM',
+        'riskScore': 50,
+        'confidence': 40,
+        'summary': 'AI described image as: $imageDescription\n\n'
+            'Could not parse structured hazard analysis from response. Raw LLM output may be in unexpected format.',
+        'hazards': [
+          {
+            'name': 'Manual review needed',
+            'description': 'AI saw: $imageDescription. Please manually identify hazards.',
+            'severity': 'MEDIUM',
+            'type': 'Pending review',
+            'regulation': 'IS 14489 manual audit',
+            'correctiveAction': 'Conduct manual safety inspection of the area shown.',
+          }
+        ],
+        'preventive': ['Manual review required', 'Verify HF model output format'],
+        '_source': 'huggingface_partial',
+        '_imageDescription': imageDescription,
+      };
     }
   }
 
   static bool get isConfigured =>
-      _apiKey != 'YOUR_GEMINI_API_KEY_HERE' && _apiKey.isNotEmpty;
+      _hfToken != 'YOUR_HUGGINGFACE_TOKEN_HERE' && _hfToken.isNotEmpty;
 }
