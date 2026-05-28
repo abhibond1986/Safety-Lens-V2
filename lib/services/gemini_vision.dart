@@ -12,7 +12,7 @@ class GeminiVision {
   // PASTE YOUR GEMINI API KEY HERE (between the quotes):
   // Get a free key at: https://aistudio.google.com/apikey
   // ============================================================
-  static const String _apiKey = 'AIzaSyDTBe6hemafNTWRA43JLLB0_PbMM8pTqP8';
+  static const String _apiKey ='AQ.Ab8RN6KQZBbnQQ21z5jfqIp7mVmWJWRatWidqxvAEqub9cNxBA';
 
   static const String _endpoint =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
