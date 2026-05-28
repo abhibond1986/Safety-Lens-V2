@@ -187,4 +187,70 @@ class LocalDB {
   static int calcSafetyScore(int critical, int high, int medium, int open) {
     return (100 - critical * 15 - high * 8 - medium * 3 - open * 2).clamp(0, 100);
   }
+
+  // ===== FEEDBACK & LEARNING =====
+  static const _kFeedback = 'feedback_corrections';
+  static const _kCustomHazards = 'custom_hazards';
+
+  /// Save user feedback for a specific image seed (image fingerprint).
+  /// Type can be: 'add' (missed hazard), 'remove' (false positive), 'reword' (description fix)
+  static Future<void> saveFeedback({
+    required int imageSeed,
+    required String type,
+    required Map<String, dynamic> hazardData,
+  }) async {
+    final all = await getAllFeedback();
+    all.add({
+      'imageSeed': imageSeed,
+      'type': type,
+      'hazard': hazardData,
+      'timestamp': DateTime.now().toIso8601String(),
+      'user': (await getCurrentUser())?['name'] ?? 'unknown',
+    });
+    await _prefs.setString(_kFeedback, jsonEncode(all));
+  }
+
+  static Future<List<Map<String, dynamic>>> getAllFeedback() async {
+    final raw = _prefs.getString(_kFeedback);
+    if (raw == null) return [];
+    return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// Get feedback specifically for this image's seed
+  static Future<List<Map<String, dynamic>>> getFeedbackForSeed(int imageSeed) async {
+    final all = await getAllFeedback();
+    return all.where((f) => f['imageSeed'] == imageSeed).toList();
+  }
+
+  /// Add a custom hazard to user's plant-specific library
+  static Future<void> addCustomHazard(Map<String, dynamic> hazard) async {
+    final all = await getCustomHazards();
+    hazard['addedAt'] = DateTime.now().toIso8601String();
+    hazard['addedBy'] = (await getCurrentUser())?['name'] ?? 'unknown';
+    all.add(hazard);
+    await _prefs.setString(_kCustomHazards, jsonEncode(all));
+  }
+
+  static Future<List<Map<String, dynamic>>> getCustomHazards() async {
+    final raw = _prefs.getString(_kCustomHazards);
+    if (raw == null) return [];
+    return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
+  }
+
+  /// Clear all feedback (for testing/reset)
+  static Future<void> clearFeedback() async {
+    await _prefs.remove(_kFeedback);
+    await _prefs.remove(_kCustomHazards);
+  }
+
+  /// Get statistics about feedback collected
+  static Future<Map<String, int>> getFeedbackStats() async {
+    final all = await getAllFeedback();
+    return {
+      'total': all.length,
+      'added': all.where((f) => f['type'] == 'add').length,
+      'removed': all.where((f) => f['type'] == 'remove').length,
+      'reworded': all.where((f) => f['type'] == 'reword').length,
+    };
+  }
 }
