@@ -23,10 +23,8 @@ dependencies:
   # PDF export
   pdf: ^3.10.7
   printing: ^5.12.0
-  # Firebase (uncomment AFTER running flutterfire configure)
-  # firebase_core: ^2.27.0
-  # cloud_firestore: ^4.15.8
-  # firebase_auth: ^4.17.8
+  # File picker for knowledge base PDF/Word uploads
+  file_picker: ^6.1.1
 
 dev_dependencies:
   flutter_test:
