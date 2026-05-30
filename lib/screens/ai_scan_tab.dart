@@ -8,6 +8,7 @@ import '../services/gemini_vision.dart';
 import '../services/local_ai.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
+import '../services/sync_service.dart';
 class AIScanTab extends StatefulWidget {
   const AIScanTab({super.key});
 
@@ -97,18 +98,28 @@ class _AIScanTabState extends State<AIScanTab> {
   // Save locally
   await LocalDB.saveIncident(incident);
 
-  // Sync to Google Sheet
+  // Send to Google Sheets
   try {
-    await SyncService.pushIncident(incident);
-  } catch (e) {
-    print('Google Sheet sync failed: $e');
-  }
+    final ok = await SyncService.pushIncident(incident);
 
-  if (mounted) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Saved to Reports & Google Sheet'),
-        backgroundColor: AppColors.green,
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? 'Saved to Reports & Google Sheet'
+                : 'Saved locally. Google Sheet sync pending.',
+          ),
+          backgroundColor: ok ? AppColors.green : AppColors.amber,
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved locally. Google Sheet sync failed.'),
+          backgroundColor: AppColors.amber,
       ),
     );
   }
