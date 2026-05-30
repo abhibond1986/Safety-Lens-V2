@@ -7,7 +7,7 @@ import '../main.dart';
 import '../services/gemini_vision.dart';
 import '../services/local_ai.dart';
 import '../services/local_db.dart';
-
+import '../services/sync_service.dart';
 class AIScanTab extends StatefulWidget {
   const AIScanTab({super.key});
 
@@ -77,22 +77,42 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Future<void> _save() async {
-    if (_result == null) return;
-    final hazards = (_result!['hazards'] as List?) ?? [];
-    final firstHazard = hazards.isNotEmpty ? hazards.first['name'] : 'AI scan';
-    await LocalDB.saveIncident({
-      'title': firstHazard.toString(),
-      'plant': 'Unknown',
-      'severity': _result!['overallRisk'] ?? 'MEDIUM',
-      'wsaCategory': 'Other',
-      'desc': _result!['summary']?.toString() ?? '',
-      'type': 'AI_SCAN',
-      'status': 'OPEN',
-      'hazards': jsonEncode(hazards),
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved to Reports'), backgroundColor: AppColors.green),
+  if (_result == null) return;
+
+  final hazards = (_result!['hazards'] as List?) ?? [];
+  final firstHazard =
+      hazards.isNotEmpty ? hazards.first['name'] : 'AI scan';
+
+  final incident = {
+    'title': firstHazard.toString(),
+    'plant': 'Unknown',
+    'severity': _result!['overallRisk'] ?? 'MEDIUM',
+    'wsaCategory': 'Other',
+    'desc': _result!['summary']?.toString() ?? '',
+    'type': 'AI_SCAN',
+    'status': 'OPEN',
+    'hazards': jsonEncode(hazards),
+  };
+
+  // Save locally
+  await LocalDB.saveIncident(incident);
+
+  // Sync to Google Sheet
+  try {
+    await SyncService.pushIncident(incident);
+  } catch (e) {
+    print('Google Sheet sync failed: $e');
+  }
+
+  if (mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Saved to Reports & Google Sheet'),
+        backgroundColor: AppColors.green,
+      ),
+    );
+  }
+}
       );
     }
   }
