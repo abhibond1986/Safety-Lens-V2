@@ -97,7 +97,7 @@ class _AIScanTabState extends State<AIScanTab> {
   // Save locally
   await LocalDB.saveIncident(incident);
 
-  // Send to Google Sheets
+  // Sync to Google Sheet
   try {
     final ok = await SyncService.pushIncident(incident);
 
@@ -114,6 +114,18 @@ class _AIScanTabState extends State<AIScanTab> {
       );
     }
   } catch (e) {
+    debugPrint('Google Sheet sync error: $e');
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Saved locally. Google Sheet sync failed.'),
+          backgroundColor: AppColors.amber,
+        ),
+      );
+    }
+  }
+} catch (e) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
