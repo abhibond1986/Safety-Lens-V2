@@ -8,7 +8,6 @@ import '../services/gemini_vision.dart';
 import '../services/local_ai.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
-import '../services/sync_service.dart';
 class AIScanTab extends StatefulWidget {
   const AIScanTab({super.key});
 
