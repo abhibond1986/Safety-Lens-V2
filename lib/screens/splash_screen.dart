@@ -36,17 +36,30 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const SailLogoTile(size: 120),
-            const SizedBox(height: 24),
-            const BrandTitle(size: 32),
-            const SizedBox(height: 8),
-            Text('SAIL · IS 14489',
-              style: TextStyle(color: AppColors.text4, fontSize: 11, letterSpacing: 2.5, fontWeight: FontWeight.w600),
+            Container(
+              width: 220,
+              height: 220,
+              decoration: BoxDecoration(
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.accent.withOpacity(0.15),
+                    blurRadius: 40,
+                    spreadRadius: 8,
+                  ),
+                ],
+              ),
+              child: Image.asset('assets/images/sail_logo.png', fit: BoxFit.contain),
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 36),
+            const BrandTitle(size: 38),
+            const SizedBox(height: 10),
+            const Text('SAIL · IS 14489',
+              style: TextStyle(color: AppColors.text4, fontSize: 12, letterSpacing: 3, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 60),
             const SizedBox(
-              width: 32, height: 32,
-              child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.accent),
+              width: 36, height: 36,
+              child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.accent),
             ),
           ],
         ),
