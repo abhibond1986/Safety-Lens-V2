@@ -94,50 +94,36 @@ class _AIScanTabState extends State<AIScanTab> {
     'hazards': jsonEncode(hazards),
   };
 
-  // Save locally
   await LocalDB.saveIncident(incident);
 
-  // Sync to Google Sheet
   try {
     final ok = await SyncService.pushIncident(incident);
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ok
-                ? 'Saved to Reports & Google Sheet'
-                : 'Saved locally. Google Sheet sync pending.',
-          ),
-          backgroundColor: ok ? AppColors.green : AppColors.amber,
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok
+              ? 'Saved to Reports & Google Sheet'
+              : 'Saved locally. Google Sheet sync pending.',
         ),
-      );
-    }
+        backgroundColor: ok ? AppColors.green : AppColors.amber,
+      ),
+    );
   } catch (e) {
     debugPrint('Google Sheet sync error: $e');
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved locally. Google Sheet sync failed.'),
-          backgroundColor: AppColors.amber,
-        ),
-      );
-    }
-  }
-} catch (e) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Saved locally. Google Sheet sync failed.'),
-          backgroundColor: AppColors.amber,
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Saved locally. Google Sheet sync failed.'),
+        backgroundColor: AppColors.amber,
       ),
     );
   }
 }
-      );
-    }
-  }
 
   void _reset() {
     setState(() {
