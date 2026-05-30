@@ -79,10 +79,9 @@ class SyncService {
       });
 
       final response = await http.post(
-        Uri.parse(url),
-        body: jsonEncode(body),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 30));
+  Uri.parse(url),
+  body: body.map((k, v) => MapEntry(k, v.toString())),
+).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -129,10 +128,9 @@ class SyncService {
       doc.forEach((k, v) => body[k] = (v ?? '').toString());
 
       final response = await http.post(
-        Uri.parse(url),
-        body: jsonEncode(body),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 30));
+  Uri.parse(url),
+  body: body.map((k, v) => MapEntry(k, v.toString())),
+).timeout(const Duration(seconds: 30));
       return response.statusCode == 200;
     } catch (_) {
       return false;
