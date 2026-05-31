@@ -1,99 +1,338 @@
-import 'dart';import 'package/pdf.dart';import 'package/widgets.dart' as pw;import 'package/path_provider.dart';import 'package/share_plus.dart';import 'package/intl.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart';
+// Web-only download support (uses dart:html on web, stub on mobile)
+import 'dart:html' as html if (dart.library.io) 'pdf_export_stub.dart';
 
-/// PDF Export service for SAIL Safety Lens./// Generates professional incident reports compliant with IS 14489 documentation.class PdfExport {static const String _sailBlue = '#0D47A1';static const String _critical = '#EF4444';static const String _high = '#F59E0B';static const String _medium = '#00BCD4';static const String _low = '#10B981';
+/// PDF Export service for SAIL Safety Lens.
+class PdfExport {
+  static const String _sailBlue = '#0D47A1';
+  static const String _critical = '#EF4444';
+  static const String _high = '#F59E0B';
+  static const String _medium = '#00BCD4';
+  static const String _low = '#10B981';
 
-/// Generate PDF for a single incident reportstatic Future generateIncidentReport({required Map<String, dynamic> incident,required String reporterName,required String reporterPno,}) async {final pdf = pw.Document();final dateStr = DateFormat('dd MMM yyyy, HH').format(DateTime.parse(incident['date'] ?? DateTime.now().toIso8601String()),);
+  /// Get PDF as bytes (works on web AND mobile)
+  static Future<Uint8List> generateIncidentReportBytes({
+    required Map<String, dynamic> incident,
+    required String reporterName,
+    required String reporterPno,
+    Uint8List? imageBytes,
+  }) async {
+    final pdf = pw.Document();
+    final dateStr = DateFormat('dd MMM yyyy, HH:mm').format(
+      DateTime.parse(incident['date'] ?? DateTime.now().toIso8601String()),
+    );
 
-pdf.addPage(
-  pw.MultiPage(
-    pageFormat: PdfPageFormat.a4,
-    margin: const pw.EdgeInsets.all(32),
-    build: (context) => [
-      _buildHeader(),
-      pw.SizedBox(height: 16),
-      _buildIncidentInfo(incident, dateStr, reporterName, reporterPno),
-      pw.SizedBox(height: 16),
-      _buildSeverityCard(incident['severity'] ?? 'MEDIUM'),
-      pw.SizedBox(height: 16),
-      _buildDescriptionSection(incident),
-      pw.SizedBox(height: 16),
-      _buildWsaSection(incident),
-      pw.SizedBox(height: 16),
-      _buildCorrectiveActions(incident),
-      pw.SizedBox(height: 24),
-      _buildFooter(),
-    ],
-  ),
-);
+    Uint8List? embedBytes = imageBytes;
+    if (embedBytes == null && incident['imageBase64'] != null) {
+      try {
+        embedBytes = base64Decode(incident['imageBase64'].toString());
+      } catch (_) {}
+    }
 
-final dir = await getApplicationDocumentsDirectory();
-final filename = 'SafetyLens_Report_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
-final file = File('${dir.path}/$filename');
-await file.writeAsBytes(await pdf.save());
-return file;
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (context) {
+          final widgets = <pw.Widget>[];
+          widgets.add(_buildHeader());
+          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(_buildIncidentInfo(incident, dateStr, reporterName, reporterPno));
+          widgets.add(pw.SizedBox(height: 16));
 
+          if (embedBytes != null) {
+            widgets.add(pw.Text('EVIDENCE PHOTO',
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#666666'))));
+            widgets.add(pw.SizedBox(height: 4));
+            widgets.add(pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 12),
+              decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5)),
+              child: pw.Image(pw.MemoryImage(embedBytes!), height: 220, fit: pw.BoxFit.contain),
+            ));
+          }
+
+          widgets.add(_buildSeverityCard(incident['severity'] ?? 'MEDIUM'));
+          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(_buildDescriptionSection(incident));
+          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(_buildWsaSection(incident));
+          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(_buildCorrectiveActions(incident));
+          widgets.add(pw.SizedBox(height: 24));
+          widgets.add(_buildFooter());
+          return widgets;
+        },
+      ),
+    );
+
+    return pdf.save();
+  }
+
+  /// Download PDF on web (triggers browser download) OR share on mobile
+  static Future<void> downloadOrShareIncident({
+    required Map<String, dynamic> incident,
+    required String reporterName,
+    required String reporterPno,
+    Uint8List? imageBytes,
+  }) async {
+    final bytes = await generateIncidentReportBytes(
+      incident: incident,
+      reporterName: reporterName,
+      reporterPno: reporterPno,
+      imageBytes: imageBytes,
+    );
+    final filename =
+        'SafetyLens_Report_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
+
+    if (kIsWeb) {
+      try {
+        final blob = html.Blob([bytes], 'application/pdf');
+        final url = html.Url.createObjectUrlFromBlob(blob);
+        final anchor = html.AnchorElement(href: url)
+          ..setAttribute('download', filename)
+          ..click();
+        html.Url.revokeObjectUrl(url);
+      } catch (e) {
+        rethrow;
+      }
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)],
+          text: 'SAIL Safety Lens Incident Report',
+          subject: 'Incident Report ${incident['id'] ?? ''}');
+    }
+  }
+
+  // Legacy: Generate file (mobile only — for backwards compat)
+  static Future<File> generateIncidentReport({
+    required Map<String, dynamic> incident,
+    required String reporterName,
+    required String reporterPno,
+  }) async {
+    final bytes = await generateIncidentReportBytes(
+      incident: incident,
+      reporterName: reporterName,
+      reporterPno: reporterPno,
+    );
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = 'SafetyLens_Report_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes);
+    return file;
+  }
+
+  static Future<File> generateConsolidatedReport({
+    required List<Map<String, dynamic>> incidents,
+    required String reporterName,
+  }) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (context) => [
+          _buildHeader(),
+          pw.SizedBox(height: 16),
+          pw.Text('CONSOLIDATED INCIDENT REPORT',
+            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 8),
+          pw.Text('Generated by: $reporterName',
+            style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('Date: ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}',
+            style: const pw.TextStyle(fontSize: 10)),
+          pw.SizedBox(height: 16),
+          pw.Text('Total Incidents: ${incidents.length}',
+            style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.SizedBox(height: 16),
+          pw.Table.fromTextArray(
+            headers: ['Date', 'Title', 'Plant', 'Severity', 'Status'],
+            data: incidents.map((i) => [
+              i['date']?.toString().substring(0, 10) ?? '',
+              i['title']?.toString() ?? '',
+              i['plant']?.toString() ?? '',
+              i['severity']?.toString() ?? '',
+              i['status']?.toString() ?? '',
+            ]).toList(),
+            headerStyle: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+            headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex(_sailBlue)),
+            cellStyle: const pw.TextStyle(fontSize: 8),
+            cellAlignment: pw.Alignment.centerLeft,
+          ),
+          pw.SizedBox(height: 24),
+          _buildFooter(),
+        ],
+      ),
+    );
+
+    final dir = await getApplicationDocumentsDirectory();
+    final filename = 'SafetyLens_Consolidated_${DateTime.now().millisecondsSinceEpoch}.pdf';
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(await pdf.save());
+    return file;
+  }
+
+  static Future<void> sharePdf(File file, {String? subject}) async {
+    await Share.shareXFiles([XFile(file.path)],
+        text: subject ?? 'SAIL Safety Lens Report',
+        subject: subject ?? 'Safety Report');
+  }
+
+  // ============ PDF BUILD HELPERS ============
+  static pw.Widget _buildHeader() {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex(_sailBlue),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+            pw.Text('SAFETY LENS',
+              style: pw.TextStyle(fontSize: 18, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Steel Authority of India Limited',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.white)),
+          ]),
+          pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
+            pw.Text('IS 14489:1998',
+              style: pw.TextStyle(fontSize: 9, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+            pw.Text('Factories Act 1948',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.white)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  static pw.Widget _buildIncidentInfo(Map<String, dynamic> incident, String dateStr, String reporterName, String reporterPno) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('#F1F5F9'),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text(incident['title']?.toString() ?? 'Incident Report',
+          style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+        pw.SizedBox(height: 8),
+        pw.Row(children: [
+          _kv('Date', dateStr),
+          pw.SizedBox(width: 30),
+          _kv('Plant', incident['plant']?.toString() ?? ''),
+        ]),
+        pw.SizedBox(height: 4),
+        pw.Row(children: [
+          _kv('Department', incident['dept']?.toString() ?? ''),
+          pw.SizedBox(width: 30),
+          _kv('Location', incident['location']?.toString() ?? ''),
+        ]),
+        pw.SizedBox(height: 4),
+        pw.Row(children: [
+          _kv('Reported by', reporterName),
+          if (reporterPno.isNotEmpty) ...[
+            pw.SizedBox(width: 30),
+            _kv('P. No.', reporterPno),
+          ],
+        ]),
+        pw.SizedBox(height: 4),
+        pw.Row(children: [
+          _kv('Type', incident['type']?.toString() ?? 'NEAR_MISS'),
+          pw.SizedBox(width: 30),
+          _kv('Status', incident['status']?.toString() ?? 'OPEN'),
+        ]),
+      ]),
+    );
+  }
+
+  static pw.Widget _kv(String k, String v) {
+    return pw.Row(children: [
+      pw.Text('$k: ',
+        style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#64748B'), fontWeight: pw.FontWeight.bold)),
+      pw.Text(v, style: const pw.TextStyle(fontSize: 9)),
+    ]);
+  }
+
+  static pw.Widget _buildSeverityCard(String severity) {
+    final color = severity == 'CRITICAL' ? _critical
+        : severity == 'HIGH' ? _high
+        : severity == 'MEDIUM' ? _medium
+        : _low;
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex(color),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Row(children: [
+        pw.Text('SEVERITY: ',
+          style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+        pw.Text(severity,
+          style: pw.TextStyle(fontSize: 14, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+      ]),
+    );
+  }
+
+  static pw.Widget _buildDescriptionSection(Map<String, dynamic> incident) {
+    return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text('DESCRIPTION',
+        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex(_sailBlue))),
+      pw.SizedBox(height: 4),
+      pw.Text(incident['desc']?.toString() ?? '',
+        style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.4)),
+    ]);
+  }
+
+  static pw.Widget _buildWsaSection(Map<String, dynamic> incident) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('#FEF3C7'),
+        borderRadius: pw.BorderRadius.circular(6),
+      ),
+      child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+        pw.Text('ROOT CAUSE ANALYSIS (WSA 13)',
+          style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#92400E'))),
+        pw.SizedBox(height: 4),
+        pw.Text(incident['wsaCategory']?.toString() ?? 'Not specified',
+          style: const pw.TextStyle(fontSize: 10)),
+      ]),
+    );
+  }
+
+  static pw.Widget _buildCorrectiveActions(Map<String, dynamic> incident) {
+    return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text('IMMEDIATE CORRECTIVE ACTION',
+        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex(_sailBlue))),
+      pw.SizedBox(height: 4),
+      pw.Text(incident['immediateAction']?.toString() ?? 'Not specified',
+        style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.4)),
+    ]);
+  }
+
+  static pw.Widget _buildFooter() {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(8),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('#F1F5F9'),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Column(children: [
+        pw.Text('This report is generated by SAIL Safety Lens',
+          style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#64748B'), fontWeight: pw.FontWeight.bold)),
+        pw.Text('Compliant with IS 14489:1998, Factories Act 1948, Ministry of Steel Guidelines',
+          style: pw.TextStyle(fontSize: 7, color: PdfColor.fromHex('#94A3B8'))),
+      ]),
+    );
+  }
 }
-
-/// Generate consolidated PDF for multiple incidents (e.g. monthly report)static Future generateConsolidatedReport({required List<Map<String, dynamic>> incidents,required String reportTitle,String? plant,DateTime? fromDate,DateTime? toDate,}) async {final pdf = pw.Document();final now = DateTime.now();final from = fromDate ?? now.subtract(const Duration(days: 30));final to = toDate ?? now;
-
-pdf.addPage(
-  pw.MultiPage(
-    pageFormat: PdfPageFormat.a4,
-    margin: const pw.EdgeInsets.all(32),
-    header: (ctx) => _buildPageHeader(reportTitle),
-    footer: (ctx) => _buildPageFooter(ctx.pageNumber, ctx.pagesCount),
-    build: (context) => [
-      _buildReportSummary(incidents, reportTitle, plant, from, to),
-      pw.SizedBox(height: 16),
-      _buildSeverityBreakdown(incidents),
-      pw.SizedBox(height: 16),
-      _buildIncidentTable(incidents),
-    ],
-  ),
-);
-
-final dir = await getApplicationDocumentsDirectory();
-final filename = 'SafetyLens_Consolidated_${DateFormat('yyyyMMdd').format(now)}.pdf';
-final file = File('${dir.path}/$filename');
-await file.writeAsBytes(await pdf.save());
-return file;
-
-}
-
-/// Share the PDF via WhatsApp / Email / etc.static Future sharePdf(File file, {String? subject}) async {await Share.shareXFiles([XFile(file.path)],subject: subject ?? 'Safety Lens Report',text: 'Safety report generated by SAIL Safety Lens',);}
-
-// === Layout helpers ===
-
-static pw.Widget _buildHeader() {return pw.Container(padding: const pw.EdgeInsets.all(14),decoration: pw.BoxDecoration(color: PdfColor.fromHex(_sailBlue),borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),),child: pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.center,children: [pw.Container(width: 36,height: 36,decoration: pw.BoxDecoration(color: PdfColors.white,shape: pw.BoxShape.circle,),alignment: pw.Alignment.center,child: pw.Text('SAIL',style: pw.TextStyle(color: PdfColor.fromHex(_sailBlue),fontSize: 9,fontWeight: pw.FontWeight.bold,),),),pw.SizedBox(width: 12),pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text('SAFETY LENS',style: pw.TextStyle(color: PdfColors.white,fontSize: 16,fontWeight: pw.FontWeight.bold,),),pw.Text('Steel Authority of India Limited',style: const pw.TextStyle(color: PdfColors.white,fontSize: 10,),),],),pw.Spacer(),pw.Text('IS 14489:1998',style: pw.TextStyle(color: PdfColors.white,fontSize: 9,fontStyle: pw.FontStyle.italic,),),],),);}
-
-static pw.Widget _buildPageHeader(String title) {return pw.Container(padding: const pw.EdgeInsets.only(bottom: 8),decoration: const pw.BoxDecoration(border: pw.Border(bottom: pw.BorderSide(width: 0.5)),),child: pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,children: [pw.Text(title, style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),pw.Text('SAIL Safety Lens',style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),),],),);}
-
-static pw.Widget _buildPageFooter(int pageNo, int total) {return pw.Container(padding: const pw.EdgeInsets.only(top: 8),decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(width: 0.5)),),alignment: pw.Alignment.center,child: pw.Text('Page $pageNo of $total · Generated by Safety Lens · SAIL',style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey),),);}
-
-static pw.Widget _buildIncidentInfo(Map<String, dynamic> incident,String dateStr,String reporterName,String reporterPno,) {return pw.Container(padding: const pw.EdgeInsets.all(12),decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5),borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),),child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text(incident['title'] ?? 'Safety Incident',style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),),pw.SizedBox(height: 10),_kvRow('Plant', incident['plant'] ?? 'Not specified'),_kvRow('Department', incident['dept'] ?? 'Not specified'),_kvRow('Location', incident['location'] ?? 'Not specified'),_kvRow('Date / Time', dateStr),_kvRow('Reported by', '$reporterName (P.No: $reporterPno)'),_kvRow('Type', incident['type'] == 'AI_SCAN' ? 'AI Image Scan' : 'Near Miss Report'),_kvRow('Status', incident['status'] ?? 'OPEN'),],),);}
-
-static pw.Widget _kvRow(String key, String value) {return pw.Padding(padding: const pw.EdgeInsets.symmetric(vertical: 2),child: pw.Row(children: [pw.SizedBox(width: 100,child: pw.Text(key,style: pw.TextStyle(fontSize: 10,color: PdfColors.grey700,fontWeight: pw.FontWeight.bold,),),),pw.Expanded(child: pw.Text(value, style: const pw.TextStyle(fontSize: 10)),),],),);}
-
-static pw.Widget _buildSeverityCard(String severity) {final color = _severityColor(severity);return pw.Container(padding: const pw.EdgeInsets.all(12),decoration: pw.BoxDecoration(color: PdfColor.fromHex(color).shade(0.1),border: pw.Border.all(color: PdfColor.fromHex(color), width: 1.5),borderRadius: const pw.BorderRadius.all(pw.Radius.circular(6)),),child: pw.Row(children: [pw.Text('SEVERITY: ',style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),),pw.Text(severity.toUpperCase(),style: pw.TextStyle(fontSize: 14,fontWeight: pw.FontWeight.bold,color: PdfColor.fromHex(color),),),],),);}
-
-static pw.Widget _buildDescriptionSection(Map<String, dynamic> incident) {return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text('INCIDENT DESCRIPTION',style: pw.TextStyle(fontSize: 10,fontWeight: pw.FontWeight.bold,color: PdfColors.grey700,),),pw.SizedBox(height: 6),pw.Container(padding: const pw.EdgeInsets.all(10),decoration: pw.BoxDecoration(color: PdfColors.grey100,borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),),child: pw.Text(incident['desc'] ?? 'No description provided.',style: const pw.TextStyle(fontSize: 11, lineSpacing: 1.4),),),],);}
-
-static pw.Widget _buildWsaSection(Map<String, dynamic> incident) {final wsa = incident['wsa']?.toString() ?? '';if (wsa.isEmpty) return pw.SizedBox();return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text('WSA 13 ROOT CAUSE',style: pw.TextStyle(fontSize: 10,fontWeight: pw.FontWeight.bold,color: PdfColors.grey700,),),pw.SizedBox(height: 6),pw.Container(padding: const pw.EdgeInsets.all(10),decoration: pw.BoxDecoration(color: PdfColor.fromInt(0xFFEEEDFE),borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),),child: pw.Text(wsa,style: pw.TextStyle(fontSize: 11,color: PdfColor.fromInt(0xFF534AB7),fontWeight: pw.FontWeight.bold,),),),],);}
-
-static pw.Widget _buildCorrectiveActions(Map<String, dynamic> incident) {return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text('CORRECTIVE & PREVENTIVE ACTIONS (CAPA)',style: pw.TextStyle(fontSize: 10,fontWeight: pw.FontWeight.bold,color: PdfColors.grey700,),),pw.SizedBox(height: 6),pw.Container(padding: const pw.EdgeInsets.all(10),decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5),borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),),child: pw.Text(incident['correctiveAction']?.toString() ??'Investigation pending. Corrective actions to be defined per IS 14489 audit framework.',style: const pw.TextStyle(fontSize: 11, lineSpacing: 1.4),),),],);}
-
-static pw.Widget _buildFooter() {return pw.Container(padding: const pw.EdgeInsets.all(10),color: PdfColors.grey100,child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text('COMPLIANCE FRAMEWORK',style: pw.TextStyle(fontSize: 8,fontWeight: pw.FontWeight.bold,color: PdfColors.grey700,),),pw.SizedBox(height: 4),pw.Text('This report is generated as per IS 14489:1998 (Code of Practice on Occupational Safety & Health Audit for Iron & Steel Industry) and Ministry of Steel Safety Guidelines (2023). Factories Act 1948 §21-41 compliance verified.',style: const pw.TextStyle(fontSize: 8, lineSpacing: 1.3),),pw.SizedBox(height: 6),pw.Text('Generated by Safety Lens · SAIL Safety Organisation, Ranchi',style: pw.TextStyle(fontSize: 7,color: PdfColors.grey,fontStyle: pw.FontStyle.italic,),),],),);}
-
-static pw.Widget _buildReportSummary(List<Map<String, dynamic>> incidents,String title,String? plant,DateTime from,DateTime to,) {return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [_buildHeader(),pw.SizedBox(height: 14),pw.Text(title, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),pw.SizedBox(height: 8),pw.Text('Period: ${DateFormat('dd MMM yyyy').format(from)} to ${DateFormat('dd MMM yyyy').format(to)}',style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700),),if (plant != null)pw.Text('Plant: $plant',style: const pw.TextStyle(fontSize: 11, color: PdfColors.grey700),),pw.Text('Total incidents: ${incidents.length}',style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold),),],);}
-
-static pw.Widget _buildSeverityBreakdown(List<Map<String, dynamic>> incidents) {final byS = <String, int>{};for (final i in incidents) {final s = i['severity']?.toString() ?? 'MEDIUM';byS[s] = (byS[s] ?? 0) + 1;}return pw.Container(padding: const pw.EdgeInsets.all(10),decoration: pw.BoxDecoration(border: pw.Border.all(width: 0.5),borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),),child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,children: [pw.Text('SEVERITY BREAKDOWN',style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),),pw.SizedBox(height: 8),for (final s in ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])pw.Row(children: [pw.Container(width: 8,height: 8,color: PdfColor.fromHex(_severityColor(s)),),pw.SizedBox(width: 6),pw.Text('$s: ${byS[s] ?? 0}', style: const pw.TextStyle(fontSize: 10)),],),],),);}
-
-static pw.Widget _buildIncidentTable(List<Map<String, dynamic>> incidents) {return pw.Table(border: pw.TableBorder.all(width: 0.5),columnWidths: const {0: pw.FixedColumnWidth(60),1: pw.FlexColumnWidth(2),2: pw.FlexColumnWidth(1.2),3: pw.FixedColumnWidth(60),4: pw.FlexColumnWidth(1.5),},children: [pw.TableRow(decoration: const pw.BoxDecoration(color: PdfColors.grey200),children: [_th('Date'),_th('Title / Description'),_th('Location'),_th('Severity'),_th('Reporter'),],),for (final i in incidents)pw.TableRow(children: [_td(DateFormat('dd/MM/yy').format(DateTime.parse(i['date']))),_td('${i['title'] ?? 'Unknown'}\n${(i['desc'] ?? '').toString().substring(0, (i['desc']?.toString().length ?? 0) > 60 ? 60 : (i['desc']?.toString().length ?? 0))}...'),_td('${i['plant'] ?? ''} · ${i['location'] ?? ''}'),_tdSeverity(i['severity']?.toString() ?? 'MEDIUM'),_td(i['reportedBy']?.toString() ?? 'Unknown'),]),],);}
-
-static pw.Widget _th(String text) {return pw.Padding(padding: const pw.EdgeInsets.all(6),child: pw.Text(text,style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),),);}
-
-static pw.Widget _td(String text) {return pw.Padding(padding: const pw.EdgeInsets.all(6),child: pw.Text(text, style: const pw.TextStyle(fontSize: 8)),);}
-
-static pw.Widget _tdSeverity(String sev) {return pw.Padding(padding: const pw.EdgeInsets.all(6),child: pw.Container(padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),color: PdfColor.fromHex(_severityColor(sev)).shade(0.15),child: pw.Text(sev,style: pw.TextStyle(fontSize: 8,fontWeight: pw.FontWeight.bold,color: PdfColor.fromHex(_severityColor(sev)),),),),);}
-
-static String _severityColor(String sev) {switch (sev.toUpperCase()) {case 'CRITICAL':return _critical;case 'HIGH':return _high;case 'MEDIUM':return _medium;case 'LOW':return _low;default:return _medium;}}}
