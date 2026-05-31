@@ -5,9 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
 
-/// SAIL Safety Lens — Google Sheets Sync Service
 class SyncService {
-  // YOUR Google Apps Script Web App URL (hardcoded so it always works)
   static const String _defaultBackendUrl = 'https://script.google.com/macros/s/AKfycbyvq6MSAWOL_DcMtBHj_txBW8dBerJGbKLsYwNeb75IYX2TAkBaBq7_ZEELcOLcJ0cdAw/exec';
 
   static const String _kBackendUrl = 'sync_backend_url';
@@ -39,22 +37,19 @@ class SyncService {
 
   static Future<Map<String, dynamic>> ping() async {
     final url = await getBackendUrl();
-    if (!await isConfigured) {
-      return {'ok': false, 'error': 'Backend URL not configured'};
-    }
+    if (!await isConfigured) return {'ok': false, 'error': 'Backend URL not configured'};
     try {
-      final response = await http.get(
-        Uri.parse('$url?action=health'),
-      ).timeout(const Duration(seconds: 15));
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body) as Map<String, dynamic>;
-      }
+      final response = await http.get(Uri.parse('$url?action=health')).timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) return jsonDecode(response.body) as Map<String, dynamic>;
       return {'ok': false, 'error': 'HTTP ${response.statusCode}'};
     } catch (e) {
       return {'ok': false, 'error': e.toString()};
     }
   }
 
+  /// Push incident to Google Sheets backend.
+  /// CRITICAL: Uses text/plain Content-Type to avoid CORS preflight issue.
+  /// Apps Script doesn't handle OPTIONS requests, so we MUST avoid triggering preflight.
   static Future<bool> pushIncident(Map<String, dynamic> incident) async {
     if (!await isConfigured) {
       await _addToPendingQueue('addIncident', incident);
@@ -64,7 +59,6 @@ class SyncService {
     try {
       final url = await getBackendUrl();
       final body = <String, dynamic>{'action': 'addIncident'};
-      // Convert all values to strings for URL safety
       incident.forEach((k, v) {
         if (v == null) {
           body[k] = '';
@@ -75,23 +69,31 @@ class SyncService {
         }
       });
 
+      // CRITICAL: text/plain bypasses CORS preflight.
+      // Google Apps Script reads body from e.postData.contents regardless of type.
       final response = await http.post(
         Uri.parse(url),
         body: jsonEncode(body),
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
       ).timeout(const Duration(seconds: 30));
 
+      print('Sync response: ${response.statusCode} - ${response.body}');
+
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['ok'] == true) {
-          await _markSyncTime();
-          return true;
+        try {
+          final data = jsonDecode(response.body);
+          if (data['ok'] == true || data['added'] == true) {
+            await _markSyncTime();
+            return true;
+          }
+        } catch (e) {
+          print('JSON parse error: $e');
         }
       }
       await _addToPendingQueue('addIncident', incident);
       return false;
     } catch (e) {
-      print('Sync error: $e');
+      print('Sync exception: $e');
       await _addToPendingQueue('addIncident', incident);
       return false;
     }
@@ -101,15 +103,11 @@ class SyncService {
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
-      final response = await http.get(
-        Uri.parse('$url?action=listIncidents'),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http.get(Uri.parse('$url?action=listIncidents')).timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['ok'] == true && data['items'] is List) {
-          return (data['items'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
+          return (data['items'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
         }
       }
       return [];
@@ -137,12 +135,8 @@ class SyncService {
     final remaining = <Map<String, dynamic>>[];
     int synced = 0;
     for (final item in queue) {
-      final action = item['action']?.toString();
       final payload = Map<String, dynamic>.from(item['payload'] ?? {});
-      bool ok = false;
-      if (action == 'addIncident') {
-        ok = await pushIncident(payload);
-      }
+      final ok = await pushIncident(payload);
       if (ok) {
         synced++;
       } else {
@@ -173,9 +167,7 @@ class SyncService {
   }
 
   static Future<Map<String, dynamic>> fullSync() async {
-    if (!await isConfigured) {
-      return {'ok': false, 'error': 'Backend URL not configured'};
-    }
+    if (!await isConfigured) return {'ok': false, 'error': 'Backend URL not configured'};
     final pushed = await drainPendingQueue();
     final pulled = await fetchIncidents();
     if (pulled.isNotEmpty) {
@@ -188,10 +180,6 @@ class SyncService {
       }
     }
     await _markSyncTime();
-    return {
-      'ok': true,
-      'pushed': pushed,
-      'pulled': pulled.length,
-    };
+    return {'ok': true, 'pushed': pushed, 'pulled': pulled.length};
   }
 }
