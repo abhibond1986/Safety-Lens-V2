@@ -20,8 +20,8 @@ class PdfExport {
   /// Get PDF as bytes (works on web AND mobile)
   static Future<Uint8List> generateIncidentReportBytes({
     required Map<String, dynamic> incident,
-    required String reporterName,
-    required String reporterPno,
+    String reporterName = 'SAIL Safety Officer',
+    String reporterPno = '',
     Uint8List? imageBytes,
   }) async {
     final pdf = pw.Document();
@@ -79,8 +79,8 @@ class PdfExport {
   /// Download PDF on web (triggers browser download) OR share on mobile
   static Future<void> downloadOrShareIncident({
     required Map<String, dynamic> incident,
-    required String reporterName,
-    required String reporterPno,
+    String reporterName = 'SAIL Safety Officer',
+    String reporterPno = '',
     Uint8List? imageBytes,
   }) async {
     final bytes = await generateIncidentReportBytes(
@@ -116,8 +116,8 @@ class PdfExport {
   // Legacy: Generate file (mobile only)
   static Future<File> generateIncidentReport({
     required Map<String, dynamic> incident,
-    required String reporterName,
-    required String reporterPno,
+    String reporterName = 'SAIL Safety Officer',
+    String reporterPno = '',
   }) async {
     final bytes = await generateIncidentReportBytes(
       incident: incident,
@@ -131,10 +131,10 @@ class PdfExport {
     return file;
   }
 
-  /// Generate consolidated report — supports reportTitle parameter for backward compat
+  /// Generate consolidated report — all params optional for backward compat
   static Future<File> generateConsolidatedReport({
     required List<Map<String, dynamic>> incidents,
-    required String reporterName,
+    String reporterName = 'SAIL Safety Officer',
     String? reportTitle,
   }) async {
     final pdf = pw.Document();
