@@ -44,6 +44,7 @@ class LocalDB {
     return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+  /// Sign in - returns user map or null if invalid
   static Future<Map<String, dynamic>?> login(String username, String password) async {
     final users = await getUsers();
     final user = users.firstWhere(
@@ -53,6 +54,11 @@ class LocalDB {
     if (user.isEmpty) return null;
     await _prefs.setString(_kCurrent, jsonEncode(user));
     return user;
+  }
+
+  /// Backward-compatible alias for login()
+  static Future<Map<String, dynamic>?> signIn(String username, String password) async {
+    return login(username, password);
   }
 
   static Future<Map<String, dynamic>?> register(Map<String, dynamic> userData) async {
@@ -95,7 +101,6 @@ class LocalDB {
     incident['reporterPno'] ??= user?['pno'] ?? '';
     incident['status'] ??= 'OPEN';
 
-    // De-duplicate: if same id already exists, replace; else add
     final existingIdx = all.indexWhere((i) => i['id']?.toString() == incident['id']?.toString());
     if (existingIdx >= 0) {
       all[existingIdx] = incident;
