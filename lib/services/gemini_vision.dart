@@ -1,3 +1,4 @@
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
@@ -241,89 +242,86 @@ class GeminiVision {
   /// previously saved for that image (missed hazards added, false positives
   /// removed, descriptions/severity edits applied).
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
-    // Brief delay so UI shows "analyzing" state realistically
-    await Future.delayed(const Duration(seconds: 2));
 
-    // Derive a deterministic seed from image bytes
-    final imageSeed = _deriveSeed(bytes);
-    final imageSize = bytes.length;
+  try {
 
-    // Use the seed to select 3-5 hazards from the library
-    var selectedHazards = _selectHazards(imageSeed, imageSize);
+    final imageBase64 = base64Encode(bytes);
 
-    // ============================================================
-    // APPLY LEARNED FEEDBACK from previous user corrections
-    // ============================================================
-    try {
-      // 1. Apply per-image feedback (specific to this image's seed)
-      final feedback = await LocalDB.getFeedbackForSeed(imageSeed);
-      for (final fb in feedback) {
-        final type = fb['type']?.toString() ?? '';
-        final hazard = Map<String, dynamic>.from(fb['hazard'] ?? {});
-        final hazardName = hazard['name']?.toString() ?? '';
-        if (hazardName.isEmpty) continue;
+    const backendUrl =
+        'https://script.google.com/macros/s/AKfycbyvq6MSAWOL_DcMtBHj_txBW8dBerJGbKLsYwNeb75IYX2TAkBaBq7_ZEELcOLcJ0cdAw/exec';
 
-        if (type == 'add') {
-          // User said this hazard was missed — add it
-          if (!selectedHazards.any((h) => h['name'] == hazardName)) {
-            selectedHazards.add(hazard);
-          }
-        } else if (type == 'remove') {
-          // User said this was a false positive — remove it
-          selectedHazards.removeWhere((h) => h['name'] == hazardName);
-        } else if (type == 'reword') {
-          // User updated description/severity — apply the change
-          final idx = selectedHazards.indexWhere((h) => h['name'] == hazardName);
-          if (idx >= 0) selectedHazards[idx] = hazard;
-        }
-      }
+    final prompt = '''
+You are an industrial safety inspector.
 
-      // 2. Add plant-wide custom hazards (apply to every image)
-      final customHazards = await LocalDB.getCustomHazards();
-      for (final ch in customHazards) {
-        if (ch['alwaysInclude'] == true) {
-          final chName = ch['name']?.toString() ?? '';
-          if (chName.isNotEmpty && !selectedHazards.any((h) => h['name'] == chName)) {
-            selectedHazards.add(Map<String, dynamic>.from(ch));
-          }
-        }
-      }
-    } catch (_) {
-      // Feedback unavailable — proceed with default hazards
+Analyze this workplace image.
+
+Identify:
+1. Safety hazards
+2. Unsafe acts
+3. Unsafe conditions
+4. PPE violations
+5. Risk level
+
+Return STRICT JSON only.
+
+Format:
+
+{
+  "overallRisk":"HIGH",
+  "riskScore":85,
+  "confidence":90,
+  "summary":"text",
+  "hazards":[
+    {
+      "name":"Hazard",
+      "description":"Description",
+      "severity":"HIGH",
+      "regulation":"IS 14489",
+      "correctiveAction":"Action"
+    }
+  ]
+}
+''';
+
+    final response = await http.post(
+      Uri.parse(backendUrl),
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: jsonEncode({
+        'action': 'gemini',
+        'prompt': prompt,
+        'imageBase64': imageBase64,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
     }
 
-    // Compute overall risk based on highest severity
-    final overallRisk = _computeOverallRisk(selectedHazards);
-    final riskScore = _computeRiskScore(selectedHazards);
-    final confidence = 75 + (imageSeed % 15); // 75-89% confidence range
+    final data = jsonDecode(response.body);
 
-    // Gather WSA causes from hazards
-    final wsaCauses = selectedHazards
-        .map((h) => h['wsaCause']?.toString() ?? '')
-        .where((s) => s.isNotEmpty)
-        .toSet()
-        .toList();
+    final text =
+        data['candidates'][0]['content']['parts'][0]['text'];
 
-    // Pick 4-5 preventive measures
-    final preventives = _selectPreventives(imageSeed);
+    return jsonDecode(text);
 
-    // Generate executive summary
-    final summary = _buildSummary(selectedHazards, overallRisk);
+  } catch (e) {
+
+    print('Gemini Vision Error: $e');
 
     return {
-      'overallRisk': overallRisk,
-      'riskScore': riskScore,
-      'confidence': confidence,
-      'summary': summary,
-      'hazards': selectedHazards,
-      'wsa': wsaCauses,
-      'preventive': preventives,
-      'imageSeed': imageSeed, // expose so UI can save feedback against this image
-      '_source': 'offline_knowledge_base',
-      '_note': 'Analysis based on IS 14489 knowledge base. User feedback applied automatically.',
+      'overallRisk': 'MEDIUM',
+      'riskScore': 50,
+      'confidence': 0,
+      'summary':
+          'Gemini analysis failed. Check Apps Script deployment and API response.',
+      'hazards': [],
+      'wsa': [],
+      'preventive': [],
     };
   }
-
+} 
   // ============================================================
   // HELPER METHODS
   // ============================================================
