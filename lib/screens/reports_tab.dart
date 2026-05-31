@@ -53,6 +53,26 @@ class _ReportsTabState extends State<ReportsTab> {
     }
   }
 
+  /// Get user-friendly type label from incident data
+  String _getTypeLabel(Map<String, dynamic> inc) {
+    final type = inc['type']?.toString().toUpperCase() ?? '';
+    final obsType = inc['obsType']?.toString() ?? '';
+    if (type == 'AI_SCAN') return 'AI SCAN';
+    if (type == 'NEAR_MISS') {
+      if (obsType.toLowerCase().contains('act')) return 'NEAR MISS / UNSAFE ACT';
+      if (obsType.toLowerCase().contains('condition')) return 'NEAR MISS / UNSAFE COND';
+      return 'NEAR MISS';
+    }
+    return type.isEmpty ? 'OTHER' : type;
+  }
+
+  Color _getTypeColor(Map<String, dynamic> inc) {
+    final type = inc['type']?.toString().toUpperCase() ?? '';
+    if (type == 'AI_SCAN') return AppColors.accent;
+    if (type == 'NEAR_MISS') return AppColors.amber;
+    return AppColors.text3;
+  }
+
   @override
   Widget build(BuildContext context) {
     final critical = _incidents.where((i) => i['severity'] == 'CRITICAL').length;
@@ -64,7 +84,6 @@ class _ReportsTabState extends State<ReportsTab> {
       child: ListView(
         padding: const EdgeInsets.all(14),
         children: [
-          // Header
           Row(children: [
             const Expanded(child: Text('All Reports',
               style: TextStyle(color: AppColors.text1, fontSize: 18, fontWeight: FontWeight.w700))),
@@ -75,7 +94,6 @@ class _ReportsTabState extends State<ReportsTab> {
           _statRow(critical, high, medium, low),
           const SizedBox(height: 16),
 
-          // Empty state
           if (_incidents.isEmpty)
             Container(
               padding: const EdgeInsets.all(40),
@@ -89,10 +107,6 @@ class _ReportsTabState extends State<ReportsTab> {
                 SizedBox(height: 12),
                 Text('No reports yet',
                   style: TextStyle(color: AppColors.text3, fontSize: 13, fontWeight: FontWeight.w600)),
-                SizedBox(height: 4),
-                Text('Submit a Near Miss or AI Scan to see reports here',
-                  style: TextStyle(color: AppColors.text4, fontSize: 10),
-                  textAlign: TextAlign.center),
               ]),
             )
           else ...[
@@ -134,29 +148,27 @@ class _ReportsTabState extends State<ReportsTab> {
         border: Border.all(color: AppColors.border),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        children: [
-          // Header row
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: const BoxDecoration(
-              color: AppColors.card2,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-            ),
-            child: const Row(children: [
-              Expanded(flex: 5, child: Text('REPORT',
-                style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5))),
-              Expanded(flex: 2, child: Text('SEVERITY',
-                style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5))),
-              SizedBox(width: 40, child: Text('PDF',
-                style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5),
-                textAlign: TextAlign.center)),
-            ]),
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: const BoxDecoration(
+            color: AppColors.card2,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
           ),
-          // Rows
-          ..._incidents.map((inc) => _reportRow(inc)).toList(),
-        ],
-      ),
+          child: const Row(children: [
+            Expanded(flex: 4, child: Text('REPORT',
+              style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+            Expanded(flex: 3, child: Text('TYPE',
+              style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+            Expanded(flex: 2, child: Text('SEVERITY',
+              style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+            SizedBox(width: 36, child: Text('PDF',
+              style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.5),
+              textAlign: TextAlign.center)),
+          ]),
+        ),
+        ..._incidents.map((inc) => _reportRow(inc)).toList(),
+      ]),
     );
   }
 
@@ -174,40 +186,59 @@ class _ReportsTabState extends State<ReportsTab> {
       ? DateFormat('dd MMM, HH:mm').format(DateTime.parse(inc['date']))
       : '';
 
+    final typeLabel = _getTypeLabel(inc);
+    final typeColor = _getTypeColor(inc);
+
     return InkWell(
       onTap: () => _showIncidentDetail(inc),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: const BoxDecoration(
           border: Border(top: BorderSide(color: AppColors.border, width: 0.5)),
         ),
-        child: Row(children: [
-          Expanded(flex: 5, child: Column(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Expanded(flex: 4, child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(inc['title']?.toString() ?? 'Untitled',
                 style: const TextStyle(color: AppColors.text1, fontSize: 11, fontWeight: FontWeight.w600),
                 maxLines: 1, overflow: TextOverflow.ellipsis),
               Text('${inc['plant'] ?? ''} · $dateStr',
-                style: const TextStyle(color: AppColors.text4, fontSize: 9)),
+                style: const TextStyle(color: AppColors.text4, fontSize: 9),
+                maxLines: 1, overflow: TextOverflow.ellipsis),
             ],
           )),
+          Expanded(flex: 3, child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+              decoration: BoxDecoration(
+                color: typeColor.withOpacity(0.15),
+                border: Border.all(color: typeColor, width: 1),
+                borderRadius: BorderRadius.circular(5),
+              ),
+              child: Text(typeLabel,
+                style: TextStyle(color: typeColor, fontSize: 7, fontWeight: FontWeight.w700, height: 1.2),
+                maxLines: 2, overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center),
+            ),
+          )),
           Expanded(flex: 2, child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
             decoration: BoxDecoration(
               color: sevColor.withOpacity(0.2),
               border: Border.all(color: sevColor),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Text(sev.substring(0, sev.length > 4 ? 4 : sev.length),
               style: TextStyle(color: sevColor, fontSize: 8, fontWeight: FontWeight.w700),
               textAlign: TextAlign.center),
           )),
-          SizedBox(width: 40, child: IconButton(
+          SizedBox(width: 36, child: IconButton(
             tooltip: kIsWeb ? 'Download PDF' : 'Share PDF',
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            icon: const Icon(Icons.picture_as_pdf, color: AppColors.accent, size: 20),
+            constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+            icon: const Icon(Icons.picture_as_pdf, color: AppColors.accent, size: 18),
             onPressed: () => _generateIndividualPdf(inc),
           )),
         ]),
@@ -216,6 +247,7 @@ class _ReportsTabState extends State<ReportsTab> {
   }
 
   void _showIncidentDetail(Map<String, dynamic> inc) {
+    final typeLabel = _getTypeLabel(inc);
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.card,
@@ -240,6 +272,7 @@ class _ReportsTabState extends State<ReportsTab> {
                 ),
               ]),
               const SizedBox(height: 8),
+              _detailRow('Type', typeLabel),
               _detailRow('Plant', inc['plant']?.toString() ?? ''),
               _detailRow('Department', inc['dept']?.toString() ?? ''),
               _detailRow('Location', inc['location']?.toString() ?? ''),
