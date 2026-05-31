@@ -291,7 +291,7 @@ Format:
       body: jsonEncode({
         'action': 'gemini',
         'prompt': prompt,
-        'imageBase64': imageBase64,
+        'imageBase64': base64Encode(bytes),
       }),
     );
 
