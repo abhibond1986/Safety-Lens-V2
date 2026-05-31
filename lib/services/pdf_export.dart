@@ -6,10 +6,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
-// Web-only download support (uses dart:html on web, stub on mobile)
 import 'dart:html' as html if (dart.library.io) 'pdf_export_stub.dart';
 
-/// PDF Export service for SAIL Safety Lens.
 class PdfExport {
   static const String _sailBlue = '#0D47A1';
   static const String _critical = '#EF4444';
@@ -17,7 +15,18 @@ class PdfExport {
   static const String _medium = '#00BCD4';
   static const String _low = '#10B981';
 
-  /// Get PDF as bytes (works on web AND mobile)
+  static String _getTypeLabel(Map<String, dynamic> inc) {
+    final type = inc['type']?.toString().toUpperCase() ?? '';
+    final obsType = inc['obsType']?.toString() ?? '';
+    if (type == 'AI_SCAN') return 'AI HAZARD SCAN';
+    if (type == 'NEAR_MISS') {
+      if (obsType.toLowerCase().contains('act')) return 'NEAR MISS / UNSAFE ACT';
+      if (obsType.toLowerCase().contains('condition')) return 'NEAR MISS / UNSAFE CONDITION';
+      return 'NEAR MISS';
+    }
+    return type.isEmpty ? 'INCIDENT' : type;
+  }
+
   static Future<Uint8List> generateIncidentReportBytes({
     required Map<String, dynamic> incident,
     String reporterName = 'SAIL Safety Officer',
@@ -36,6 +45,22 @@ class PdfExport {
       } catch (_) {}
     }
 
+    // Parse hazards if present
+    List<Map<String, dynamic>> hazardsList = [];
+    if (incident['hazards'] != null) {
+      try {
+        final h = incident['hazards'];
+        if (h is List) {
+          hazardsList = h.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        } else if (h is String && h.isNotEmpty) {
+          final decoded = jsonDecode(h);
+          if (decoded is List) {
+            hazardsList = decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+          }
+        }
+      } catch (_) {}
+    }
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
@@ -43,13 +68,15 @@ class PdfExport {
         build: (context) {
           final widgets = <pw.Widget>[];
           widgets.add(_buildHeader());
-          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(pw.SizedBox(height: 12));
+          widgets.add(_buildTypeBanner(_getTypeLabel(incident)));
+          widgets.add(pw.SizedBox(height: 12));
           widgets.add(_buildIncidentInfo(incident, dateStr, reporterName, reporterPno));
-          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(pw.SizedBox(height: 12));
 
           if (embedBytes != null) {
             final imgBytes = embedBytes;
-            widgets.add(pw.Text('EVIDENCE PHOTO',
+            widgets.add(pw.Text('EVIDENCE PHOTO (Hazards Numbered 1-${hazardsList.length})',
               style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#666666'))));
             widgets.add(pw.SizedBox(height: 4));
             widgets.add(pw.Container(
@@ -60,13 +87,19 @@ class PdfExport {
           }
 
           widgets.add(_buildSeverityCard(incident['severity'] ?? 'MEDIUM'));
-          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(pw.SizedBox(height: 12));
+
+          if (hazardsList.isNotEmpty) {
+            widgets.add(_buildHazardsTable(hazardsList));
+            widgets.add(pw.SizedBox(height: 12));
+          }
+
           widgets.add(_buildDescriptionSection(incident));
-          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(pw.SizedBox(height: 12));
           widgets.add(_buildWsaSection(incident));
-          widgets.add(pw.SizedBox(height: 16));
+          widgets.add(pw.SizedBox(height: 12));
           widgets.add(_buildCorrectiveActions(incident));
-          widgets.add(pw.SizedBox(height: 24));
+          widgets.add(pw.SizedBox(height: 20));
           widgets.add(_buildFooter());
           return widgets;
         },
@@ -76,7 +109,6 @@ class PdfExport {
     return pdf.save();
   }
 
-  /// Download PDF on web (triggers browser download) OR share on mobile
   static Future<void> downloadOrShareIncident({
     required Map<String, dynamic> incident,
     String reporterName = 'SAIL Safety Officer',
@@ -89,20 +121,15 @@ class PdfExport {
       reporterPno: reporterPno,
       imageBytes: imageBytes,
     );
-    final filename =
-        'SafetyLens_Report_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
+    final filename = 'SafetyLens_Report_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
 
     if (kIsWeb) {
-      try {
-        final blob = html.Blob([bytes], 'application/pdf');
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor = html.AnchorElement(href: url)
-          ..setAttribute('download', filename)
-          ..click();
-        html.Url.revokeObjectUrl(url);
-      } catch (e) {
-        rethrow;
-      }
+      final blob = html.Blob([bytes], 'application/pdf');
+      final url = html.Url.createObjectUrlFromBlob(blob);
+      final anchor = html.AnchorElement(href: url)
+        ..setAttribute('download', filename)
+        ..click();
+      html.Url.revokeObjectUrl(url);
     } else {
       final dir = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/$filename');
@@ -113,7 +140,6 @@ class PdfExport {
     }
   }
 
-  // Legacy: Generate file (mobile only)
   static Future<File> generateIncidentReport({
     required Map<String, dynamic> incident,
     String reporterName = 'SAIL Safety Officer',
@@ -131,7 +157,6 @@ class PdfExport {
     return file;
   }
 
-  /// Generate consolidated report — all params optional for backward compat
   static Future<File> generateConsolidatedReport({
     required List<Map<String, dynamic>> incidents,
     String reporterName = 'SAIL Safety Officer',
@@ -147,11 +172,9 @@ class PdfExport {
         build: (context) => [
           _buildHeader(),
           pw.SizedBox(height: 16),
-          pw.Text(title,
-            style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+          pw.Text(title, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
-          pw.Text('Generated by: $reporterName',
-            style: const pw.TextStyle(fontSize: 10)),
+          pw.Text('Generated by: $reporterName', style: const pw.TextStyle(fontSize: 10)),
           pw.Text('Date: ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}',
             style: const pw.TextStyle(fontSize: 10)),
           pw.SizedBox(height: 16),
@@ -159,10 +182,11 @@ class PdfExport {
             style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 16),
           pw.Table.fromTextArray(
-            headers: ['Date', 'Title', 'Plant', 'Severity', 'Status'],
+            headers: ['Date', 'Title', 'Type', 'Plant', 'Severity', 'Status'],
             data: incidents.map((i) => [
               i['date']?.toString().substring(0, 10) ?? '',
               i['title']?.toString() ?? '',
+              _getTypeLabel(i),
               i['plant']?.toString() ?? '',
               i['severity']?.toString() ?? '',
               i['status']?.toString() ?? '',
@@ -191,7 +215,7 @@ class PdfExport {
         subject: subject ?? 'Safety Report');
   }
 
-  // ============ PDF BUILD HELPERS ============
+  // ========== Builder methods ==========
   static pw.Widget _buildHeader() {
     return pw.Container(
       padding: const pw.EdgeInsets.all(12),
@@ -219,6 +243,55 @@ class PdfExport {
     );
   }
 
+  static pw.Widget _buildTypeBanner(String typeLabel) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: pw.BoxDecoration(
+        color: PdfColor.fromHex('#FEF3C7'),
+        border: pw.Border.all(color: PdfColor.fromHex('#F59E0B'), width: 1),
+        borderRadius: pw.BorderRadius.circular(4),
+      ),
+      child: pw.Row(children: [
+        pw.Text('REPORT TYPE: ',
+          style: pw.TextStyle(fontSize: 9, color: PdfColor.fromHex('#92400E'), fontWeight: pw.FontWeight.bold)),
+        pw.Text(typeLabel,
+          style: pw.TextStyle(fontSize: 11, color: PdfColor.fromHex('#92400E'), fontWeight: pw.FontWeight.bold)),
+      ]),
+    );
+  }
+
+  static pw.Widget _buildHazardsTable(List<Map<String, dynamic>> hazards) {
+    return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+      pw.Text('HAZARDS IDENTIFIED',
+        style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex(_sailBlue))),
+      pw.SizedBox(height: 4),
+      pw.Table.fromTextArray(
+        headers: ['#', 'Hazard', 'Severity', 'Regulation', 'Action'],
+        data: List.generate(hazards.length, (i) {
+          final h = hazards[i];
+          return [
+            '${i + 1}',
+            h['name']?.toString() ?? '',
+            h['severity']?.toString() ?? '',
+            h['regulation']?.toString() ?? '',
+            h['correctiveAction']?.toString() ?? '',
+          ];
+        }),
+        headerStyle: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+        headerDecoration: pw.BoxDecoration(color: PdfColor.fromHex(_sailBlue)),
+        cellStyle: const pw.TextStyle(fontSize: 7),
+        cellAlignment: pw.Alignment.topLeft,
+        columnWidths: {
+          0: const pw.FixedColumnWidth(20),
+          1: const pw.FlexColumnWidth(2.5),
+          2: const pw.FixedColumnWidth(40),
+          3: const pw.FlexColumnWidth(1.8),
+          4: const pw.FlexColumnWidth(3),
+        },
+      ),
+    ]);
+  }
+
   static pw.Widget _buildIncidentInfo(Map<String, dynamic> incident, String dateStr, String reporterName, String reporterPno) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
@@ -231,28 +304,22 @@ class PdfExport {
           style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 8),
         pw.Row(children: [
-          _kv('Date', dateStr),
-          pw.SizedBox(width: 30),
+          _kv('Date', dateStr), pw.SizedBox(width: 30),
           _kv('Plant', incident['plant']?.toString() ?? ''),
         ]),
         pw.SizedBox(height: 4),
         pw.Row(children: [
-          _kv('Department', incident['dept']?.toString() ?? ''),
-          pw.SizedBox(width: 30),
+          _kv('Department', incident['dept']?.toString() ?? ''), pw.SizedBox(width: 30),
           _kv('Location', incident['location']?.toString() ?? ''),
         ]),
         pw.SizedBox(height: 4),
         pw.Row(children: [
           _kv('Reported by', reporterName),
-          if (reporterPno.isNotEmpty) ...[
-            pw.SizedBox(width: 30),
-            _kv('P. No.', reporterPno),
-          ],
+          if (reporterPno.isNotEmpty) ...[pw.SizedBox(width: 30), _kv('P. No.', reporterPno)],
         ]),
         pw.SizedBox(height: 4),
         pw.Row(children: [
-          _kv('Type', incident['type']?.toString() ?? 'NEAR_MISS'),
-          pw.SizedBox(width: 30),
+          _kv('Obs. Type', incident['obsType']?.toString() ?? 'N/A'), pw.SizedBox(width: 30),
           _kv('Status', incident['status']?.toString() ?? 'OPEN'),
         ]),
       ]),
@@ -261,8 +328,7 @@ class PdfExport {
 
   static pw.Widget _kv(String k, String v) {
     return pw.Row(children: [
-      pw.Text('$k: ',
-        style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#64748B'), fontWeight: pw.FontWeight.bold)),
+      pw.Text('$k: ', style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#64748B'), fontWeight: pw.FontWeight.bold)),
       pw.Text(v, style: const pw.TextStyle(fontSize: 9)),
     ]);
   }
@@ -270,14 +336,10 @@ class PdfExport {
   static pw.Widget _buildSeverityCard(String severity) {
     final color = severity == 'CRITICAL' ? _critical
         : severity == 'HIGH' ? _high
-        : severity == 'MEDIUM' ? _medium
-        : _low;
+        : severity == 'MEDIUM' ? _medium : _low;
     return pw.Container(
       padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        color: PdfColor.fromHex(color),
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
+      decoration: pw.BoxDecoration(color: PdfColor.fromHex(color), borderRadius: pw.BorderRadius.circular(6)),
       child: pw.Row(children: [
         pw.Text('SEVERITY: ',
           style: pw.TextStyle(fontSize: 10, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
@@ -292,18 +354,14 @@ class PdfExport {
       pw.Text('DESCRIPTION',
         style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex(_sailBlue))),
       pw.SizedBox(height: 4),
-      pw.Text(incident['desc']?.toString() ?? '',
-        style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.4)),
+      pw.Text(incident['desc']?.toString() ?? '', style: const pw.TextStyle(fontSize: 10, lineSpacing: 1.4)),
     ]);
   }
 
   static pw.Widget _buildWsaSection(Map<String, dynamic> incident) {
     return pw.Container(
       padding: const pw.EdgeInsets.all(8),
-      decoration: pw.BoxDecoration(
-        color: PdfColor.fromHex('#FEF3C7'),
-        borderRadius: pw.BorderRadius.circular(6),
-      ),
+      decoration: pw.BoxDecoration(color: PdfColor.fromHex('#FEF3C7'), borderRadius: pw.BorderRadius.circular(6)),
       child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
         pw.Text('ROOT CAUSE ANALYSIS (WSA 13)',
           style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold, color: PdfColor.fromHex('#92400E'))),
@@ -327,10 +385,7 @@ class PdfExport {
   static pw.Widget _buildFooter() {
     return pw.Container(
       padding: const pw.EdgeInsets.all(8),
-      decoration: pw.BoxDecoration(
-        color: PdfColor.fromHex('#F1F5F9'),
-        borderRadius: pw.BorderRadius.circular(4),
-      ),
+      decoration: pw.BoxDecoration(color: PdfColor.fromHex('#F1F5F9'), borderRadius: pw.BorderRadius.circular(4)),
       child: pw.Column(children: [
         pw.Text('This report is generated by SAIL Safety Lens',
           style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#64748B'), fontWeight: pw.FontWeight.bold)),
