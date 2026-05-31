@@ -7,7 +7,7 @@ import 'local_db.dart';
 
 /// SAIL Safety Lens — Google Sheets Sync Service
 class SyncService {
-  // YOUR Google Apps Script Web App URL (already configured)
+  // YOUR Google Apps Script Web App URL (hardcoded so it always works)
   static const String _defaultBackendUrl = 'https://script.google.com/macros/s/AKfycbyvq6MSAWOL_DcMtBHj_txBW8dBerJGbKLsYwNeb75IYX2TAkBaBq7_ZEELcOLcJ0cdAw/exec';
 
   static const String _kBackendUrl = 'sync_backend_url';
@@ -34,10 +34,9 @@ class SyncService {
 
   static Future<bool> get isConfigured async {
     final url = await getBackendUrl();
-    return url.isNotEmpty && url != 'YOUR_APPS_SCRIPT_URL_HERE' && url.startsWith('https://');
+    return url.isNotEmpty && url.startsWith('https://script.google.com/');
   }
 
-  // HEALTH CHECK
   static Future<Map<String, dynamic>> ping() async {
     final url = await getBackendUrl();
     if (!await isConfigured) {
@@ -56,7 +55,6 @@ class SyncService {
     }
   }
 
-  // INCIDENT SYNC
   static Future<bool> pushIncident(Map<String, dynamic> incident) async {
     if (!await isConfigured) {
       await _addToPendingQueue('addIncident', incident);
@@ -65,23 +63,23 @@ class SyncService {
 
     try {
       final url = await getBackendUrl();
-      final params = {
-        'action': 'addIncident',
-        ...incident,
-      };
-      final body = <String, dynamic>{};
-      params.forEach((k, v) {
+      final body = <String, dynamic>{'action': 'addIncident'};
+      // Convert all values to strings for URL safety
+      incident.forEach((k, v) {
         if (v == null) {
           body[k] = '';
+        } else if (v is List || v is Map) {
+          body[k] = jsonEncode(v);
         } else {
           body[k] = v.toString();
         }
       });
 
       final response = await http.post(
-  Uri.parse(url),
-  body: body.map((k, v) => MapEntry(k, v.toString())),
-).timeout(const Duration(seconds: 30));
+        Uri.parse(url),
+        body: jsonEncode(body),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -93,6 +91,7 @@ class SyncService {
       await _addToPendingQueue('addIncident', incident);
       return false;
     } catch (e) {
+      print('Sync error: $e');
       await _addToPendingQueue('addIncident', incident);
       return false;
     }
@@ -119,46 +118,6 @@ class SyncService {
     }
   }
 
-  // KNOWLEDGE BASE SYNC
-  static Future<bool> pushKnowledgeDoc(Map<String, dynamic> doc) async {
-    if (!await isConfigured) return false;
-    try {
-      final url = await getBackendUrl();
-      final body = <String, dynamic>{'action': 'addKnowledge'};
-      doc.forEach((k, v) => body[k] = (v ?? '').toString());
-
-      final response = await http.post(
-  Uri.parse(url),
-  body: body.map((k, v) => MapEntry(k, v.toString())),
-).timeout(const Duration(seconds: 30));
-      return response.statusCode == 200;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  static Future<List<Map<String, dynamic>>> fetchKnowledgeDocs() async {
-    if (!await isConfigured) return [];
-    try {
-      final url = await getBackendUrl();
-      final response = await http.get(
-        Uri.parse('$url?action=listKnowledge'),
-      ).timeout(const Duration(seconds: 30));
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        if (data['ok'] == true && data['items'] is List) {
-          return (data['items'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
-        }
-      }
-      return [];
-    } catch (_) {
-      return [];
-    }
-  }
-
-  // PENDING QUEUE
   static Future<void> _addToPendingQueue(String action, Map<String, dynamic> payload) async {
     _prefs ??= await SharedPreferences.getInstance();
     final raw = _prefs!.getString(_kPendingQueue);
@@ -201,7 +160,6 @@ class SyncService {
     return (jsonDecode(raw) as List).length;
   }
 
-  // STATUS
   static Future<DateTime?> getLastSyncTime() async {
     _prefs ??= await SharedPreferences.getInstance();
     final raw = _prefs!.getString(_kLastSyncTime);
@@ -214,7 +172,6 @@ class SyncService {
     await _prefs!.setString(_kLastSyncTime, DateTime.now().toIso8601String());
   }
 
-  // FULL SYNC
   static Future<Map<String, dynamic>> fullSync() async {
     if (!await isConfigured) {
       return {'ok': false, 'error': 'Backend URL not configured'};
@@ -235,7 +192,6 @@ class SyncService {
       'ok': true,
       'pushed': pushed,
       'pulled': pulled.length,
-      'syncTime': DateTime.now().toIso8601String(),
     };
   }
 }
