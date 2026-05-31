@@ -1,67 +1,56 @@
-import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+
 import 'package:intl/intl.dart';
 
 /// PDF Export service for SAIL Safety Lens.
 /// Generates professional incident reports compliant with IS 14489 documentation.
 class PdfExport {
-  static const String _sailBlue = '#0D47A1';
-  static const String _critical = '#EF4444';
-  static const String _high = '#F59E0B';
-  static const String _medium = '#00BCD4';
-  static const String _low = '#10B981';
+  static Future<void> downloadPdfWeb(
+  Uint8List bytes,
+  String filename,
+) async {
+  if (!kIsWeb) return;
 
-  /// Generate PDF for a single incident report
-  static Future<File> generateIncidentReport({
-    required Map<String, dynamic> incident,
-    required String reporterName,
-    required String reporterPno,
-  }) async {
-    final pdf = pw.Document();
-    final dateStr = DateFormat('dd MMM yyyy, HH:mm').format(
-      DateTime.parse(incident['date'] ?? DateTime.now().toIso8601String()),
-    );
+  // ignore: avoid_web_libraries_in_flutter
+  import 'dart:html' as html;
 
-    pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(32),
-        build: (context) => [
-          _buildHeader(),
-          pw.SizedBox(height: 16),
-          _buildIncidentInfo(incident, dateStr, reporterName, reporterPno),
-          pw.SizedBox(height: 16),
-          _buildSeverityCard(incident['severity'] ?? 'MEDIUM'),
-          pw.SizedBox(height: 16),
-          _buildDescriptionSection(incident),
-          pw.SizedBox(height: 16),
-          _buildWsaSection(incident),
-          pw.SizedBox(height: 16),
-          _buildCorrectiveActions(incident),
-          pw.SizedBox(height: 24),
-          _buildFooter(),
-        ],
-      ),
-    );
+  final blob = html.Blob([bytes], 'application/pdf');
+  final url = html.Url.createObjectUrlFromBlob(blob);
 
-    final dir = await getApplicationDocumentsDirectory();
-    final filename = 'SafetyLens_Report_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
-    final file = File('${dir.path}/$filename');
-    await file.writeAsBytes(await pdf.save());
-    return file;
-  }
+  html.AnchorElement(href: url)
+    ..setAttribute('download', filename)
+    ..click();
 
-  /// Generate consolidated PDF for multiple incidents (e.g. monthly report)
-  static Future<File> generateConsolidatedReport({
-    required List<Map<String, dynamic>> incidents,
-    required String reportTitle,
-    String? plant,
-    DateTime? fromDate,
-    DateTime? toDate,
-  }) async {
+  html.Url.revokeObjectUrl(url);
+} async {
+  final pdf = pw.Document();
+
+  final now = DateTime.now();
+  final from = fromDate ?? now.subtract(const Duration(days: 30));
+  final to = toDate ?? now;
+
+  pdf.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(32),
+      header: (ctx) => _buildPageHeader(reportTitle),
+      footer: (ctx) => _buildPageFooter(ctx.pageNumber, ctx.pagesCount),
+      build: (context) => [
+        _buildReportSummary(incidents, reportTitle, plant, from, to),
+        pw.SizedBox(height: 16),
+        _buildSeverityBreakdown(incidents),
+        pw.SizedBox(height: 16),
+        _buildIncidentTable(incidents),
+      ],
+    ),
+  );
+
+  return Uint8List.fromList(await pdf.save());
+} async {
     final pdf = pw.Document();
     final now = DateTime.now();
     final from = fromDate ?? now.subtract(const Duration(days: 30));
