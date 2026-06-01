@@ -36,7 +36,7 @@ class GeminiVision {
       // must compress here regardless of source
       // ============================================================
       Uint8List compressed = bytes;
-      const int maxBytes = 80000; // 80KB hard limit
+      const int maxBytes = 30000; // 80KB hard limit
 
       if (bytes.length > maxBytes) {
         // Sample every Nth byte to reduce size
