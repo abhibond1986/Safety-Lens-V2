@@ -59,17 +59,15 @@ Uint8List imageData = bytes;
 final base64Image = base64Encode(imageData);
 
       // Call Apps Script with action='gemini' (matches your Apps Script)
-      final body = jsonEncode({
-        'action': 'gemini',
-        'prompt': _safetyPrompt,
-        'imageBase64': base64Image,
-      });
-
-      final response = await http.post(
-        Uri.parse(_backendUrl),
-        body: body,
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(const Duration(seconds: 90));
+     // Send as form data to preserve base64 characters correctly
+final response = await http.post(
+  Uri.parse(_backendUrl),
+  body: {
+    'action': 'gemini',
+    'prompt': _safetyPrompt,
+    'imageBase64': base64Image,
+  },
+).timeout(const Duration(seconds: 90));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
