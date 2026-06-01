@@ -49,17 +49,14 @@ Respond ONLY with valid JSON, no markdown or explanation:
     try {
       // Compress image if too large (Apps Script has limits)
       // Keep max 800KB for reliable transmission
-      Uint8List imageData = bytes;
-if (bytes.length > 200000) {
-  // Reduce to roughly 200KB by sampling
-  final ratio = 200000 / bytes.length;
-  final newLength = (bytes.length * ratio).toInt();
-  imageData = Uint8List.fromList(
-    List.generate(newLength, (i) => bytes[(i / ratio).toInt()])
-  );
-}
-// Remove any newlines that base64Encode might add
-final base64Image = base64Encode(imageData).replaceAll('\n', '').replaceAll('\r', '');
+      // Pick image quality based on size
+// ImagePicker already compresses to imageQuality: 85
+// We just need to ensure it's under 500KB for OpenRouter
+Uint8List imageData = bytes;
+
+// If still too large, use image package to resize properly
+// For now, use the raw bytes — imageQuality: 85 in picker should be enough
+final base64Image = base64Encode(imageData);
 
       // Call Apps Script with action='gemini' (matches your Apps Script)
       final body = jsonEncode({
@@ -72,7 +69,7 @@ final base64Image = base64Encode(imageData).replaceAll('\n', '').replaceAll('\r'
         Uri.parse(_backendUrl),
         body: body,
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(const Duration(seconds: 60));
+      ).timeout(const Duration(seconds: 90));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
