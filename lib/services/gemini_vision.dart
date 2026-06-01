@@ -4,41 +4,19 @@ import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'local_ai.dart';
 
-/// SAIL Safety Lens — Gemini Vision via Google Apps Script Proxy
-///
-/// Apps Script action: 'gemini'
-/// Parameters: prompt (string) + imageBase64 (base64 string)
-/// This bypasses CORS — Apps Script calls Gemini server-side.
 class GeminiVision {
   static const String _backendUrl =
       'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
 
-  static const String _safetyPrompt = '''You are an expert industrial safety inspector for Steel Authority of India Limited (SAIL).
-Analyze this workplace photo and identify ALL visible safety hazards.
-
-Standards to apply:
-1. IS 14489:1998 — Occupational Safety & Health Audit (Iron & Steel Industry)
-2. Factories Act 1948 — Sections 21-41
-3. Indian Standards: IS 2925 (helmet), IS 3521 (harness), IS 5852 (shoes), IS 6994 (gloves), IS 4770 (eye), IS 9167 (ear)
-4. WSA 13 Causes framework
-5. SAIL Standard Operating Procedures
-
-For EACH hazard visible, provide:
-- name: 5 words max
-- severity: CRITICAL, HIGH, MEDIUM, or LOW
-- description: what you actually see
-- regulation: specific IS/Factories Act section
-- correctiveAction: immediate action required
-- type: Unsafe Act or Unsafe Condition
-
-Also provide:
-- overallRisk: CRITICAL/HIGH/MEDIUM/LOW
-- riskScore: 0-100
-- confidence: 0-100
-- summary: 3-4 sentences about what you see and the hazards found
-
-Respond ONLY with valid JSON, no markdown or explanation:
-{"overallRisk":"HIGH","riskScore":75,"confidence":88,"summary":"...","hazards":[{"name":"...","severity":"HIGH","description":"...","regulation":"...","correctiveAction":"...","type":"Unsafe Act"}]}''';
+  static const String _safetyPrompt =
+      'You are an expert industrial safety inspector for SAIL. '
+      'Analyze this workplace photo for ALL visible safety hazards. '
+      'Apply: IS 14489:1998, Factories Act 1948 Sec 21-41, IS 2925/3521/5852/6994/4770, WSA 13. '
+      'For each hazard: name(5 words), severity(CRITICAL/HIGH/MEDIUM/LOW), description(what you see), regulation, correctiveAction, type(Unsafe Act/Condition). '
+      'Also: overallRisk, riskScore(0-100), confidence(0-100), summary(3-4 sentences about THIS photo). '
+      'ONLY report hazards you can actually see. '
+      'Reply ONLY with valid JSON: '
+      '{"overallRisk":"HIGH","riskScore":75,"confidence":88,"summary":"...","hazards":[{"name":"...","severity":"HIGH","description":"...","regulation":"...","correctiveAction":"...","type":"Unsafe Act"}]}';
 
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
@@ -47,51 +25,41 @@ Respond ONLY with valid JSON, no markdown or explanation:
 
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     try {
-      // Compress image if too large (Apps Script has limits)
-      // Keep max 800KB for reliable transmission
-      // Pick image quality based on size
-// ImagePicker already compresses to imageQuality: 85
-// We just need to ensure it's under 500KB for OpenRouter
-Uint8List imageData = bytes;
+      final base64Image = base64Encode(bytes);
+      print('Image size: ${bytes.length} bytes, base64: ${base64Image.length} chars');
 
-// If still too large, use image package to resize properly
-// For now, use the raw bytes — imageQuality: 85 in picker should be enough
-final base64Image = base64Encode(imageData);
+      // Send as multipart form — preserves base64 perfectly, no corruption
+      final uri = Uri.parse(_backendUrl);
+      final request = http.MultipartRequest('POST', uri);
+      request.fields['action'] = 'gemini';
+      request.fields['prompt'] = _safetyPrompt;
+      request.fields['imageBase64'] = base64Image;
 
-      // Call Apps Script with action='gemini' (matches your Apps Script)
-     // Send as form data to preserve base64 characters correctly
-final response = await http.post(
-  Uri.parse(_backendUrl),
-  body: {
-    'action': 'gemini',
-    'prompt': _safetyPrompt,
-    'imageBase64': base64Image,
-  },
-).timeout(const Duration(seconds: 90));
+      final streamedResponse = await request.send()
+          .timeout(const Duration(seconds: 90));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print('Apps Script HTTP status: ${response.statusCode}');
+      print('Response body preview: ${response.body.substring(0, response.body.length.clamp(0, 200))}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
-        // Check if Apps Script returned an error
-       if (data is Map && data['error'] != null) {
-  print('Apps Script error: ${data['error']}');
-  // Log full error detail if available
-  if (data['detail'] != null) print('Detail: ${data['detail']}');
-  return _offlineFallback(bytes, reason: data['error'].toString());
-}
+        if (data is Map && data['error'] != null) {
+          print('Apps Script error: ${data['error']}');
+          return _offlineFallback(bytes, reason: data['error'].toString());
+        }
 
-        // Check if we got valid hazard data
         if (data is Map && data['hazards'] != null) {
-          data['_source'] = 'gemini_via_apps_script';
+          print('AI SUCCESS! Risk: ${data['overallRisk']}, Hazards: ${(data['hazards'] as List).length}');
+          data['_source'] = 'openrouter_via_apps_script';
           return Map<String, dynamic>.from(data);
         }
 
-        // Unexpected response format
-        print('Unexpected response: ${response.body.substring(0, 200)}');
+        print('Unexpected response format');
         return _offlineFallback(bytes, reason: 'Unexpected response format');
       }
 
-      print('HTTP ${response.statusCode}: ${response.body.substring(0, 200)}');
       return _offlineFallback(bytes, reason: 'HTTP ${response.statusCode}');
 
     } catch (e) {
@@ -103,30 +71,24 @@ final response = await http.post(
   static Map<String, dynamic> _offlineFallback(Uint8List bytes, {String reason = ''}) {
     final result = _knowledgeBasedAnalysis(bytes);
     result['_source'] = 'offline_fallback';
-    result['_fallbackReason'] = reason;
-    // Make fallback obvious to user in summary
     result['summary'] = 'Offline analysis (AI unavailable: $reason). '
-        'Knowledge-based hazards shown below based on common steel plant scenarios. '
-        'For real AI analysis, ensure internet connection and Apps Script is deployed.';
+        'Knowledge-based hazards shown below.';
     return result;
   }
 
-  // ============================================================
-  // OFFLINE FALLBACK — used when Apps Script is unreachable
-  // ============================================================
   static const List<Map<String, dynamic>> _hazardLibrary = [
-    {'name': 'Missing hard hat', 'description': 'Worker without ISI-marked hard hat in active work zone.', 'severity': 'CRITICAL', 'type': 'Unsafe act', 'regulation': 'Factories Act §35, IS 2925:1984', 'correctiveAction': 'Issue hard hat immediately. Halt work until compliance.', 'wsaCause': '3. Improper PPE use', 'category': 'PPE'},
-    {'name': 'Safety shoes not worn', 'description': 'Worker handling materials without steel-toe safety shoes.', 'severity': 'HIGH', 'type': 'Unsafe act', 'regulation': 'Factories Act §35, IS 5852:1996', 'correctiveAction': 'Provide steel-toe safety shoes. Restrict area access.', 'wsaCause': '3. Improper PPE use', 'category': 'PPE'},
-    {'name': 'No fall arrest at height', 'description': 'Worker at elevation without full body harness or anchor point.', 'severity': 'CRITICAL', 'type': 'Unsafe act', 'regulation': 'Factories Act §36, IS 3521', 'correctiveAction': 'Evacuate immediately. Issue harness with double lanyard.', 'wsaCause': '1. Failure to follow procedure', 'category': 'HEIGHT'},
-    {'name': 'Exposed electrical cable', 'description': 'Loose or damaged cable across pedestrian walkway.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §36, IS 7689', 'correctiveAction': 'De-energize via LOTO. Route via overhead cable tray.', 'wsaCause': '8. Poor housekeeping', 'category': 'ELECTRICAL'},
-    {'name': 'Oil spillage on walkway', 'description': 'Visible oil or hydraulic fluid on access walkway.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §33, SAIL SOP-HK-02', 'correctiveAction': 'Deploy absorbent material. Place wet floor signs.', 'wsaCause': '8. Poor housekeeping', 'category': 'HOUSEKEEPING'},
-    {'name': 'Exposed moving machinery', 'description': 'Rotating shaft or belt without guarding.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act §21, IS 14489 §6.2', 'correctiveAction': 'Stop machine. Install interlocked guarding.', 'wsaCause': '5. Equipment failure', 'category': 'MACHINERY'},
-    {'name': 'Hot work without screen', 'description': 'Welding or cutting without screens for adjacent workers.', 'severity': 'MEDIUM', 'type': 'Unsafe condition', 'regulation': 'Factories Act §38, SAIL SOP-FP-03', 'correctiveAction': 'Install welding screens. Position fire watch.', 'wsaCause': '2. Lack of hazard awareness', 'category': 'HOT_WORK'},
-    {'name': 'Missing hazard signage', 'description': 'Required safety signage missing at hazard zones.', 'severity': 'LOW', 'type': 'Unsafe condition', 'regulation': 'Factories Act §65, IS 9457', 'correctiveAction': 'Install signage per IS 9457 colour code.', 'wsaCause': '6. Communication gaps', 'category': 'SIGNAGE'},
-    {'name': 'No gas detection', 'description': 'Work in gas exposure area without CO detector.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act §41, IS 14489 §8.4', 'correctiveAction': 'Issue personal CO detector. Buddy system mandatory.', 'wsaCause': '13. Environmental conditions', 'category': 'GAS'},
-    {'name': 'Scaffolding not tagged', 'description': 'Scaffolding in use without daily inspection tag.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §36, IS 2750', 'correctiveAction': 'Stop work. Competent person to inspect and tag.', 'wsaCause': '5. Equipment failure', 'category': 'HEIGHT'},
-    {'name': 'Eye protection missing', 'description': 'Grinding or welding without safety goggles.', 'severity': 'HIGH', 'type': 'Unsafe act', 'regulation': 'Factories Act §35, IS 4770', 'correctiveAction': 'Stop work. Issue appropriate eye protection.', 'wsaCause': '3. Improper PPE use', 'category': 'PPE'},
-    {'name': 'Exit pathway blocked', 'description': 'Materials stacked blocking emergency exit.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §38, NBC 2016', 'correctiveAction': 'Clear pathway immediately.', 'wsaCause': '8. Poor housekeeping', 'category': 'HOUSEKEEPING'},
+    {'name': 'Missing hard hat', 'description': 'Worker without ISI-marked hard hat.', 'severity': 'CRITICAL', 'type': 'Unsafe act', 'regulation': 'Factories Act §35, IS 2925:1984', 'correctiveAction': 'Issue hard hat immediately.', 'wsaCause': '3. Improper PPE use'},
+    {'name': 'Safety shoes not worn', 'description': 'Worker without steel-toe safety shoes.', 'severity': 'HIGH', 'type': 'Unsafe act', 'regulation': 'Factories Act §35, IS 5852:1996', 'correctiveAction': 'Provide safety shoes.', 'wsaCause': '3. Improper PPE use'},
+    {'name': 'No fall arrest at height', 'description': 'Worker at elevation without harness.', 'severity': 'CRITICAL', 'type': 'Unsafe act', 'regulation': 'Factories Act §36, IS 3521', 'correctiveAction': 'Evacuate. Issue harness.', 'wsaCause': '1. Failure to follow procedure'},
+    {'name': 'Exposed electrical cable', 'description': 'Loose cable across walkway.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §36, IS 7689', 'correctiveAction': 'De-energize via LOTO.', 'wsaCause': '8. Poor housekeeping'},
+    {'name': 'Oil spillage on walkway', 'description': 'Oil on access walkway.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §33, SAIL SOP-HK-02', 'correctiveAction': 'Deploy absorbent material.', 'wsaCause': '8. Poor housekeeping'},
+    {'name': 'Exposed moving machinery', 'description': 'Rotating shaft without guarding.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act §21, IS 14489 §6.2', 'correctiveAction': 'Stop machine. Install guard.', 'wsaCause': '5. Equipment failure'},
+    {'name': 'Hot work without screen', 'description': 'Welding without screens.', 'severity': 'MEDIUM', 'type': 'Unsafe condition', 'regulation': 'Factories Act §38, SAIL SOP-FP-03', 'correctiveAction': 'Install welding screens.', 'wsaCause': '2. Lack of hazard awareness'},
+    {'name': 'Missing hazard signage', 'description': 'Safety signage missing.', 'severity': 'LOW', 'type': 'Unsafe condition', 'regulation': 'Factories Act §65, IS 9457', 'correctiveAction': 'Install signage.', 'wsaCause': '6. Communication gaps'},
+    {'name': 'No gas detection', 'description': 'Work in gas area without CO detector.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act §41, IS 14489 §8.4', 'correctiveAction': 'Issue CO detector.', 'wsaCause': '13. Environmental conditions'},
+    {'name': 'Scaffolding not tagged', 'description': 'Scaffolding without inspection tag.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §36, IS 2750', 'correctiveAction': 'Stop work. Inspect and tag.', 'wsaCause': '5. Equipment failure'},
+    {'name': 'Eye protection missing', 'description': 'Grinding without goggles.', 'severity': 'HIGH', 'type': 'Unsafe act', 'regulation': 'Factories Act §35, IS 4770', 'correctiveAction': 'Issue eye protection.', 'wsaCause': '3. Improper PPE use'},
+    {'name': 'Exit pathway blocked', 'description': 'Materials blocking emergency exit.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act §38, NBC 2016', 'correctiveAction': 'Clear pathway.', 'wsaCause': '8. Poor housekeeping'},
   ];
 
   static int _deriveSeed(Uint8List bytes) {
@@ -152,7 +114,6 @@ final response = await http.post(
         used.add(idx);
       }
     }
-
     String risk = 'LOW';
     int score = 30;
     for (final h in selected) {
@@ -163,7 +124,6 @@ final response = await http.post(
         default: score += 3;
       }
     }
-
     return {
       'overallRisk': risk,
       'riskScore': score.clamp(0, 100),
@@ -173,10 +133,10 @@ final response = await http.post(
       'wsa': selected.map((h) => h['wsaCause']?.toString() ?? '').toSet().toList(),
       'preventive': [
         'Daily toolbox talk with PPE compliance check',
-        'Monthly housekeeping audit with photographic evidence',
-        'Working at height refresher training every 6 months',
-        'LOTO training and audit every 4 months per IS 7689',
-        'Implement IS 14489 self-audit checklist weekly',
+        'Monthly housekeeping audit',
+        'Working at height refresher every 6 months',
+        'LOTO training every 4 months',
+        'IS 14489 self-audit checklist weekly',
       ],
       'imageSeed': seed,
     };
