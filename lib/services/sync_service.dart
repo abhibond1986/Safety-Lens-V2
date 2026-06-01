@@ -6,8 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
 
 class SyncService {
-  static const String _defaultBackendUrl = 'https://script.google.com/macros/s/AKfycbyvq6MSAWOL_DcMtBHj_txBW8dBerJGbKLsYwNeb75IYX2TAkBaBq7_ZEELcOLcJ0cdAw/exec';
-
+  static const String _defaultBackendUrl = 'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
   static const String _kBackendUrl = 'sync_backend_url';
   static const String _kPendingQueue = 'sync_pending_queue';
   static const String _kLastSyncTime = 'sync_last_time';
