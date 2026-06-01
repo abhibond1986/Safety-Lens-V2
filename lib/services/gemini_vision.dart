@@ -58,7 +58,8 @@ if (bytes.length > 200000) {
     List.generate(newLength, (i) => bytes[(i / ratio).toInt()])
   );
 }
-final base64Image = base64Encode(imageData);
+// Remove any newlines that base64Encode might add
+final base64Image = base64Encode(imageData).replaceAll('\n', '').replaceAll('\r', '');
 
       // Call Apps Script with action='gemini' (matches your Apps Script)
       final body = jsonEncode({
