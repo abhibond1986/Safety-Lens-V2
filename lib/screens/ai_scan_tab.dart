@@ -25,7 +25,12 @@ class _AIScanTabState extends State<AIScanTab> {
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: source, imageQuality: 85);
+    final picked = await picker.pickImage(
+  source: source,
+  imageQuality: 25,
+  maxWidth: 600,
+  maxHeight: 600,
+);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     setState(() {
