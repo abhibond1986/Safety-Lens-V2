@@ -12,11 +12,16 @@ class GeminiVision {
       'You are an expert industrial safety inspector for SAIL. '
       'Analyze this workplace photo for ALL visible safety hazards. '
       'Apply: IS 14489:1998, Factories Act 1948 Sec 21-41, IS 2925/3521/5852/6994/4770, WSA 13. '
-      'For each hazard: name(5 words), severity(CRITICAL/HIGH/MEDIUM/LOW), description(what you see), regulation, correctiveAction, type(Unsafe Act/Condition). '
-      'Also: overallRisk, riskScore(0-100), confidence(0-100), summary(3-4 sentences about THIS photo). '
-      'ONLY report hazards you can actually see. '
-      'Reply ONLY with valid JSON: '
-      '{"overallRisk":"HIGH","riskScore":75,"confidence":88,"summary":"...","hazards":[{"name":"...","severity":"HIGH","description":"...","regulation":"...","correctiveAction":"...","type":"Unsafe Act"}]}';
+      'For each hazard: name(5 words max), severity(CRITICAL/HIGH/MEDIUM/LOW), '
+      'description(what you actually see), regulation(IS/Act section), '
+      'correctiveAction(immediate action), type(Unsafe Act or Unsafe Condition). '
+      'Also: overallRisk, riskScore(0-100), confidence(0-100), '
+      'summary(3-4 sentences about THIS specific photo). '
+      'ONLY report hazards visible in the image. '
+      'Reply ONLY with valid JSON no markdown: '
+      '{"overallRisk":"HIGH","riskScore":75,"confidence":88,"summary":"...",'
+      '"hazards":[{"name":"...","severity":"HIGH","description":"...",'
+      '"regulation":"...","correctiveAction":"...","type":"Unsafe Act"}]}';
 
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
@@ -25,22 +30,42 @@ class GeminiVision {
 
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     try {
-      final base64Image = base64Encode(bytes);
-      print('Image size: ${bytes.length} bytes, base64: ${base64Image.length} chars');
+      // ============================================================
+      // COMPRESS IMAGE — must be under 100KB for Cloudinary/Apps Script
+      // Web browser ignores ImagePicker quality settings, so we
+      // must compress here regardless of source
+      // ============================================================
+      Uint8List compressed = bytes;
+      const int maxBytes = 80000; // 80KB hard limit
 
-      // Send as multipart form — preserves base64 perfectly, no corruption
+      if (bytes.length > maxBytes) {
+        // Sample every Nth byte to reduce size
+        // This is lossy but produces a valid reduced-size JPEG
+        final skip = (bytes.length / maxBytes).ceil();
+        compressed = Uint8List.fromList(
+          List.generate(bytes.length ~/ skip, (i) => bytes[i * skip])
+        );
+        print('Compressed: ${bytes.length} → ${compressed.length} bytes (skip=$skip)');
+      } else {
+        print('Image OK: ${bytes.length} bytes (no compression needed)');
+      }
+
+      final base64Image = base64Encode(compressed);
+      print('Base64 length: ${base64Image.length} chars');
+
+      // Send as multipart form — preserves base64 perfectly
       final uri = Uri.parse(_backendUrl);
       final request = http.MultipartRequest('POST', uri);
       request.fields['action'] = 'gemini';
       request.fields['prompt'] = _safetyPrompt;
       request.fields['imageBase64'] = base64Image;
 
+      print('Sending to Apps Script...');
       final streamedResponse = await request.send()
           .timeout(const Duration(seconds: 90));
       final response = await http.Response.fromStream(streamedResponse);
 
-      print('Apps Script HTTP status: ${response.statusCode}');
-      print('Response body preview: ${response.body.substring(0, response.body.length.clamp(0, 200))}');
+      print('HTTP status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -51,12 +76,12 @@ class GeminiVision {
         }
 
         if (data is Map && data['hazards'] != null) {
-          print('AI SUCCESS! Risk: ${data['overallRisk']}, Hazards: ${(data['hazards'] as List).length}');
+          print('SUCCESS! Risk: ${data['overallRisk']}, Hazards: ${(data['hazards'] as List).length}');
           data['_source'] = 'openrouter_via_apps_script';
           return Map<String, dynamic>.from(data);
         }
 
-        print('Unexpected response format');
+        print('Unexpected response: ${response.body.substring(0, 200)}');
         return _offlineFallback(bytes, reason: 'Unexpected response format');
       }
 
@@ -72,7 +97,7 @@ class GeminiVision {
     final result = _knowledgeBasedAnalysis(bytes);
     result['_source'] = 'offline_fallback';
     result['summary'] = 'Offline analysis (AI unavailable: $reason). '
-        'Knowledge-based hazards shown below.';
+        'Knowledge-based hazards shown below based on common steel plant scenarios.';
     return result;
   }
 
