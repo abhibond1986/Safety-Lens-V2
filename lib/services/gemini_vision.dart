@@ -50,15 +50,15 @@ Respond ONLY with valid JSON, no markdown or explanation:
       // Compress image if too large (Apps Script has limits)
       // Keep max 800KB for reliable transmission
       Uint8List imageData = bytes;
-      if (bytes.length > 800000) {
-        // Take every 2nd byte as simple downscaling approximation
-        // For proper compression, this is good enough for demo
-        imageData = Uint8List.fromList(
-          List.generate(bytes.length ~/ 2, (i) => bytes[i * 2])
-        );
-      }
-
-      final base64Image = base64Encode(imageData);
+if (bytes.length > 200000) {
+  // Reduce to roughly 200KB by sampling
+  final ratio = 200000 / bytes.length;
+  final newLength = (bytes.length * ratio).toInt();
+  imageData = Uint8List.fromList(
+    List.generate(newLength, (i) => bytes[(i / ratio).toInt()])
+  );
+}
+final base64Image = base64Encode(imageData);
 
       // Call Apps Script with action='gemini' (matches your Apps Script)
       final body = jsonEncode({
@@ -77,10 +77,12 @@ Respond ONLY with valid JSON, no markdown or explanation:
         final data = jsonDecode(response.body);
 
         // Check if Apps Script returned an error
-        if (data is Map && data['error'] != null) {
-          print('Apps Script error: ${data['error']}');
-          return _offlineFallback(bytes, reason: data['error'].toString());
-        }
+       if (data is Map && data['error'] != null) {
+  print('Apps Script error: ${data['error']}');
+  // Log full error detail if available
+  if (data['detail'] != null) print('Detail: ${data['detail']}');
+  return _offlineFallback(bytes, reason: data['error'].toString());
+}
 
         // Check if we got valid hazard data
         if (data is Map && data['hazards'] != null) {
