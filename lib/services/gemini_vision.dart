@@ -11,7 +11,7 @@ import 'local_ai.dart';
 /// This bypasses CORS — Apps Script calls Gemini server-side.
 class GeminiVision {
   static const String _backendUrl =
-      'https://script.google.com/macros/s/AKfycbyvq6MSAWOL_DcMtBHj_txBW8dBerJGbKLsYwNeb75IYX2TAkBaBq7_ZEELcOLcJ0cdAw/exec';
+      'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
 
   static const String _safetyPrompt = '''You are an expert industrial safety inspector for Steel Authority of India Limited (SAIL).
 Analyze this workplace photo and identify ALL visible safety hazards.
