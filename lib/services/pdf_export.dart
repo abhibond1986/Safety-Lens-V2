@@ -262,7 +262,7 @@ class PdfExport {
   // ─── INCIDENT DETAILS TABLE ───────────────────────────────────────────────
   static pw.Widget _incidentDetailsTable(
     Map<String, dynamic> incident, String dateStr, String reporter, String pno) {
-    Widget cell(String label, String value, {bool highlight = false}) {
+    pw.Widget cell(String label, String value, {bool highlight = false}) {
       return pw.Container(
         padding: const pw.EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: pw.BoxDecoration(
