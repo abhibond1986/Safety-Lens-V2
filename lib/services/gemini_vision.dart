@@ -47,7 +47,6 @@ class GeminiVision {
       print('Image: ${bytes.length} → ${compressed.length} bytes');
 
       // Step 1: Upload directly to Cloudinary from Flutter browser
-      // This bypasses Apps Script payload limit completely
       final imageUrl = await _uploadToCloudinary(compressed);
       if (imageUrl == null) {
         print('Cloudinary upload failed');
@@ -56,7 +55,6 @@ class GeminiVision {
       print('Cloudinary URL: $imageUrl');
 
       // Step 2: Send just the URL to Apps Script for AI analysis
-      // URL is ~100 chars — no payload size issues
       final body = jsonEncode({
         'action': 'analyzeUrl',
         'imageUrl': imageUrl,
@@ -85,7 +83,7 @@ class GeminiVision {
           return Map<String, dynamic>.from(data);
         }
 
-        print('Unexpected: ${response.body.substring(0, 200)}');
+        print('Unexpected: ${response.body}');
         return _offlineFallback(bytes, reason: 'Unexpected response');
       }
 
@@ -97,33 +95,45 @@ class GeminiVision {
     }
   }
 
-  // Upload directly to Cloudinary from Flutter
-  // No Apps Script involved — direct browser API call
+  // ============================================================
+  // FIXED: Upload actual bytes to Cloudinary (not base64 string)
+  // Using MultipartFile.fromBytes — standard binary upload
+  // No CORS issues, no size limit issues
+  // ============================================================
   static Future<String?> _uploadToCloudinary(Uint8List bytes) async {
     try {
-      final base64Image = base64Encode(bytes);
-      print('Uploading to Cloudinary: ${base64Image.length} chars');
+      print('Uploading to Cloudinary: ${bytes.length} bytes');
 
       final request = http.MultipartRequest(
         'POST',
         Uri.parse(_cloudinaryUrl),
       );
-      request.fields['file'] = 'data:image/jpeg;base64,$base64Image';
+
+      // Upload as binary bytes — NOT as base64 string
+      // This is what Cloudinary expects from browser uploads
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: 'safety_scan.jpg',
+        ),
+      );
       request.fields['upload_preset'] = _cloudinaryPreset;
 
+      print('Sending binary upload to Cloudinary...');
       final streamed = await request.send()
           .timeout(const Duration(seconds: 30));
       final response = await http.Response.fromStream(streamed);
 
       print('Cloudinary response: ${response.statusCode}');
+      print('Cloudinary body: ${response.body}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final url = data['secure_url']?.toString();
-        print('Cloudinary URL obtained: $url');
+        print('Cloudinary URL: $url');
         return url;
       }
-        print('Cloudinary error: ${response.body}');
 
       return null;
     } catch (e) {
