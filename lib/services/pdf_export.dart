@@ -412,13 +412,11 @@ class PdfExport {
           pw.Text('TOTAL RISK SCORE', style: pw.TextStyle(
             fontSize: 7, color: _textLight, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 2),
-          pw.Row(crossAxisAlignment: pw.CrossAxisAlignment.baseline,
-            textBaseline: pw.TextBaseline.alphabetic,
-            children: [
-              pw.Text('$score', style: pw.TextStyle(
-                fontSize: 28, fontWeight: pw.FontWeight.bold, color: sc)),
-              pw.Text(' / 100', style: pw.TextStyle(fontSize: 10, color: _textMed)),
-            ]),
+          pw.Row(children: [
+            pw.Text('$score', style: pw.TextStyle(
+              fontSize: 28, fontWeight: pw.FontWeight.bold, color: sc)),
+            pw.Text(' / 100', style: pw.TextStyle(fontSize: 10, color: _textMed)),
+          ]),
         ]),
         pw.SizedBox(width: 16),
         pw.Expanded(child: pw.Column(
