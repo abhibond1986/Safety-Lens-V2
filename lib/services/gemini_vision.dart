@@ -123,8 +123,8 @@ class GeminiVision {
         print('Cloudinary URL obtained: $url');
         return url;
       }
+        print('Cloudinary error: ${response.body}');
 
-      print('Cloudinary error: ${response.body.substring(0, 300)}');
       return null;
     } catch (e) {
       print('Cloudinary exception: $e');
