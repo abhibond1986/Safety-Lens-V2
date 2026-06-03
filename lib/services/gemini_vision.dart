@@ -8,6 +8,11 @@ class GeminiVision {
   static const String _backendUrl =
       'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
 
+  static const String _cloudinaryUrl =
+      'https://api.cloudinary.com/v1_1/dzt1vxsdg/image/upload';
+
+  static const String _cloudinaryPreset = 'safety_lens';
+
   static const String _safetyPrompt =
       'You are an expert industrial safety inspector for SAIL. '
       'Analyze this workplace photo for ALL visible safety hazards. '
@@ -30,42 +35,41 @@ class GeminiVision {
 
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     try {
-      // ============================================================
-      // COMPRESS IMAGE — must be under 100KB for Cloudinary/Apps Script
-      // Web browser ignores ImagePicker quality settings, so we
-      // must compress here regardless of source
-      // ============================================================
+      // Compress image to 150KB max
       Uint8List compressed = bytes;
-      const int maxBytes = 30000; // 80KB hard limit
-
+      const int maxBytes = 150000;
       if (bytes.length > maxBytes) {
-        // Sample every Nth byte to reduce size
-        // This is lossy but produces a valid reduced-size JPEG
         final skip = (bytes.length / maxBytes).ceil();
         compressed = Uint8List.fromList(
           List.generate(bytes.length ~/ skip, (i) => bytes[i * skip])
         );
-        print('Compressed: ${bytes.length} → ${compressed.length} bytes (skip=$skip)');
-      } else {
-        print('Image OK: ${bytes.length} bytes (no compression needed)');
       }
+      print('Image: ${bytes.length} → ${compressed.length} bytes');
 
-      final base64Image = base64Encode(compressed);
-      print('Base64 length: ${base64Image.length} chars');
+      // Step 1: Upload directly to Cloudinary from Flutter browser
+      // This bypasses Apps Script payload limit completely
+      final imageUrl = await _uploadToCloudinary(compressed);
+      if (imageUrl == null) {
+        print('Cloudinary upload failed');
+        return _offlineFallback(bytes, reason: 'Cloudinary upload failed');
+      }
+      print('Cloudinary URL: $imageUrl');
 
-      // Send as multipart form — preserves base64 perfectly
-      final uri = Uri.parse(_backendUrl);
-      final request = http.MultipartRequest('POST', uri);
-      request.fields['action'] = 'gemini';
-      request.fields['prompt'] = _safetyPrompt;
-      request.fields['imageBase64'] = base64Image;
+      // Step 2: Send just the URL to Apps Script for AI analysis
+      // URL is ~100 chars — no payload size issues
+      final body = jsonEncode({
+        'action': 'analyzeUrl',
+        'imageUrl': imageUrl,
+        'prompt': _safetyPrompt,
+      });
 
-      print('Sending to Apps Script...');
-      final streamedResponse = await request.send()
-          .timeout(const Duration(seconds: 90));
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http.post(
+        Uri.parse(_backendUrl),
+        body: body,
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 90));
 
-      print('HTTP status: ${response.statusCode}');
+      print('Apps Script status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -76,13 +80,13 @@ class GeminiVision {
         }
 
         if (data is Map && data['hazards'] != null) {
-          print('SUCCESS! Risk: ${data['overallRisk']}, Hazards: ${(data['hazards'] as List).length}');
-          data['_source'] = 'openrouter_via_apps_script';
+          print('AI SUCCESS! Risk: ${data['overallRisk']}, Hazards: ${(data['hazards'] as List).length}');
+          data['_source'] = 'openrouter_direct';
           return Map<String, dynamic>.from(data);
         }
 
-        print('Unexpected response: ${response.body.substring(0, 200)}');
-        return _offlineFallback(bytes, reason: 'Unexpected response format');
+        print('Unexpected: ${response.body.substring(0, 200)}');
+        return _offlineFallback(bytes, reason: 'Unexpected response');
       }
 
       return _offlineFallback(bytes, reason: 'HTTP ${response.statusCode}');
@@ -90,6 +94,41 @@ class GeminiVision {
     } catch (e) {
       print('GeminiVision error: $e');
       return _offlineFallback(bytes, reason: e.toString());
+    }
+  }
+
+  // Upload directly to Cloudinary from Flutter
+  // No Apps Script involved — direct browser API call
+  static Future<String?> _uploadToCloudinary(Uint8List bytes) async {
+    try {
+      final base64Image = base64Encode(bytes);
+      print('Uploading to Cloudinary: ${base64Image.length} chars');
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse(_cloudinaryUrl),
+      );
+      request.fields['file'] = 'data:image/jpeg;base64,$base64Image';
+      request.fields['upload_preset'] = _cloudinaryPreset;
+
+      final streamed = await request.send()
+          .timeout(const Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamed);
+
+      print('Cloudinary response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final url = data['secure_url']?.toString();
+        print('Cloudinary URL obtained: $url');
+        return url;
+      }
+
+      print('Cloudinary error: ${response.body.substring(0, 300)}');
+      return null;
+    } catch (e) {
+      print('Cloudinary exception: $e');
+      return null;
     }
   }
 
