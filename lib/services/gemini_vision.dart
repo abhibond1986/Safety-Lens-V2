@@ -35,19 +35,13 @@ class GeminiVision {
 
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     try {
-      // Compress image to 150KB max
-      Uint8List compressed = bytes;
-      const int maxBytes = 150000;
-      if (bytes.length > maxBytes) {
-        final skip = (bytes.length / maxBytes).ceil();
-        compressed = Uint8List.fromList(
-          List.generate(bytes.length ~/ skip, (i) => bytes[i * skip])
-        );
-      }
-      print('Image: ${bytes.length} → ${compressed.length} bytes');
+      // Send original bytes to Cloudinary — no compression needed
+      // Cloudinary accepts files of any size directly from browser
+      // The ImagePicker already compressed to imageQuality:20, maxWidth:500
+      print('Image size: ${bytes.length} bytes');
 
       // Step 1: Upload directly to Cloudinary from Flutter browser
-      final imageUrl = await _uploadToCloudinary(compressed);
+      final imageUrl = await _uploadToCloudinary(bytes);
       if (imageUrl == null) {
         print('Cloudinary upload failed');
         return _offlineFallback(bytes, reason: 'Cloudinary upload failed');
@@ -95,22 +89,18 @@ class GeminiVision {
     }
   }
 
-  // ============================================================
-  // FIXED: Upload actual bytes to Cloudinary (not base64 string)
-  // Using MultipartFile.fromBytes — standard binary upload
-  // No CORS issues, no size limit issues
-  // ============================================================
+  // Upload original binary bytes to Cloudinary
+  // No base64, no compression — valid JPEG file upload
   static Future<String?> _uploadToCloudinary(Uint8List bytes) async {
     try {
-      print('Uploading to Cloudinary: ${bytes.length} bytes');
+      print('Uploading ${bytes.length} bytes to Cloudinary...');
 
       final request = http.MultipartRequest(
         'POST',
         Uri.parse(_cloudinaryUrl),
       );
 
-      // Upload as binary bytes — NOT as base64 string
-      // This is what Cloudinary expects from browser uploads
+      // Send as actual file bytes — valid JPEG binary data
       request.files.add(
         http.MultipartFile.fromBytes(
           'file',
@@ -120,9 +110,8 @@ class GeminiVision {
       );
       request.fields['upload_preset'] = _cloudinaryPreset;
 
-      print('Sending binary upload to Cloudinary...');
       final streamed = await request.send()
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 60));
       final response = await http.Response.fromStream(streamed);
 
       print('Cloudinary response: ${response.statusCode}');
