@@ -1,5 +1,5 @@
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'l10n/app_localizations.dart';
 import 'services/locale_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -202,7 +202,7 @@ class _SafetyLensAppState extends State<SafetyLensApp> {
           themeMode: _mode,
           theme: _buildTheme(false),
           darkTheme: _buildTheme(true),
-          home: SplashScreen(onToggleTheme: toggleTheme),
+          home: SplashScreen(toggleTheme: toggleTheme),
         );
       },
     );
