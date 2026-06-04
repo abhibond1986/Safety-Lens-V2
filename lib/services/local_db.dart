@@ -3,104 +3,169 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class LocalDB {
   static late SharedPreferences _prefs;
-
   static const _kUsers = 'users';
-  static const _kCurrent = 'current_user';
   static const _kIncidents = 'incidents';
-  static const _kFeedback = 'feedback_corrections';
-  static const _kCustomHazards = 'custom_hazards';
-  static const _kKbDocs = 'kb_documents';
+  static const _kCurrentUser = 'current_user';
+  static const _kKbTopics = 'kb_topics';
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
-    await _seedDefaultUser();
+    await _seedIfEmpty();
   }
 
-  static Future<void> _seedDefaultUser() async {
-    final users = await getUsers();
-    if (users.isEmpty) {
-      users.add({
-        'uid': '1',
-        'username': 'abhishek.kumar',
-        'password': 'demo',
-        'name': 'Abhishek Kumar',
-        'designation': 'AGM',
-        'plant': 'SAIL Safety Organisation',
-        'department': 'Safety',
-        'pno': 'EMP001',
-        'mobile': '+91-9876543210',
-        'email': 'abhishek.kumar@sail.in',
-        'isAdmin': true,
-        'createdAt': DateTime.now().toIso8601String(),
-      });
-      await _prefs.setString(_kUsers, jsonEncode(users));
+  static Future<void> _seedIfEmpty() async {
+    if (_prefs.getString(_kUsers) == null) {
+      final seed = [
+        {
+          'username': 'abhishek.kumar', 'password': 'demo',
+          'name': 'Abhishek Kumar', 'designation': 'AGM',
+          'plant': 'SAIL Safety Organisation',
+          'pno': 'SAIL-SSO-001', 'mobile': '9999999999', 'email': 'abhishek@sail.in',
+          'isAdmin': true,
+        },
+        {
+          'username': 'demo', 'password': 'demo',
+          'name': 'R.K. Sharma', 'designation': 'Sr. Safety Officer',
+          'plant': 'BSP Bhilai',
+          'pno': 'BSP-2024-001', 'mobile': '9876543210', 'email': 'rks@sail.in',
+          'isAdmin': false,
+        },
+      ];
+      await _prefs.setString(_kUsers, jsonEncode(seed));
+    }
+    if (_prefs.getString(_kIncidents) == null) {
+      final now = DateTime.now();
+      final seedIncidents = [
+        {
+          'id': '1', 'title': 'No Fall Arrest at Formwork', 'plant': 'BSP Bhilai',
+          'dept': 'Civil Construction', 'location': 'BF-2 Cast House',
+          'severity': 'CRITICAL', 'wsaCategory': 'Fall from Height',
+          'date': now.subtract(const Duration(days: 6)).toIso8601String(),
+          'status': 'OPEN', 'reportedBy': 'R.K. Sharma', 'type': 'AI_SCAN',
+          'desc': 'Worker observed at height without harness',
+        },
+        {
+          'id': '2', 'title': 'Crane Near Miss', 'plant': 'BSP Bhilai',
+          'dept': 'Rolling Mill', 'location': 'Bay 4',
+          'severity': 'CRITICAL', 'wsaCategory': 'Hit / Caught / Pressed',
+          'date': now.subtract(const Duration(days: 4)).toIso8601String(),
+          'status': 'INVESTIGATING', 'reportedBy': 'Priya Singh', 'type': 'NEAR_MISS',
+          'desc': 'Crane load swung close to worker',
+        },
+        {
+          'id': '3', 'title': 'Slip Hazard on Walkway', 'plant': 'DSP Durgapur',
+          'dept': 'Coke Oven', 'location': 'Pusher side',
+          'severity': 'MEDIUM', 'wsaCategory': 'Slip / Fall',
+          'date': now.subtract(const Duration(days: 3)).toIso8601String(),
+          'status': 'CLOSED', 'reportedBy': 'Rajesh Kumar', 'type': 'NEAR_MISS',
+          'desc': 'Oil spillage on walkway',
+        },
+        {
+          'id': '4', 'title': 'Hot Metal Splash Risk', 'plant': 'RSP Rourkela',
+          'dept': 'SMS', 'location': 'Caster 2',
+          'severity': 'HIGH', 'wsaCategory': 'Hot Metal / Slag / Sub',
+          'date': now.subtract(const Duration(days: 2)).toIso8601String(),
+          'status': 'CLOSED', 'reportedBy': 'Priya Singh', 'type': 'AI_SCAN',
+          'desc': 'Splash guard missing on caster',
+        },
+        {
+          'id': '5', 'title': 'PPE Gap — Helmet Missing', 'plant': 'BSL Bokaro',
+          'dept': 'Blast Furnace', 'location': 'BF-3 Stock house',
+          'severity': 'HIGH', 'wsaCategory': 'Other',
+          'date': now.subtract(const Duration(days: 2)).toIso8601String(),
+          'status': 'OPEN', 'reportedBy': 'Rajesh Kumar', 'type': 'AI_SCAN',
+          'desc': 'Worker without helmet near furnace',
+        },
+        {
+          'id': '6', 'title': 'Electrical Panel Open', 'plant': 'ISP Burnpur',
+          'dept': 'Electrical', 'location': 'Sub-station 4',
+          'severity': 'HIGH', 'wsaCategory': 'Electrical',
+          'date': now.subtract(const Duration(days: 1)).toIso8601String(),
+          'status': 'OPEN', 'reportedBy': 'Abhishek Kumar', 'type': 'NEAR_MISS',
+          'desc': 'Live panel open without barrier',
+        },
+        {
+          'id': '7', 'title': 'Hose Trip Hazard', 'plant': 'BSP Bhilai',
+          'dept': 'Maintenance', 'location': 'Workshop',
+          'severity': 'LOW', 'wsaCategory': 'Slip / Fall',
+          'date': now.subtract(const Duration(days: 1)).toIso8601String(),
+          'status': 'OPEN', 'reportedBy': 'Priya Singh', 'type': 'NEAR_MISS',
+          'desc': 'Compressed air hose across walkway',
+        },
+        {
+          'id': '8', 'title': 'Loose Cable Trip Risk', 'plant': 'ISP Burnpur',
+          'dept': 'Rolling Mill', 'location': 'Bay 2',
+          'severity': 'MEDIUM', 'wsaCategory': 'Electrical',
+          'date': now.toIso8601String(),
+          'status': 'OPEN', 'reportedBy': 'Abhishek Kumar', 'type': 'NEAR_MISS',
+          'desc': 'Loose electrical cable across walkway',
+        },
+      ];
+      await _prefs.setString(_kIncidents, jsonEncode(seedIncidents));
     }
   }
 
-  // ===== USERS =====
+  // ===== Auth =====
+  static Future<Map<String, dynamic>?> signIn(String username, String password) async {
+    final users = await getUsers();
+    for (final u in users) {
+      if ((u['username'] == username || u['email'] == username) && u['password'] == password) {
+        await _prefs.setString(_kCurrentUser, jsonEncode(u));
+        return u;
+      }
+    }
+    return null;
+  }
+
+  static Future<Map<String, dynamic>?> register(Map<String, dynamic> userData) async {
+    final users = await getUsers();
+    // Check duplicate
+    if (users.any((u) => u['username'] == userData['username'])) {
+      return null;
+    }
+    users.add(userData);
+    await _prefs.setString(_kUsers, jsonEncode(users));
+    await _prefs.setString(_kCurrentUser, jsonEncode(userData));
+    return userData;
+  }
+
+  static Future<void> signOut() async {
+    await _prefs.remove(_kCurrentUser);
+  }
+
+  static Future<Map<String, dynamic>?> getCurrentUser() async {
+    final raw = _prefs.getString(_kCurrentUser);
+    if (raw == null) return null;
+    return jsonDecode(raw) as Map<String, dynamic>;
+  }
+
+  // ===== Users =====
   static Future<List<Map<String, dynamic>>> getUsers() async {
     final raw = _prefs.getString(_kUsers);
     if (raw == null) return [];
     return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
-  /// Sign in - returns user map or null if invalid
-  static Future<Map<String, dynamic>?> login(String username, String password) async {
-    final users = await getUsers();
-    final user = users.firstWhere(
-      (u) => u['username'] == username && u['password'] == password,
-      orElse: () => {},
-    );
-    if (user.isEmpty) return null;
-    await _prefs.setString(_kCurrent, jsonEncode(user));
-    return user;
-  }
-
-  /// Backward-compatible alias for login()
-  static Future<Map<String, dynamic>?> signIn(String username, String password) async {
-    return login(username, password);
-  }
-
-  static Future<Map<String, dynamic>?> register(Map<String, dynamic> userData) async {
-    final users = await getUsers();
-    if (users.any((u) => u['username'] == userData['username'])) {
-      return null;
-    }
-    userData['uid'] = DateTime.now().millisecondsSinceEpoch.toString();
-    userData['createdAt'] = DateTime.now().toIso8601String();
-    userData['isAdmin'] ??= false;
-    users.add(userData);
-    await _prefs.setString(_kUsers, jsonEncode(users));
-    await _prefs.setString(_kCurrent, jsonEncode(userData));
-    return userData;
-  }
-
-  static Future<Map<String, dynamic>?> getCurrentUser() async {
-    final raw = _prefs.getString(_kCurrent);
-    if (raw == null) return null;
-    return Map<String, dynamic>.from(jsonDecode(raw));
-  }
-
-  static Future<void> signOut() async {
-    await _prefs.remove(_kCurrent);
-  }
-
-  // ===== INCIDENTS =====
+  // ===== Incidents =====
   static Future<List<Map<String, dynamic>>> getIncidents() async {
     final raw = _prefs.getString(_kIncidents);
     if (raw == null) return [];
-    return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
+    final list = (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
+    list.sort((a, b) => (b['date'] ?? '').toString().compareTo((a['date'] ?? '').toString()));
+    return list;
   }
 
   static Future<void> saveIncident(Map<String, dynamic> incident) async {
     final all = await getIncidents();
     final user = await getCurrentUser();
+    // Respect existing id/date if caller already set them (near miss pre-fills these)
     incident['id'] ??= DateTime.now().millisecondsSinceEpoch.toString();
     incident['date'] ??= DateTime.now().toIso8601String();
     incident['reportedBy'] ??= user?['name'] ?? 'Unknown';
     incident['reporterPno'] ??= user?['pno'] ?? '';
     incident['status'] ??= 'OPEN';
 
+    // De-duplicate: if same id already exists, replace; else add
     final existingIdx = all.indexWhere((i) => i['id']?.toString() == incident['id']?.toString());
     if (existingIdx >= 0) {
       all[existingIdx] = incident;
@@ -108,15 +173,19 @@ class LocalDB {
       all.add(incident);
     }
     await _prefs.setString(_kIncidents, jsonEncode(all));
+
+    // Note: actual cloud push happens via SyncService — callers should call
+    // SyncService.pushIncident(incident) explicitly to control sync timing
+    // and to handle UI feedback (loading/success/error).
   }
 
-  // ===== STATS =====
+  // ===== Plant stats =====
   static Future<Map<String, Map<String, int>>> getPlantStats() async {
-    final incidents = await getIncidents();
+    final inc = await getIncidents();
     final result = <String, Map<String, int>>{};
     final plants = ['BSP Bhilai', 'DSP Durgapur', 'RSP Rourkela', 'BSL Bokaro', 'ISP Burnpur'];
     for (final p in plants) {
-      final pInc = incidents.where((i) => i['plant'] == p).toList();
+      final pInc = inc.where((i) => i['plant'] == p).toList();
       result[p] = {
         'total': pInc.length,
         'open': pInc.where((i) => i['status'] == 'OPEN').length,
@@ -132,6 +201,11 @@ class LocalDB {
   }
 
   // ===== FEEDBACK & LEARNING =====
+  static const _kFeedback = 'feedback_corrections';
+  static const _kCustomHazards = 'custom_hazards';
+
+  /// Save user feedback for a specific image seed (image fingerprint).
+  /// Type can be: 'add' (missed hazard), 'remove' (false positive), 'reword' (description fix)
   static Future<void> saveFeedback({
     required int imageSeed,
     required String type,
@@ -154,11 +228,13 @@ class LocalDB {
     return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+  /// Get feedback specifically for this image's seed
   static Future<List<Map<String, dynamic>>> getFeedbackForSeed(int imageSeed) async {
     final all = await getAllFeedback();
     return all.where((f) => f['imageSeed'] == imageSeed).toList();
   }
 
+  /// Add a custom hazard to user's plant-specific library
   static Future<void> addCustomHazard(Map<String, dynamic> hazard) async {
     final all = await getCustomHazards();
     hazard['addedAt'] = DateTime.now().toIso8601String();
@@ -173,11 +249,13 @@ class LocalDB {
     return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+  /// Clear all feedback (for testing/reset)
   static Future<void> clearFeedback() async {
     await _prefs.remove(_kFeedback);
     await _prefs.remove(_kCustomHazards);
   }
 
+  /// Get statistics about feedback collected
   static Future<Map<String, int>> getFeedbackStats() async {
     final all = await getAllFeedback();
     return {
@@ -188,7 +266,11 @@ class LocalDB {
     };
   }
 
-  // ===== KNOWLEDGE BASE =====
+  // ===== KNOWLEDGE BASE FOR SURAKSHA SAATHI CHATBOT =====
+  static const _kKbDocs = 'kb_documents';
+
+  /// Save a knowledge document (extracted text from PDF/Word) for chatbot search.
+  /// Only admins should add to this.
   static Future<void> addKnowledgeDoc({
     required String title,
     required String content,
@@ -212,12 +294,31 @@ class LocalDB {
     return (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
+
+  static Future<void> updateKnowledgeDoc({
+    required String id,
+    required String title,
+    required String content,
+    String? source,
+  }) async {
+    final all = await getKnowledgeDocs();
+    final idx = all.indexWhere((d) => d['id'] == id);
+    if (idx >= 0) {
+      all[idx]['title'] = title;
+      all[idx]['content'] = content;
+      if (source != null) all[idx]['source'] = source;
+      await _prefs.setString(_kKbDocs, jsonEncode(all));
+    }
+  }
+
   static Future<void> deleteKnowledgeDoc(String id) async {
     final all = await getKnowledgeDocs();
     all.removeWhere((d) => d['id'] == id);
     await _prefs.setString(_kKbDocs, jsonEncode(all));
   }
 
+  /// Search knowledge base for relevant text snippets matching the query.
+  /// Returns a list of {title, snippet, score} sorted by relevance.
   static Future<List<Map<String, dynamic>>> searchKnowledge(String query) async {
     final all = await getKnowledgeDocs();
     if (all.isEmpty) return [];
@@ -233,6 +334,7 @@ class LocalDB {
         score += word.allMatches(contentLower).length;
       }
       if (score > 0) {
+        // Find best snippet (sentence containing most query words)
         final sentences = content.split(RegExp(r'(?<=[.!?])\s+'));
         String bestSnippet = '';
         int bestSnippetScore = 0;
