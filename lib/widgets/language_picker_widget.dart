@@ -1,10 +1,9 @@
 // lib/widgets/language_picker_widget.dart
 // Reusable language picker — used on Login screen and Settings screen.
+// AppLocalizations and LocaleService are defined in main.dart
 
 import 'package:flutter/material.dart';
 import '../main.dart';
-// LocaleService is defined in main.dart
-// AppLocalizations is defined in main.dart
 
 class LanguagePickerWidget extends StatelessWidget {
   const LanguagePickerWidget({super.key});
@@ -49,15 +48,14 @@ class LanguagePickerWidget extends StatelessWidget {
                           : AppColors.card2,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isSelected
-                            ? AppColors.accent
-                            : AppColors.border,
+                        color: isSelected ? AppColors.accent : AppColors.border,
                         width: isSelected ? 1.5 : 1,
                       ),
                     ),
                     child: Column(
                       children: [
-                        Text(lang['flag']!, style: const TextStyle(fontSize: 18)),
+                        Text(lang['flag']!,
+                            style: const TextStyle(fontSize: 18)),
                         const SizedBox(height: 4),
                         Text(
                           lang['native']!,
