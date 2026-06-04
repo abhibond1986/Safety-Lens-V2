@@ -191,9 +191,9 @@ class _AdminScreenState extends State<AdminScreen>
               color: AppColors.text1, fontSize: 16, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 16),
-          _dialogHint('💡 Best method: Copy text from any PDF/document and paste it here. The AI chatbot will search this content when users ask questions.
-
-For PDFs: Open → Select All → Copy → Paste below.'),
+          _dialogHint('Tip: Copy text from your PDF and paste it in the Content field. '
+            'The AI will search this when users ask questions.\n'
+            'For PDFs: Open, select all text, copy, then paste here.'),
           const SizedBox(height: 12),
           _dialogField('Title (e.g. "IS 14489 Key Requirements")', titleCtrl),
           const SizedBox(height: 10),
