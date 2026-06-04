@@ -1,3 +1,6 @@
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'services/locale_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'services/local_db.dart';
@@ -6,6 +9,7 @@ import 'screens/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LocaleService().load();
   await LocalDB.init();
   await SyncService.init();
   SyncService.drainPendingQueue().catchError((_) => 0);
@@ -179,14 +183,21 @@ class _SafetyLensAppState extends State<SafetyLensApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Safety Lens',
-    debugShowCheckedModeBanner: false,
-    theme: _buildTheme(false),
-    darkTheme: _buildTheme(true),
-    themeMode: _mode,
-    home: SplashScreen(toggleTheme: toggleTheme),
-  );
+  Widget build(BuildContext context) => {
+  return ListenableBuilder(
+    listenable: LocaleService(),
+    builder: (context, _) {
+      return MaterialApp(
+        title: 'SAIL Safety Lens',
+        debugShowCheckedModeBanner: false,
+        locale: LocaleService().locale,
+        supportedLocales: LocaleService.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
 }
 
 // ─── SHARED WIDGETS ───────────────────────────────────────────────────────────
