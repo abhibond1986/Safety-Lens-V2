@@ -95,7 +95,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text('Settings · Sync',
+        title: Text('Settings · Sync',
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600)),
         iconTheme: const IconThemeData(color: AppColors.text1),
       ),
