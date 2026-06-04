@@ -135,18 +135,19 @@ class _ChatTabState extends State<ChatTab> {
         extractedText = _extractTextFromBytes(bytes);
       }
 
+      // Clean extracted text - remove binary garbage patterns
+      extractedText = _cleanExtractedText(extractedText);
+
       if (extractedText.trim().length < 50) {
-        _showSnack(
-          'Could not extract enough text from this file. PDF/Word parsing on web is limited — try a .txt file for best results.',
-          AppColors.amber,
-        );
+        // Show helpful dialog instead of just error
+        if (mounted) _showPdfHelpDialog(filename);
         return;
       }
 
       await LocalDB.addKnowledgeDoc(
-        title: filename,
+        title: filename.replaceAll('.pdf', '').replaceAll('.txt', '').replaceAll('_', ' '),
         content: extractedText,
-        source: 'admin_upload',
+        source: filename,
       );
 
       final docs = await LocalDB.getKnowledgeDocs();
@@ -159,26 +160,138 @@ class _ChatTabState extends State<ChatTab> {
     }
   }
 
-  /// Honest text extraction — pulls readable ASCII strings from raw bytes.
-  /// Works reasonably for PDFs that aren't heavily encoded. For production,
-  /// use a backend service or a Dart PDF text-extraction library.
+  /// Extract readable text from PDF/document bytes.
+  /// Uses PDF text stream extraction to get actual readable content.
   String _extractTextFromBytes(List<int> bytes) {
-    final buffer = StringBuffer();
-    String current = '';
-    for (final b in bytes) {
-      // Printable ASCII range + common whitespace
-      if ((b >= 32 && b <= 126) || b == 10 || b == 13 || b == 9) {
-        current += String.fromCharCode(b);
-      } else {
-        if (current.length >= 5) buffer.write('$current ');
-        current = '';
+    try {
+      final raw = String.fromCharCodes(bytes.where((b) => b < 128).toList());
+
+      // Strategy 1: Extract PDF text streams (BT...ET blocks contain actual text)
+      final extracted = StringBuffer();
+
+      // Find text between BT (begin text) and ET (end text) markers
+      final btEtRegex = RegExp(r'BT(.*?)ET', dotAll: true);
+      final tjRegex = RegExp(r'\(([^)]*)\)\s*(?:Tj|TJ)|\[(.*?)\]\s*TJ', dotAll: true);
+
+      for (final block in btEtRegex.allMatches(raw)) {
+        final blockText = block.group(1) ?? '';
+        for (final match in tjRegex.allMatches(blockText)) {
+          final t = match.group(1) ?? match.group(2) ?? '';
+          if (t.isNotEmpty) {
+            // Unescape PDF escape sequences
+            final clean = t
+              .replaceAll(r'
+', '
+')
+              .replaceAll(r'
+', ' ')
+              .replaceAll(r'	', ' ')
+              .replaceAll(r'\', '\')
+              .replaceAll(r'\(', '(')
+              .replaceAll(r'\)', ')')
+              .trim();
+            if (clean.isNotEmpty) extracted.write('$clean ');
+          }
+        }
+        extracted.write('
+');
       }
+
+      final result1 = extracted.toString().trim();
+      if (result1.length > 100) {
+        // Clean up: remove multiple spaces/newlines
+        return result1
+          .replaceAll(RegExp(r' +'), ' ')
+          .replaceAll(RegExp(r'
++'), '
+')
+          .trim();
+      }
+
+      // Strategy 2: Extract all printable word-like strings (min 4 chars)
+      // This handles text PDFs and plain text files
+      final words = RegExp(r'[A-Za-z][A-Za-z0-9 ,.\-:;/()%&'"]{3,}')
+        .allMatches(raw)
+        .map((m) => m.group(0)!)
+        .where((w) => w.trim().length >= 4)
+        .toList();
+
+      if (words.isNotEmpty) {
+        return words.join(' ')
+          .replaceAll(RegExp(r' +'), ' ')
+          .trim();
+      }
+
+      return '';
+    } catch (e) {
+      return '';
     }
-    if (current.length >= 5) buffer.write(current);
-    // Clean up: collapse multiple spaces, remove obvious binary garbage
-    var text = buffer.toString();
-    text = text.replaceAll(RegExp(r'\s+'), ' ');
-    return text.trim();
+  }
+
+  /// Remove binary/encoded garbage from extracted text
+  String _cleanExtractedText(String text) {
+    // Remove lines that look like binary (high ratio of non-alphanumeric chars)
+    final lines = text.split('
+');
+    final cleanLines = lines.where((line) {
+      if (line.trim().isEmpty) return false;
+      final alphaNum = RegExp(r'[a-zA-Z0-9 ]').allMatches(line).length;
+      final ratio = alphaNum / (line.length == 0 ? 1 : line.length);
+      return ratio > 0.5; // Keep only lines that are >50% readable text
+    }).toList();
+
+    return cleanLines.join(' ')
+      .replaceAll(RegExp(r'[^ -~
+]'), ' ') // Remove non-ASCII
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'[<>{}\|~`^]'), ' ') // Remove common binary artifacts
+      .trim();
+  }
+
+  void _showPdfHelpDialog(String filename) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(children: [
+        const Icon(Icons.info_outline, color: AppColors.amber, size: 20),
+        const SizedBox(width: 8),
+        const Text('Could not read PDF', style: TextStyle(
+          color: AppColors.text1, fontSize: 15, fontWeight: FontWeight.w700)),
+      ]),
+      content: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('"$filename" appears to be an image-based or encrypted PDF.',
+            style: const TextStyle(color: AppColors.text2, fontSize: 13)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.accent.withOpacity(0.3))),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('✅  Better options:', style: TextStyle(
+                  color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w700)),
+                SizedBox(height: 6),
+                Text('1. Copy text from PDF → paste into Admin Panel → Add Text Entry',
+                  style: TextStyle(color: AppColors.text2, fontSize: 12, height: 1.4)),
+                Text('2. Save as .txt file and upload that instead',
+                  style: TextStyle(color: AppColors.text2, fontSize: 12, height: 1.4)),
+                Text('3. Use a text-based PDF (not scanned)',
+                  style: TextStyle(color: AppColors.text2, fontSize: 12, height: 1.4)),
+              ],
+            )),
+        ]),
+      actions: [
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Got it', style: TextStyle(color: Colors.white))),
+      ],
+    ));
   }
 
   Future<void> _showKnowledgeManager() async {
