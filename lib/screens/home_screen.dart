@@ -52,7 +52,8 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     final tabs = [
-      DashboardTab(user: _user, toggleTheme: widget.toggleTheme, onSignOut: _signOut),
+      DashboardTab(user: _user, toggleTheme: widget.toggleTheme, onSignOut: _signOut,
+        onTabChange: (i) => setState(() => _tabIndex = i)),
       const AIScanTab(),
       const NearMissTab(),
       const ChatTab(),
