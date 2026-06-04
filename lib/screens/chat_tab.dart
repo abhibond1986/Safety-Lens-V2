@@ -202,7 +202,7 @@ class _ChatTabState extends State<ChatTab> {
               Row(children: [
                 const Icon(Icons.library_books_outlined, color: AppColors.amber, size: 20),
                 const SizedBox(width: 8),
-                const Expanded(child: Text('Knowledge Base (Admin)',
+                Expanded(child: Text('Knowledge Base (Admin)',
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w700))),
                 IconButton(icon: const Icon(Icons.close, color: AppColors.text3), onPressed: () => Navigator.pop(ctx)),
               ]),
