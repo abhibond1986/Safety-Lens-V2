@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../main.dart';
 import '../services/gemini_vision.dart';
 import '../services/local_db.dart';
+import '../services/pdf_export.dart';
+import '../services/sync_service.dart';
 
 class NearMissTab extends StatefulWidget {
   const NearMissTab({super.key});
@@ -35,6 +38,7 @@ class _NearMissTabState extends State<NearMissTab> {
 
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
+  TextEditingController? _activeMicField;
 
   final _plants = const [
     'BSP Bhilai', 'DSP Durgapur', 'RSP Rourkela', 'BSL Bokaro', 'ISP Burnpur', 'SAIL Safety Organisation'
@@ -60,10 +64,10 @@ class _NearMissTabState extends State<NearMissTab> {
   }
 
   Future<void> _analyzeImage() async {
-    final steps = ['Uploaded', 'Gemini analyzing...', 'Classifying...', 'Writing brief...'];
+    final steps = ['Uploaded', 'Analyzing image...', 'Classifying hazard...', 'Pre-filling form...'];
     for (var i = 0; i < steps.length - 1; i++) {
       setState(() => _step = steps[i]);
-      await Future.delayed(const Duration(milliseconds: 800));
+      await Future.delayed(const Duration(milliseconds: 700));
     }
     try {
       setState(() => _step = steps.last);
@@ -75,36 +79,75 @@ class _NearMissTabState extends State<NearMissTab> {
       }
       final hazards = (result?['hazards'] as List?) ?? [];
       final first = hazards.isNotEmpty ? Map<String, dynamic>.from(hazards.first) : null;
-      final brief = first != null
-          ? '${first['description'] ?? ''} ${first['correctiveAction'] ?? ''} Per ${first['regulation'] ?? ''}.'
-          : result?['summary']?.toString() ?? '';
+
+      // Build a complete pre-fill from analysis
+      final name = first?['name']?.toString() ?? 'Near miss observed';
+      final desc = first?['description']?.toString() ?? result?['summary']?.toString() ?? '';
+      final action = first?['correctiveAction']?.toString() ?? '';
+      final regulation = first?['regulation']?.toString() ?? '';
+      final sev = (first?['severity']?.toString() ?? 'MEDIUM').toUpperCase();
+      final hazardType = first?['type']?.toString() ?? 'Unsafe Condition';
+
+      // Map AI hazard category to WSA cause dropdown
+      String wsaCause = _mapToWsaCause(first?['category']?.toString() ?? '', name);
+
+      // User's plant from profile
+      final user = await LocalDB.getCurrentUser();
+      String plantFromProfile = user?['plant']?.toString() ?? _plant;
+      if (!_plants.contains(plantFromProfile)) plantFromProfile = _plant;
+
       setState(() {
         _aiBrief = {
-          'identified': first?['name'] ?? result?['summary'] ?? 'Hazard observed',
-          'statutory': first?['regulation'] ?? 'Refer Factories Act',
-          'type': first?['type'] ?? 'Unsafe condition',
-          'severity': first?['severity'] ?? 'MEDIUM',
+          'identified': name,
+          'statutory': regulation.isEmpty ? 'Refer Factories Act §35-41' : regulation,
+          'type': hazardType,
+          'severity': sev,
           'confidence': result?['confidence'] ?? 75,
         };
-        _brief.text = brief.trim();
+        // PRE-FILL ALL FIELDS from AI analysis — user can edit if needed
+        _brief.text = '$name. $desc'.trim();
+        _description.text = desc;
+        _immediateAction.text = action;
+        _dept.text = user?['department']?.toString() ?? 'Operations';
+        _location.text = 'To be confirmed (edit if needed)';
+        _people.text = '1';
+        _plant = plantFromProfile;
+        _wsaCause = wsaCause;
+        _severity = sev;
+        _obsType = hazardType.toLowerCase().contains('act') ? 'Unsafe Act' : 'Unsafe Condition';
         _analyzing = false;
       });
     } catch (e) {
       setState(() {
         _aiBrief = {
-          'identified': 'Cannot analyze (network/key issue)',
+          'identified': 'Manual entry — AI offline',
           'statutory': 'Manual entry needed',
           'type': 'Unsafe condition',
           'severity': 'MEDIUM',
           'confidence': 0,
         };
-        _brief.text = 'Please describe the hazard observed. Network or Gemini API not available.';
+        _brief.text = 'Describe the near miss observed.';
         _analyzing = false;
       });
     }
   }
 
-  Future<void> _toggleVoice() async {
+  /// Map AI hazard category to one of the WSA cause options
+  String _mapToWsaCause(String category, String name) {
+    final c = category.toUpperCase();
+    final n = name.toLowerCase();
+    if (c == 'HEIGHT' || n.contains('fall') || n.contains('height')) return 'Fall from Height';
+    if (c == 'ELECTRICAL' || n.contains('electric')) return 'Electrical';
+    if (c == 'HOT_WORK' || n.contains('hot') || n.contains('weld')) return 'Burn / Fire';
+    if (c == 'GAS' || n.contains('gas')) return 'Gas Related';
+    if (c == 'MACHINERY' || n.contains('machine') || n.contains('crane')) return 'Machine / Equipment';
+    if (c == 'HOUSEKEEPING' || n.contains('spill') || n.contains('slip')) return 'Slip / Fall';
+    if (c == 'PPE') return 'Other';
+    return 'Other';
+  }
+
+  Future<void> _toggleVoice([TextEditingController? field]) async {
+    if (field != null) _activeMicField = field;
     if (kIsWeb) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -121,7 +164,7 @@ class _NearMissTabState extends State<NearMissTab> {
         _speech.listen(
           localeId: 'en_IN',
           onResult: (result) {
-            if (mounted) setState(() => _location.text = result.recognizedWords);
+            if (mounted) setState(() { (_activeMicField ?? _location).text = result.recognizedWords; });
           },
         );
       }
@@ -131,14 +174,16 @@ class _NearMissTabState extends State<NearMissTab> {
     }
   }
 
-  Future<void> _submit() async {
-    if (_location.text.trim().isEmpty) {
+  Future<bool> _submit({bool exportAfter = false}) async {
+    if (_location.text.trim().isEmpty || _location.text.trim() == 'To be confirmed (edit if needed)') {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter location'), backgroundColor: AppColors.red),
+        const SnackBar(content: Text('Please enter the actual location'), backgroundColor: AppColors.red),
       );
-      return;
+      return false;
     }
-    await LocalDB.saveIncident({
+
+    final user = await LocalDB.getCurrentUser();
+    final incident = {
       'title': _aiBrief?['identified']?.toString() ?? _brief.text.split('.').first,
       'plant': _plant,
       'dept': _dept.text,
@@ -146,15 +191,46 @@ class _NearMissTabState extends State<NearMissTab> {
       'severity': _severity,
       'wsaCategory': _wsaCause,
       'obsType': _obsType,
-      'desc': _brief.text + '\n\n' + _description.text,
+      'desc': '${_brief.text}\n\n${_description.text}',
       'people': _people.text,
       'immediateAction': _immediateAction.text,
       'type': 'NEAR_MISS',
       'status': 'OPEN',
-    });
+      'reportedBy': user?['name'] ?? 'Unknown',
+      'reportedByPno': user?['pno'] ?? '',
+      'date': DateTime.now().toIso8601String(),
+      'id': DateTime.now().millisecondsSinceEpoch.toString(),
+      // Store image bytes as base64 for PDF inclusion later (web-safe)
+      'imageBase64': _imageBytes != null ? base64Encode(_imageBytes!) : null,
+    };
+
+    await LocalDB.saveIncident(incident);
+
+    // Push to cloud backend (Google Sheets) — silent, queues if offline
+    SyncService.pushIncident(incident).catchError((_) => false);
+
+    if (exportAfter) {
+      // Generate and download/share PDF including the image
+      try {
+        await PdfExport.downloadOrShareIncident(
+          incident: incident,
+          reporterName: user?['name']?.toString() ?? 'SAIL Safety Officer',
+          reporterPno: user?['pno']?.toString() ?? '',
+          imageBytes: _imageBytes,
+        );
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF export failed: $e'), backgroundColor: AppColors.red),
+        );
+      }
+    }
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Near Miss report submitted'), backgroundColor: AppColors.green),
+        SnackBar(
+          content: Text(exportAfter ? 'Near Miss saved + PDF exported' : 'Near Miss report submitted'),
+          backgroundColor: AppColors.green,
+        ),
       );
       // Reset form
       setState(() {
@@ -168,6 +244,7 @@ class _NearMissTabState extends State<NearMissTab> {
         _immediateAction.clear();
       });
     }
+    return true;
   }
 
   @override
@@ -200,16 +277,21 @@ class _NearMissTabState extends State<NearMissTab> {
                   _imageSection(),
                   _detailsSection(),
                   const SizedBox(height: 12),
-                  ElevatedButton.icon(
-                    onPressed: _submit,
-                    icon: const Icon(Icons.save_outlined, size: 14, color: Colors.white),
-                    label: const Text('Submit Near Miss Report', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.green,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                  ),
+                  Row(children: [
+                    Expanded(child: GradientButton(
+                      label: 'Save Report',
+                      icon: Icons.save_outlined,
+                      onTap: () => _submit(exportAfter: false),
+                      colors: const [Color(0xFF16A34A), Color(0xFF059669)],
+                    )),
+                    const SizedBox(width: 8),
+                    Expanded(child: GradientButton(
+                      label: 'Save + PDF',
+                      icon: Icons.picture_as_pdf,
+                      onTap: () => _submit(exportAfter: true),
+                      colors: const [AppColors.accent, AppColors.cyan],
+                    )),
+                  ]),
                 ],
               ),
             ),
@@ -432,6 +514,7 @@ class _NearMissTabState extends State<NearMissTab> {
   );
 
   Widget _detailsSection() {
+    final hasImage = _imageBytes != null && _aiBrief != null;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -443,6 +526,25 @@ class _NearMissTabState extends State<NearMissTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _step1('2', 'Incident details'),
+          if (hasImage) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.green.withOpacity(0.1),
+                border: Border.all(color: AppColors.green.withOpacity(0.4)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(children: [
+                Icon(Icons.auto_awesome, color: AppColors.green, size: 14),
+                SizedBox(width: 6),
+                Expanded(child: Text(
+                  'Fields auto-filled from AI analysis. Review and edit any field if needed.',
+                  style: TextStyle(color: AppColors.green, fontSize: 10, fontWeight: FontWeight.w600, height: 1.4),
+                )),
+              ]),
+            ),
+          ],
           const SizedBox(height: 12),
           _lbl('Plant'),
           _dropdown(_plant, _plants, (v) => setState(() => _plant = v ?? _plant)),
@@ -455,7 +557,7 @@ class _NearMissTabState extends State<NearMissTab> {
             Expanded(child: _txt(_location, hint: 'e.g. BF-2 Cast House, Bay 4')),
             const SizedBox(width: 6),
             IconButton(
-              onPressed: _toggleVoice,
+              onPressed: () => _toggleVoice(_location),
               icon: Icon(_isListening ? Icons.mic : Icons.mic_none,
                 color: _isListening ? AppColors.red : AppColors.amber, size: 18),
               style: IconButton.styleFrom(
@@ -490,10 +592,10 @@ class _NearMissTabState extends State<NearMissTab> {
           _txt(_people, hint: 'e.g. Operator, contract workers'),
           const SizedBox(height: 10),
           _lbl('Description (additional context)'),
-          _txt(_description, hint: 'Describe what happened...', lines: 3),
+          _txtWithMic(_description, hint: 'Describe what happened... (or use mic)', lines: 3),
           const SizedBox(height: 10),
           _lbl('Immediate action taken at site'),
-          _txt(_immediateAction, hint: 'e.g. Barricaded the area...', lines: 2),
+          _txtWithMic(_immediateAction, hint: 'e.g. Barricaded the area... (or use mic)', lines: 2),
         ],
       ),
     );
@@ -513,35 +615,105 @@ class _NearMissTabState extends State<NearMissTab> {
     ],
   );
 
-  Widget _lbl(String t) => Padding(
+  Widget _lbl(String t) => Builder(builder: (ctx) => Padding(
     padding: const EdgeInsets.only(bottom: 5),
-    child: Text(t, style: const TextStyle(color: AppColors.text3, fontSize: 10, fontWeight: FontWeight.w600)),
-  );
+    child: Text(t, style: TextStyle(
+      color: SL.of(ctx).text3, fontSize: 11, fontWeight: FontWeight.w700)),
+  ));
 
-  Widget _txt(TextEditingController c, {String? hint, int lines = 1}) => TextField(
-    controller: c,
-    maxLines: lines,
-    style: const TextStyle(color: AppColors.text1, fontSize: 12),
-    decoration: InputDecoration(
-      hintText: hint,
-      hintStyle: const TextStyle(color: AppColors.text4, fontSize: 11),
-      filled: true,
-      fillColor: AppColors.bg2,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.border, width: 1.5),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.border, width: 1.5),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(8),
-        borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
-      ),
-    ),
-  );
+  Widget _txt(TextEditingController c, {String? hint, int lines = 1}) =>
+    Builder(builder: (ctx) {
+      final sl = SL.of(ctx);
+      return TextField(
+        controller: c,
+        maxLines: lines,
+        style: TextStyle(color: sl.text1, fontSize: 13),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: TextStyle(color: sl.text4, fontSize: 12),
+          filled: true,
+          fillColor: sl.card2,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: sl.border, width: 1.5)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: sl.border, width: 1.5)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+        ),
+      );
+    });
+
+  Widget _txtWithMic(TextEditingController c, {String? hint, int lines = 1}) =>
+    Builder(builder: (ctx) {
+      final sl = SL.of(ctx);
+      final isMicActive = _isListening && _activeMicField == c;
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isMicActive ? AppColors.red.withOpacity(0.6) : sl.border,
+            width: isMicActive ? 2 : 1.5)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: TextField(
+            controller: c,
+            maxLines: lines,
+            style: TextStyle(color: sl.text1, fontSize: 13),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: TextStyle(color: sl.text4, fontSize: 12),
+              filled: true,
+              fillColor: sl.card2,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              border: OutlineInputBorder(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  bottomLeft: Radius.circular(10)),
+                borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  bottomLeft: Radius.circular(10)),
+                borderSide: BorderSide.none),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(10),
+                  bottomLeft: Radius.circular(10)),
+                borderSide: BorderSide.none),
+            ),
+          )),
+          GestureDetector(
+            onTap: () => _toggleVoice(c),
+            child: Container(
+              width: 46,
+              height: lines > 1 ? (lines * 24.0 + 22) : 46,
+              decoration: BoxDecoration(
+                color: isMicActive
+                  ? AppColors.red.withOpacity(0.15)
+                  : AppColors.accent.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(
+                  topRight: Radius.circular(10),
+                  bottomRight: Radius.circular(10))),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    isMicActive ? Icons.mic_rounded : Icons.mic_none_rounded,
+                    color: isMicActive ? AppColors.red : AppColors.accent,
+                    size: 20),
+                  if (isMicActive) ...[
+                    const SizedBox(height: 2),
+                    Text('Live', style: TextStyle(
+                      color: AppColors.red, fontSize: 8,
+                      fontWeight: FontWeight.w700)),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ]),
+      );
+    });
 
   Widget _dropdown(String value, List<String> options, ValueChanged<String?> onChange) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 12),
