@@ -287,6 +287,10 @@ class _LoginScreenState extends State<LoginScreen>
       _glassInput(_liPassword, hint: '••••••••',
         icon: Icons.lock_outline_rounded, isPassword: true),
       const SizedBox(height: 20),
+      const SizedBox(height: 16),
+const LanguagePickerWidget(),
+const SizedBox(height: 20),
+// ... your existing login button
       _primaryBtn(
         label: 'Sign In',
         icon: Icons.login_rounded,
