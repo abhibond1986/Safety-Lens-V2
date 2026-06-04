@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import 'settings_screen.dart';
-import 'reports_tab.dart';
+import 'admin_screen.dart';
 
 class DashboardTab extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -15,166 +15,148 @@ class DashboardTab extends StatefulWidget {
 }
 
 class _DashboardTabState extends State<DashboardTab> {
+  int _quoteIndex = 0;
   Map<String, Map<String, int>> _plantStats = {};
-  List<Map<String, dynamic>> _allIncidents = [];
+  List<Map<String, dynamic>> _incidents = [];
+
+  final _quotes = const [
+    ['Safety isn\'t expensive, it\'s priceless. A moment of caution is better than a lifetime of regret.', 'SAIL Safety Pledge'],
+    ['Zero harm starts with one safe action — yours, right now.', 'Ministry of Steel India'],
+    ['A safe worker is a productive worker. Your family is waiting at home.', 'IS 14489 Foreword'],
+    ['Every hazard reported today prevents an accident tomorrow.', 'SAIL Safety Manual'],
+    ['Safety is not a slogan, it\'s a way of life at SAIL.', 'SAIL Vision Statement'],
+    ['Prepare and prevent, don\'t repair and repent.', 'Factories Act Preamble'],
+  ];
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadStats();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadStats() async {
     final stats = await LocalDB.getPlantStats();
     final inc = await LocalDB.getIncidents();
-    if (!mounted) return;
-    setState(() {
+    if (mounted) setState(() {
       _plantStats = stats;
-      _allIncidents = inc;
+      _incidents = inc;
     });
-  }
-
-  int get _critical => _allIncidents.where((i) => i['severity'] == 'CRITICAL').length;
-  int get _high => _allIncidents.where((i) => i['severity'] == 'HIGH').length;
-  int get _medium => _allIncidents.where((i) => i['severity'] == 'MEDIUM').length;
-  int get _low => _allIncidents.where((i) => i['severity'] == 'LOW').length;
-  int get _openCount => _allIncidents.where((i) => i['status'] == 'OPEN').length;
-
-  void _openReports(String filter) {
-    Navigator.push(context, MaterialPageRoute(
-      builder: (_) => Scaffold(
-        backgroundColor: AppColors.bg,
-        appBar: AppBar(
-          backgroundColor: AppColors.bg2,
-          title: Text(filter == 'ALL' ? 'All Reports' : '$filter Incidents',
-            style: const TextStyle(color: AppColors.text1, fontSize: 15, fontWeight: FontWeight.w600)),
-          iconTheme: const IconThemeData(color: AppColors.text1),
-        ),
-        body: ReportsTab(initialFilter: filter),
-      ),
-    )).then((_) => _load());
   }
 
   @override
   Widget build(BuildContext context) {
-    final score = LocalDB.calcSafetyScore(_critical, _high, _medium, _openCount);
+    final user = widget.user;
+    final critical = _incidents.where((i) => i['severity'] == 'CRITICAL').length;
+    final high = _incidents.where((i) => i['severity'] == 'HIGH').length;
+    final medium = _incidents.where((i) => i['severity'] == 'MEDIUM').length;
+    final open = _incidents.where((i) => i['status'] == 'OPEN').length;
+    final score = LocalDB.calcSafetyScore(critical, high, medium, open);
 
     return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _load,
-        child: ListView(
-          padding: const EdgeInsets.all(14),
-          children: [
-            _topBar(),
-            const SizedBox(height: 14),
-            _severitySummary(),
-            const SizedBox(height: 12),
-            _motivCard(),
-            const SizedBox(height: 12),
-            _scoreCard(score, _openCount),
-            const SizedBox(height: 12),
-            _plantStatsCard(),
-            const SizedBox(height: 12),
-          ],
-        ),
+      child: Column(
+        children: [
+          _topBar(),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Welcome,', style: TextStyle(color: AppColors.text3, fontSize: 12.0)),
+                  Text(user?['name']?.toString() ?? 'User',
+                      style: const TextStyle(color: AppColors.text1, fontSize: 20, fontWeight: FontWeight.w600)),
+                  Text('${user?['designation'] ?? ''} · ${user?['plant'] ?? ''}',
+                      style: const TextStyle(color: AppColors.accent, fontSize: 12.0, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 14),
+                  _motivCard(),
+                  _scoreCard(score, open),
+                  _plantStatsCard(),
+                  _actionCards(),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _topBar() {
-    final name = widget.user?['name']?.toString() ?? 'User';
-    final desig = widget.user?['designation']?.toString() ?? '';
-    final plant = widget.user?['plant']?.toString() ?? '';
-    return Row(children: [
-      const SailLogoTile(size: 44),
-      const SizedBox(width: 10),
-      Expanded(child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const BrandTitle(size: 18),
-          const SizedBox(height: 2),
-          Text(name,
-            style: const TextStyle(color: AppColors.text1, fontSize: 12, fontWeight: FontWeight.w600)),
-          Text('$desig · $plant',
-            style: const TextStyle(color: AppColors.text4, fontSize: 9)),
-        ],
-      )),
-      IconButton(
-        icon: const Icon(Icons.account_circle_outlined, color: AppColors.text2, size: 26),
-        onPressed: _showProfileMenu,
-      ),
-    ]);
-  }
-
-  /// Clickable severity summary row — taps drill into Reports filtered view
-  Widget _severitySummary() {
-    Widget pill(String label, int count, Color color, IconData icon) {
-      return Expanded(
-        child: GestureDetector(
-          onTap: () => _openReports(label),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: color, width: 1.5),
-              boxShadow: [BoxShadow(color: color.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 2))],
-            ),
-            child: Column(children: [
-              Icon(icon, color: color, size: 18),
-              const SizedBox(height: 4),
-              Text('$count',
-                style: TextStyle(color: color, fontSize: 22, fontWeight: FontWeight.w800, height: 1)),
-              const SizedBox(height: 2),
-              Text(label,
-                style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
-              const SizedBox(height: 1),
-              const Icon(Icons.chevron_right, color: AppColors.text4, size: 11),
-            ]),
-          ),
-        ),
-      );
-    }
-
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: const BoxDecoration(
+        color: AppColors.bg2,
+        border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(6, 4, 6, 8),
-          child: Row(children: [
-            const Icon(Icons.assessment_outlined, color: AppColors.accent, size: 14),
-            const SizedBox(width: 6),
-            const Text('INCIDENT SUMMARY',
-              style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
-            const Spacer(),
-            GestureDetector(
-              onTap: () => _openReports('ALL'),
-              child: const Row(children: [
-                Text('View All ',
-                  style: TextStyle(color: AppColors.accent, fontSize: 10, fontWeight: FontWeight.w600)),
-                Icon(Icons.arrow_forward, color: AppColors.accent, size: 11),
-              ]),
+      child: Row(
+        children: [
+          const SailLogoTile(size: 38),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                BrandTitle(size: 16),
+                Text('SAIL · IS 14489',
+                  style: TextStyle(color: AppColors.text4, fontSize: 9.0, letterSpacing: 1.5, fontWeight: FontWeight.w600),
+                ),
+              ],
             ),
-          ]),
-        ),
-        Row(children: [
-          pill('CRITICAL', _critical, AppColors.crit, Icons.dangerous_outlined),
-          pill('HIGH', _high, AppColors.red, Icons.warning_amber_outlined),
-          pill('MEDIUM', _medium, AppColors.cyan, Icons.info_outline),
-          pill('LOW', _low, AppColors.green, Icons.check_circle_outline),
-        ]),
-        Padding(
-          padding: const EdgeInsets.all(6),
-          child: Text('Tap any tile to see those specific reports',
-            style: TextStyle(color: AppColors.text4, fontSize: 9, fontStyle: FontStyle.italic)),
-        ),
-      ]),
+          ),
+          // Theme toggle with state indicator
+          GestureDetector(
+            onTap: widget.toggleTheme,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.card2,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.border)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.wb_sunny_outlined, size: 13, color: AppColors.amber),
+                const SizedBox(width: 4),
+                Container(
+                  width: 26, height: 14,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(7)),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      width: 12, height: 12,
+                      margin: const EdgeInsets.only(right: 1),
+                      decoration: const BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle)))),
+                const SizedBox(width: 4),
+                Icon(Icons.nightlight_round, size: 13, color: AppColors.text4),
+              ])),
+          ),
+          const SizedBox(width: 4),
+          // Admin button (shown for admin users)
+          Builder(builder: (ctx) {
+            final desig = (widget.user?['designation']?.toString() ?? '').toLowerCase();
+            final isAdmin = desig.contains('agm') || desig.contains('gm') ||
+                desig.contains('manager') || desig.contains('admin');
+            if (!isAdmin) return const SizedBox.shrink();
+            return IconButton(
+              icon: Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: AppColors.purple.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(6)),
+                child: const Icon(Icons.admin_panel_settings_outlined,
+                  color: AppColors.purple, size: 16)),
+              onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AdminScreen())),
+            );
+          }),
+          IconButton(
+            icon: const Icon(Icons.account_circle_outlined, color: AppColors.text1, size: 22),
+            onPressed: _showProfileMenu,
+          ),
+        ],
+      ),
     );
   }
 
@@ -182,111 +164,150 @@ class _DashboardTabState extends State<DashboardTab> {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.card,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
       builder: (_) => Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const SailLogoTile(size: 64),
-          const SizedBox(height: 12),
-          Text(widget.user?['name']?.toString() ?? '',
-            style: const TextStyle(color: AppColors.text1, fontSize: 16, fontWeight: FontWeight.w700)),
-          Text(widget.user?['designation']?.toString() ?? '',
-            style: const TextStyle(color: AppColors.text3, fontSize: 11)),
-          const SizedBox(height: 20),
-          OutlinedButton.icon(
-            onPressed: widget.toggleTheme,
-            icon: const Icon(Icons.brightness_6_outlined, size: 16, color: AppColors.text2),
-            label: const Text('Toggle Theme', style: TextStyle(color: AppColors.text2)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.border),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.user?['name'] ?? '',
+              style: const TextStyle(color: AppColors.text1, fontSize: 16, fontWeight: FontWeight.w600)),
+            Text(widget.user?['designation'] ?? '',
+              style: const TextStyle(color: AppColors.text3, fontSize: 13.0)),
+            const SizedBox(height: 4),
+            Text('P.No: ${widget.user?['pno'] ?? ''}',
+              style: const TextStyle(color: AppColors.text4, fontSize: 11.0)),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ));
+              },
+              icon: const Icon(Icons.cloud_sync_outlined, size: 16, color: AppColors.accent),
+              label: const Text('Settings · Sync', style: TextStyle(color: AppColors.accent)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.accent, width: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-            },
-            icon: const Icon(Icons.cloud_sync_outlined, size: 16, color: AppColors.accent),
-            label: const Text('Settings · Sync', style: TextStyle(color: AppColors.accent)),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: AppColors.accent, width: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () { Navigator.pop(context); widget.onSignOut(); },
+              icon: const Icon(Icons.logout, size: 16, color: Colors.white),
+              label: const Text('Sign Out', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.red,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton.icon(
-            onPressed: () { Navigator.pop(context); widget.onSignOut(); },
-            icon: const Icon(Icons.logout, size: 16, color: Colors.white),
-            label: const Text('Sign Out', style: TextStyle(color: Colors.white)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.red,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }
 
   Widget _motivCard() {
-    final quotes = [
-      'Safety is not a slogan, it is a way of life.',
-      'A safe workplace is a productive workplace.',
-      'Zero incidents start with one careful step.',
-      'Every hazard reported is a life potentially saved.',
-    ];
-    final q = quotes[DateTime.now().day % quotes.length];
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFF1E3A8A), Color(0xFF0D47A1)]),
+        gradient: LinearGradient(
+          colors: [AppColors.purple.withOpacity(0.15), AppColors.accent.withOpacity(0.15)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+        border: Border.all(color: AppColors.accent),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Row(children: [
-        const Icon(Icons.format_quote, color: Colors.white70, size: 28),
-        const SizedBox(width: 10),
-        Expanded(child: Text(q,
-          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600, height: 1.4))),
-      ]),
+      child: Stack(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('SAFETY THOUGHT',
+                style: TextStyle(color: AppColors.accent, fontSize: 9.0, letterSpacing: 1.2, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 5),
+              Text('"${_quotes[_quoteIndex][0]}"',
+                style: const TextStyle(color: AppColors.text1, fontSize: 13.0, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic, height: 1.55)),
+              const SizedBox(height: 5),
+              Text('— ${_quotes[_quoteIndex][1]}',
+                style: const TextStyle(color: AppColors.text3, fontSize: 10.0)),
+            ],
+          ),
+          Positioned(
+            top: 0, right: 0,
+            child: GestureDetector(
+              onTap: () => setState(() => _quoteIndex = (_quoteIndex + 1) % _quotes.length),
+              child: Container(
+                width: 24, height: 24,
+                decoration: BoxDecoration(
+                  color: AppColors.card2,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: const Icon(Icons.refresh, size: 13, color: AppColors.text2),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _scoreCard(int score, int open) {
-    Color color = score >= 75 ? AppColors.green : score >= 50 ? AppColors.amber : AppColors.red;
+    final scoreColor = score >= 85 ? AppColors.green : score >= 70 ? AppColors.amber : AppColors.red;
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: AppColors.card,
+        border: Border.all(color: AppColors.accent, width: 1.5),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
       ),
-      child: Row(children: [
-        Container(
-          width: 80, height: 80,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color.withOpacity(0.15),
-            border: Border.all(color: color, width: 3),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 68, height: 68,
+            child: Stack(alignment: Alignment.center, children: [
+              SizedBox(
+                width: 68, height: 68,
+                child: CircularProgressIndicator(
+                  value: score / 100,
+                  strokeWidth: 6,
+                  backgroundColor: AppColors.card3,
+                  valueColor: AlwaysStoppedAnimation<Color>(scoreColor),
+                ),
+              ),
+              Text('$score', style: TextStyle(color: scoreColor, fontSize: 18, fontWeight: FontWeight.w700)),
+            ]),
           ),
-          child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text('$score', style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.w800)),
-            Text('/100', style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w600)),
-          ])),
-        ),
-        const SizedBox(width: 14),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('SAFETY SCORE',
-            style: TextStyle(color: AppColors.text4, fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
-          const SizedBox(height: 4),
-          Text(score >= 75 ? 'Excellent' : score >= 50 ? 'Needs Attention' : 'Critical',
-            style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 2),
-          Text('$open open cases',
-            style: const TextStyle(color: AppColors.text3, fontSize: 11)),
-        ])),
-      ]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(score >= 85 ? 'Good safety score' : score >= 70 ? 'Needs attention' : 'Critical action needed',
+                  style: TextStyle(color: scoreColor, fontSize: 14.0, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 3),
+                Text('Org-wide · ${_incidents.length} reports · 5 plants',
+                  style: TextStyle(color: AppColors.text3, fontSize: 10.0)),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber.withOpacity(0.2),
+                    border: Border.all(color: AppColors.amber),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text('$open OPEN cases',
+                    style: const TextStyle(color: Color(0xFFFCD34D), fontSize: 10.0, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -294,58 +315,85 @@ class _DashboardTabState extends State<DashboardTab> {
     if (_plantStats.isEmpty) return const SizedBox();
     return Container(
       padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: AppColors.card,
-        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('PLANT-WISE STATISTICS',
-          style: TextStyle(color: AppColors.text3, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.6)),
-        const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            color: AppColors.bg,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.border),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.factory_outlined, size: 14, color: AppColors.accent),
+              SizedBox(width: 6),
+              Text('PLANT-WISE STATS',
+                style: TextStyle(color: AppColors.text4, fontSize: 11.0, fontWeight: FontWeight.w600, letterSpacing: 0.9)),
+            ],
           ),
-          child: Column(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: const BoxDecoration(
-                color: AppColors.card2,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+          const SizedBox(height: 10),
+          Table(
+            border: TableBorder(horizontalInside: BorderSide(color: AppColors.border, width: 0.5)),
+            columnWidths: const {
+              0: FlexColumnWidth(2.2),
+              1: FlexColumnWidth(1),
+              2: FlexColumnWidth(1),
+              3: FlexColumnWidth(1),
+            },
+            children: [
+              TableRow(
+                decoration: const BoxDecoration(color: AppColors.card2),
+                children: [
+                  _th('Plant'), _th('Score', center: true), _th('Open', center: true), _th('Critical', center: true),
+                ],
               ),
-              child: const Row(children: [
-                Expanded(flex: 3, child: Text('PLANT', style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700))),
-                Expanded(child: Text('TOTAL', style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-                Expanded(child: Text('OPEN', style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-                Expanded(child: Text('CRIT', style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-                Expanded(child: Text('HIGH', style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-              ]),
-            ),
-            ..._plantStats.entries.map((e) {
-              final p = e.value;
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border, width: 0.5))),
-                child: Row(children: [
-                  Expanded(flex: 3, child: Text(e.key,
-                    style: const TextStyle(color: AppColors.text1, fontSize: 10, fontWeight: FontWeight.w600))),
-                  Expanded(child: Text('${p['total']}',
-                    style: const TextStyle(color: AppColors.text1, fontSize: 10), textAlign: TextAlign.center)),
-                  Expanded(child: Text('${p['open']}',
-                    style: const TextStyle(color: AppColors.amber, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-                  Expanded(child: Text('${p['critical']}',
-                    style: const TextStyle(color: AppColors.crit, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-                  Expanded(child: Text('${p['high']}',
-                    style: const TextStyle(color: AppColors.red, fontSize: 10, fontWeight: FontWeight.w700), textAlign: TextAlign.center)),
-                ]),
-              );
-            }).toList(),
-          ]),
-        ),
-      ]),
+              ..._plantStats.entries.map((e) {
+                final s = e.value;
+                final score = LocalDB.calcSafetyScore(s['critical']!, s['high']!, 0, s['open']!);
+                final scoreColor = score >= 85 ? AppColors.green : score >= 70 ? AppColors.amber : AppColors.red;
+                return TableRow(children: [
+                  _td(e.key, bold: true),
+                  Padding(padding: const EdgeInsets.all(6), child: Center(child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: scoreColor.withOpacity(0.2),
+                      border: Border.all(color: scoreColor),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text('$score',
+                      style: TextStyle(color: scoreColor, fontSize: 9.0, fontWeight: FontWeight.w700)),
+                  ))),
+                  _td('${s['open']}', center: true),
+                  Padding(padding: const EdgeInsets.all(6), child: Center(child: Text('${s['critical']}',
+                    style: TextStyle(
+                      color: s['critical']! > 0 ? AppColors.red : AppColors.text2,
+                      fontWeight: s['critical']! > 0 ? FontWeight.w700 : FontWeight.normal,
+                      fontSize: 11.0)))),
+                ]);
+              }).toList(),
+            ],
+          ),
+        ],
+      ),
     );
+  }
+
+  Widget _th(String text, {bool center = false}) => Padding(
+    padding: const EdgeInsets.all(6),
+    child: Text(text,
+      textAlign: center ? TextAlign.center : TextAlign.left,
+      style: const TextStyle(color: AppColors.text3, fontSize: 10.0, fontWeight: FontWeight.w600)),
+  );
+
+  Widget _td(String text, {bool bold = false, bool center = false}) => Padding(
+    padding: const EdgeInsets.all(6),
+    child: Text(text,
+      textAlign: center ? TextAlign.center : TextAlign.left,
+      style: TextStyle(color: AppColors.text1, fontSize: 11.0, fontWeight: bold ? FontWeight.w600 : FontWeight.normal)),
+  );
+
+  Widget _actionCards() {
+    return const SizedBox.shrink();
   }
 }
