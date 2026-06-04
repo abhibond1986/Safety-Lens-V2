@@ -23,8 +23,8 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _progressAnim;
 
   // Fluorescent green
-  static const Color _neonGreen = Color(0xFF39FF14);
-  static const Color _neonGreenDim = Color(0xFF22C55E);
+  static const Color _neonGreen = Color(0xFF22C55E);
+  static const Color _neonGreenDim = Color(0xFF16A34A);
 
   @override
   void initState() {
