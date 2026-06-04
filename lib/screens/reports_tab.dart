@@ -70,7 +70,7 @@ class _ReportsTabState extends State<ReportsTab> {
               color: Theme.of(context).colorScheme.surface,
               border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
             ),
-            child: const Text('All Reports',
+            child: Text('All Reports',
               style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600)),
           ),
           Expanded(
