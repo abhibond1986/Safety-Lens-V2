@@ -1,3 +1,4 @@
+import '../widgets/language_picker_widget.dart';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/sync_service.dart';
