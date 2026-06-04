@@ -3,8 +3,8 @@
 
 import 'package:flutter/material.dart';
 import '../main.dart';
-import '../services/locale_service.dart';
-import '../l10n/app_localizations.dart';
+// LocaleService is defined in main.dart
+// AppLocalizations is defined in main.dart
 
 class LanguagePickerWidget extends StatelessWidget {
   const LanguagePickerWidget({super.key});
