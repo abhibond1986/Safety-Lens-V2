@@ -1,3 +1,4 @@
+final l10n = AppLocalizations.of(context);
 name: Build and Deploy Safety Lens Web
 
 on:
