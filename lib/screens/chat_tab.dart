@@ -248,7 +248,7 @@ class _ChatTabState extends State<ChatTab> {
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surfaceVariant ?? Theme.of(context).cardColor,
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: AppColors.border),
                         ),
@@ -259,7 +259,7 @@ class _ChatTabState extends State<ChatTab> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(d['title']?.toString() ?? '',
-                                style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w600),
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w600),
                                 overflow: TextOverflow.ellipsis),
                               Text('${(d['content']?.toString() ?? '').length} chars · by ${d['uploadedBy']}',
                                 style: const TextStyle(color: AppColors.text4, fontSize: 9)),
@@ -301,7 +301,7 @@ class _ChatTabState extends State<ChatTab> {
           // Header bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
             ),
@@ -310,7 +310,7 @@ class _ChatTabState extends State<ChatTab> {
               const SizedBox(width: 8),
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
+                children: [
                   Text('SAIL Suraksha Saathi',
                     style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w700)),
                   Text('आपका सुरक्षा साथी · Your safety companion',
@@ -328,7 +328,7 @@ class _ChatTabState extends State<ChatTab> {
                         right: 0, top: 0,
                         child: Container(
                           padding: const EdgeInsets.all(2),
-                          decoration: const BoxDecoration(color: AppColors.green, shape: BoxShape.circle),
+                          decoration: BoxDecoration(color: AppColors.green, shape: BoxShape.circle),
                           constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
                           child: Text('$_kbDocCount',
                             style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
@@ -351,7 +351,7 @@ class _ChatTabState extends State<ChatTab> {
           ),
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               border: Border(top: BorderSide(color: Theme.of(context).dividerColor, width: 1)),
             ),
@@ -359,7 +359,7 @@ class _ChatTabState extends State<ChatTab> {
               Expanded(
                 child: TextField(
                   controller: _ctrl,
-                  style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12),
                   decoration: InputDecoration(
                     hintText: 'Ask Suraksha Saathi anything about safety...',
                     hintStyle: const TextStyle(color: AppColors.text4, fontSize: 11),
@@ -368,11 +368,11 @@ class _ChatTabState extends State<ChatTab> {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Theme.of(context).dividerColor, width: 1.5),
+                      borderSide: BorderSide(color: Theme.of(context).dividerColor, width: 1.5),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Theme.of(context).dividerColor, width: 1.5),
+                      borderSide: BorderSide(color: Theme.of(context).dividerColor, width: 1.5),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
@@ -480,7 +480,7 @@ class _ChatTabState extends State<ChatTab> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant ?? Theme.of(context).cardColor,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: AppColors.border),
                 ),
