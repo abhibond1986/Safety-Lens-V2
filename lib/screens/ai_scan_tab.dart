@@ -164,10 +164,10 @@ class _AIScanTabState extends State<AIScanTab> {
 
   Widget _topBar() => Container(
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: AppColors.bg2,
       border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5))),
-    child: const Row(children: [
+    child: Row(children: [
       Expanded(child: Text('AI Hazard Scan',
         style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700))),
     ]));
@@ -181,7 +181,7 @@ class _AIScanTabState extends State<AIScanTab> {
           color: Theme.of(context).colorScheme.surface,
           border: Border.all(color: Theme.of(context).dividerColor, width: 2),
           borderRadius: BorderRadius.circular(12)),
-        child: const Column(children: [
+        child: Column(children: [
           Icon(Icons.add_a_photo_outlined, size: 44, color: AppColors.accent),
           SizedBox(height: 10),
           Text('Capture workplace photo',
@@ -368,7 +368,7 @@ class _AIScanTabState extends State<AIScanTab> {
         },
         children: [
           TableRow(
-            decoration: const BoxDecoration(color: AppColors.card2),
+            decoration: BoxDecoration(color: AppColors.card2),
             children: [
               _hth('HAZARD'), _hth('REGULATION'),
               _hth('SEVERITY', center: true), _hth('ACTION'),
@@ -450,7 +450,7 @@ class _AIScanTabState extends State<AIScanTab> {
       color: AppColors.accent.withOpacity(0.08),
       border: Border.all(color: AppColors.accent),
       borderRadius: BorderRadius.circular(11)),
-    child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Icon(Icons.table_chart_outlined, size: 13, color: AppColors.accent),
         SizedBox(width: 6),
