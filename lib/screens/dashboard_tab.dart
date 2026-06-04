@@ -339,6 +339,80 @@ class _DashboardTabState extends State<DashboardTab>
           color: sl.text4, fontSize: 9, fontWeight: FontWeight.w600)),
       ])));
 
+
+  // ─── PLANT SUMMARY ───────────────────────────────────────────────────────────
+  Widget _plantSummary(SL sl) {
+    final Map<String, List<Map<String,dynamic>>> byPlant = {};
+    for (final inc in _incidents) {
+      final plant = inc['plant']?.toString() ?? 'Unknown';
+      byPlant.putIfAbsent(plant, () => []).add(inc);
+    }
+    if (byPlant.isEmpty) return const SizedBox.shrink();
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('PLANT / UNIT SUMMARY', style: TextStyle(
+        color: sl.text4, fontSize: 10,
+        fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+      const SizedBox(height: 10),
+      ...byPlant.entries.map((entry) {
+        final plant = entry.key;
+        final list  = entry.value;
+        final crit  = list.where((i) => i['severity'] == 'CRITICAL').length;
+        final high  = list.where((i) => i['severity'] == 'HIGH').length;
+        final med   = list.where((i) => i['severity'] == 'MEDIUM').length;
+        final open  = list.where((i) => i['status'] == 'OPEN').length;
+        final score = LocalDB.calcSafetyScore(crit, high, med, open);
+        final scoreColor = score >= 80 ? AppColors.green
+            : score >= 60 ? AppColors.amber : AppColors.crit;
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GestureDetector(
+            onTap: () => widget.onTabChange?.call(4),
+            child: GlassCard(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              child: Row(children: [
+                Container(
+                  width: 46, height: 46,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: scoreColor, width: 2),
+                    color: scoreColor.withOpacity(0.1)),
+                  child: Center(child: Text('$score',
+                    style: TextStyle(color: scoreColor,
+                      fontSize: 13, fontWeight: FontWeight.w900)))),
+                const SizedBox(width: 12),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(plant, style: TextStyle(
+                      color: sl.text1, fontSize: 13,
+                      fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Wrap(spacing: 4, children: [
+                      _miniPill('${list.length} total', sl.text3),
+                      if (crit > 0) _miniPill('$crit CRIT', AppColors.crit),
+                      if (high > 0) _miniPill('$high HIGH', AppColors.red),
+                      _miniPill('$open open', AppColors.amber),
+                    ]),
+                  ])),
+                Icon(Icons.chevron_right_rounded,
+                  color: sl.text4, size: 18),
+              ]),
+            ),
+          ));
+      }).toList(),
+    ]);
+  }
+
+  Widget _miniPill(String t, Color c) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: c.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(10)),
+    child: Text(t, style: TextStyle(
+      color: c, fontSize: 9, fontWeight: FontWeight.w700)));
+
   // ─── QUOTE CARD ───────────────────────────────────────────────────────────
   Widget _quoteCard(SL sl) {
     return GestureDetector(
