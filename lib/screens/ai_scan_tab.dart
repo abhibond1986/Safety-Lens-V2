@@ -169,7 +169,7 @@ class _AIScanTabState extends State<AIScanTab> {
       border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5))),
     child: const Row(children: [
       Expanded(child: Text('AI Hazard Scan',
-        style: TextStyle(color: AppColors.text1, fontSize: 15, fontWeight: FontWeight.w600))),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700))),
     ]));
 
   Widget _emptyView() => Column(children: [
@@ -178,7 +178,8 @@ class _AIScanTabState extends State<AIScanTab> {
       child: Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          border: Border.all(color: AppColors.border, width: 2),
+          color: Theme.of(context).colorScheme.surface,
+          border: Border.all(color: Theme.of(context).dividerColor, width: 2),
           borderRadius: BorderRadius.circular(12)),
         child: const Column(children: [
           Icon(Icons.add_a_photo_outlined, size: 44, color: AppColors.accent),
@@ -454,10 +455,10 @@ class _AIScanTabState extends State<AIScanTab> {
         Icon(Icons.table_chart_outlined, size: 13, color: AppColors.accent),
         SizedBox(width: 6),
         Text('4-column hazard report',
-          style: TextStyle(color: AppColors.text1, fontSize: 11, fontWeight: FontWeight.w600)),
+          style: TextStyle(color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w700)),
       ]),
       SizedBox(height: 4),
       Text('Hazard · Regulation · Severity · Action — all visible at once.',
-        style: TextStyle(color: AppColors.text2, fontSize: 10, height: 1.5)),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 11, height: 1.5)),
     ]));
 }
