@@ -39,7 +39,7 @@ class AppColors {
   static const crit  = Color(0xFFFF3B3B);
   static const red   = Color(0xFFFF6B6B);
   static const amber = Color(0xFFFFB84C);
-  static const green = Color(0xFF39FF14); // neon green
+  static const green = Color(0xFF22C55E); // green (readable)
 
   // Dark theme surfaces
   static const darkBg    = Color(0xFF0D0D1A);
@@ -194,21 +194,50 @@ class BrandTitle extends StatelessWidget {
   final double size;
   const BrandTitle({super.key, this.size = 19});
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
+  Widget build(BuildContext context) {
+    final sl = SL.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('SAIL ', style: GoogleFonts.poppins(
+            fontSize: size, fontWeight: FontWeight.w900,
+            color: sl.isDark ? Colors.white : const Color(0xFF1A1A3E))),
+          ShaderMask(
+            shaderCallback: (b) => const LinearGradient(
+              colors: [AppColors.accent, AppColors.cyan]).createShader(b),
+            child: Text('Safety', style: GoogleFonts.poppins(
+              fontSize: size, fontWeight: FontWeight.w800, color: Colors.white))),
+          ShaderMask(
+            shaderCallback: (b) => const LinearGradient(
+              colors: [AppColors.pink, AppColors.amber]).createShader(b),
+            child: Text(' Lens', style: GoogleFonts.poppins(
+              fontSize: size, fontWeight: FontWeight.w800, color: Colors.white,
+              fontStyle: FontStyle.italic))),
+        ]),
+      ]);
+  }
+}
+
+class BrandTagline extends StatelessWidget {
+  const BrandTagline({super.key});
+  @override
+  Widget build(BuildContext context) {
+    final sl = SL.of(context);
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      Text('Safety Starts with Me', style: TextStyle(
+        color: sl.text3, fontSize: 9,
+        fontWeight: FontWeight.w600, letterSpacing: 0.5)),
+      Text(' · powered by ', style: TextStyle(
+        color: sl.text4, fontSize: 9)),
       ShaderMask(
         shaderCallback: (b) => const LinearGradient(
           colors: [AppColors.accent, AppColors.cyan]).createShader(b),
-        child: Text('Safety', style: GoogleFonts.poppins(
-          fontSize: size, fontWeight: FontWeight.w800, color: Colors.white))),
-      ShaderMask(
-        shaderCallback: (b) => const LinearGradient(
-          colors: [AppColors.pink, AppColors.amber]).createShader(b),
-        child: Text(' Lens', style: GoogleFonts.poppins(
-          fontSize: size, fontWeight: FontWeight.w800, color: Colors.white,
-          fontStyle: FontStyle.italic))),
+        child: const Text('AI', style: TextStyle(
+          color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800))),
     ]);
+  }
 }
 
 class SailLogoTile extends StatelessWidget {
@@ -217,7 +246,9 @@ class SailLogoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
     width: size, height: size,
-    child: Image.asset('assets/images/sail_logo.png', fit: BoxFit.contain));
+    // color: null removes white background via colorBlendMode
+    child: Image.asset('assets/images/sail_logo.png',
+      fit: BoxFit.contain));
 }
 
 // ─── GLASSMORPHISM CARD ───────────────────────────────────────────────────────
