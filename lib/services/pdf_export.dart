@@ -72,15 +72,20 @@ class PdfExport {
         w.add(_detailsGrid(incident, dateStr, reporterName, reporterPno));
         w.add(pw.SizedBox(height: 14));
 
-        // 3 — Evidence photo
+        // 3 — Photo + Summary side by side
         if (imgBytes != null) {
-          w.add(_sectionTitle('EVIDENCE PHOTOGRAPH'));
+          w.add(_sectionTitle('EVIDENCE PHOTOGRAPH  &  INCIDENT SUMMARY'));
           w.add(pw.SizedBox(height: 5));
-          w.add(_photoBox(imgBytes, hazards.length));
+          w.add(_photoAndSummary(imgBytes, hazards.length, summary, severity, riskScore, confidence));
+          w.add(pw.SizedBox(height: 14));
+        } else {
+          w.add(_sectionTitle('INCIDENT SUMMARY'));
+          w.add(pw.SizedBox(height: 5));
+          w.add(_summaryBox(summary));
           w.add(pw.SizedBox(height: 14));
         }
 
-        // 4 — Hazards table (AI scan)
+        // 4 — Hazards table
         if (hazards.isNotEmpty) {
           w.add(_sectionTitle('HAZARDS IDENTIFIED  —  ${hazards.length} TOTAL'));
           w.add(pw.SizedBox(height: 5));
@@ -89,12 +94,6 @@ class PdfExport {
           w.add(_riskScoreBar(riskScore, severity));
           w.add(pw.SizedBox(height: 14));
         }
-
-        // 5 — Summary
-        w.add(_sectionTitle('INCIDENT SUMMARY'));
-        w.add(pw.SizedBox(height: 5));
-        w.add(_summaryBox(summary));
-        w.add(pw.SizedBox(height: 14));
 
         // 6 — Root cause + immediate action (2 columns)
         w.add(_twoCol(incident));
@@ -282,6 +281,94 @@ class PdfExport {
           cell('People Involved', inc['people']?.toString() ?? '0'),
         ]),
       ],
+    );
+  }
+
+  // ─── PHOTO + SUMMARY SIDE BY SIDE ───────────────────────────────────────────
+  static pw.Widget _photoAndSummary(Uint8List img, int count, String summary,
+      String severity, dynamic score, dynamic conf) {
+    final sc = _getSevCol(severity);
+    final sb = _getSevBg(severity);
+    final s  = (score is int ? score : int.tryParse('$score') ?? 0).clamp(0, 100);
+    final c  = (conf is int ? conf : int.tryParse('$conf') ?? 0).clamp(0, 100);
+    return pw.Container(
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _divider, width: 0.5)),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          // LEFT: photo
+          pw.Expanded(
+            flex: 5,
+            child: pw.Column(children: [
+              pw.Container(
+                padding: const pw.EdgeInsets.all(6),
+                child: pw.Image(pw.MemoryImage(img), height: 185, fit: pw.BoxFit.contain)),
+              pw.Container(
+                padding: const pw.EdgeInsets.fromLTRB(6, 3, 6, 4),
+                color: PdfColor.fromHex('#F5F5F5'),
+                child: pw.Text(
+                  '$count hazard(s) identified — see table below.',
+                  style: pw.TextStyle(fontSize: 7, color: _textMed,
+                    fontStyle: pw.FontStyle.italic))),
+            ])),
+          // Divider
+          pw.Container(width: 0.5, color: _divider),
+          // RIGHT: summary + risk score
+          pw.Expanded(
+            flex: 4,
+            child: pw.Padding(
+              padding: const pw.EdgeInsets.all(10),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  // Risk badge
+                  pw.Container(
+                    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    color: sb,
+                    child: pw.Row(children: [
+                      pw.Container(width: 3, height: 3, color: sc),
+                      pw.SizedBox(width: 4),
+                      pw.Text('RISK: $severity',
+                        style: pw.TextStyle(fontSize: 8,
+                          fontWeight: pw.FontWeight.bold, color: sc)),
+                    ])),
+                  pw.SizedBox(height: 6),
+                  // Score row
+                  pw.Row(children: [
+                    pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('$s / 100', style: pw.TextStyle(
+                          fontSize: 22, fontWeight: pw.FontWeight.bold, color: sc)),
+                        pw.Text('Risk Score', style: pw.TextStyle(
+                          fontSize: 7, color: _textLight)),
+                      ]),
+                    pw.SizedBox(width: 12),
+                    pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text('$c%', style: pw.TextStyle(
+                          fontSize: 16, fontWeight: pw.FontWeight.bold,
+                          color: _textMed)),
+                        pw.Text('Confidence', style: pw.TextStyle(
+                          fontSize: 7, color: _textLight)),
+                      ]),
+                  ]),
+                  pw.SizedBox(height: 8),
+                  pw.Container(height: 0.5, color: _divider),
+                  pw.SizedBox(height: 8),
+                  // Summary text
+                  pw.Text('SUMMARY', style: pw.TextStyle(
+                    fontSize: 7, fontWeight: pw.FontWeight.bold,
+                    color: _sailBlue, letterSpacing: 0.5)),
+                  pw.SizedBox(height: 4),
+                  pw.Text(summary.isEmpty ? 'See hazards table below.' : summary,
+                    style: pw.TextStyle(fontSize: 8, color: _textDark,
+                      lineSpacing: 1.5)),
+                ],
+              ),
+            )),
+        ],
+      ),
     );
   }
 
