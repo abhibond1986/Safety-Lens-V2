@@ -160,92 +160,53 @@ class _ChatTabState extends State<ChatTab> {
     }
   }
 
-  /// Extract readable text from PDF/document bytes.
-  /// Uses PDF text stream extraction to get actual readable content.
+  /// Extract readable text from PDF bytes using PDF text stream parsing.
   String _extractTextFromBytes(List<int> bytes) {
     try {
-      final raw = String.fromCharCodes(bytes.where((b) => b < 128).toList());
+      // Only keep printable ASCII bytes
+      final raw = String.fromCharCodes(
+          bytes.where((b) => b >= 32 && b < 127).toList());
 
-      // Strategy 1: Extract PDF text streams (BT...ET blocks contain actual text)
+      // PDF Strategy: find text between parentheses in BT/ET blocks
       final extracted = StringBuffer();
+      final btEt = RegExp(r'BT[\s\S]*?ET');
+      final tjMatch = RegExp(r'\(([^)]*)\)\s*Tj');
 
-      // Find text between BT (begin text) and ET (end text) markers
-      final btEtRegex = RegExp(r'BT(.*?)ET', dotAll: true);
-      final tjRegex = RegExp(r'\(([^)]*)\)\s*(?:Tj|TJ)|\[(.*?)\]\s*TJ', dotAll: true);
-
-      for (final block in btEtRegex.allMatches(raw)) {
-        final blockText = block.group(1) ?? '';
-        for (final match in tjRegex.allMatches(blockText)) {
-          final t = match.group(1) ?? match.group(2) ?? '';
-          if (t.isNotEmpty) {
-            // Unescape PDF escape sequences
-            final clean = t
-              .replaceAll(r'
-', '
-')
-              .replaceAll(r'
-', ' ')
-              .replaceAll(r'	', ' ')
-              .replaceAll(r'\', '\')
-              .replaceAll(r'\(', '(')
-              .replaceAll(r'\)', ')')
-              .trim();
-            if (clean.isNotEmpty) extracted.write('$clean ');
-          }
+      for (final block in btEt.allMatches(raw)) {
+        final text = block.group(0) ?? '';
+        for (final m in tjMatch.allMatches(text)) {
+          final word = m.group(1) ?? '';
+          if (word.trim().isNotEmpty) extracted.write('$word ');
         }
-        extracted.write('
-');
+        extracted.write(' ');
       }
 
-      final result1 = extracted.toString().trim();
-      if (result1.length > 100) {
-        // Clean up: remove multiple spaces/newlines
-        return result1
-          .replaceAll(RegExp(r' +'), ' ')
-          .replaceAll(RegExp(r'
-+'), '
-')
-          .trim();
+      final r1 = extracted.toString()
+          .replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (r1.length > 80) return r1;
+
+      // Fallback: extract word-like strings (4+ alpha chars)
+      final wordList = <String>[];
+      final wordRx = RegExp(r'[A-Za-z]{4,}(?:[A-Za-z0-9 ,.-]{0,40})?');
+      for (final m in wordRx.allMatches(raw)) {
+        final w = m.group(0)?.trim() ?? '';
+        if (w.length >= 4) wordList.add(w);
       }
-
-      // Strategy 2: Extract all printable word-like strings (min 4 chars)
-      // This handles text PDFs and plain text files
-      final words = RegExp(r'[A-Za-z][A-Za-z0-9 ,.\-:;/()%&'"]{3,}')
-        .allMatches(raw)
-        .map((m) => m.group(0)!)
-        .where((w) => w.trim().length >= 4)
-        .toList();
-
-      if (words.isNotEmpty) {
-        return words.join(' ')
-          .replaceAll(RegExp(r' +'), ' ')
-          .trim();
-      }
-
-      return '';
-    } catch (e) {
+      return wordList.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    } catch (_) {
       return '';
     }
   }
 
-  /// Remove binary/encoded garbage from extracted text
+  /// Clean binary garbage from extracted text.
   String _cleanExtractedText(String text) {
-    // Remove lines that look like binary (high ratio of non-alphanumeric chars)
-    final lines = text.split('
-');
-    final cleanLines = lines.where((line) {
-      if (line.trim().isEmpty) return false;
-      final alphaNum = RegExp(r'[a-zA-Z0-9 ]').allMatches(line).length;
-      final ratio = alphaNum / (line.length == 0 ? 1 : line.length);
-      return ratio > 0.5; // Keep only lines that are >50% readable text
-    }).toList();
-
-    return cleanLines.join(' ')
-      .replaceAll(RegExp(r'[^ -~
-]'), ' ') // Remove non-ASCII
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .replaceAll(RegExp(r'[<>{}\|~`^]'), ' ') // Remove common binary artifacts
-      .trim();
+    final lines = text.split(' ');
+    final clean = lines.where((w) {
+      if (w.length < 3) return false;
+      final alpha = RegExp(r'[a-zA-Z]').allMatches(w).length;
+      return alpha / w.length > 0.5;
+    });
+    return clean.join(' ').replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   void _showPdfHelpDialog(String filename) {
