@@ -94,7 +94,7 @@ class _AdminScreenState extends State<AdminScreen>
           const Text('Knowledge Base', style: TextStyle(
             color: AppColors.text1, fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('${_docs.length} documents loaded. The Ask AI feature uses these to answer questions.',
+          Text('${_docs.length} document(s) loaded. 💡 Tip: For best results, use "Add Text Entry" — copy text from PDFs instead of uploading the PDF file directly.',
             style: const TextStyle(color: AppColors.text3, fontSize: 12)),
           const SizedBox(height: 12),
           Row(children: [
@@ -191,7 +191,9 @@ class _AdminScreenState extends State<AdminScreen>
               color: AppColors.text1, fontSize: 16, fontWeight: FontWeight.w700)),
           ]),
           const SizedBox(height: 16),
-          _dialogHint('💡 Add SAIL safety procedures, IS code summaries, plant-specific rules, emergency contacts — anything the AI should know.'),
+          _dialogHint('💡 Best method: Copy text from any PDF/document and paste it here. The AI chatbot will search this content when users ask questions.
+
+For PDFs: Open → Select All → Copy → Paste below.'),
           const SizedBox(height: 12),
           _dialogField('Title (e.g. "IS 14489 Key Requirements")', titleCtrl),
           const SizedBox(height: 10),
