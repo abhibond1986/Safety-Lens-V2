@@ -16,43 +16,43 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   int _tabIndex = 0;
-  Map<String, dynamic>? _currentUser;
-  bool _isDark = true;
+  Map<String, dynamic>? _user;
+  late AnimationController _tabAnim;
 
   @override
-  void initState() { super.initState(); _loadUser(); }
-
-  Future<void> _loadUser() async {
-    final user = await LocalDB.getCurrentUser();
-    if (mounted) setState(() => _currentUser = user);
+  void initState() {
+    super.initState();
+    _tabAnim = AnimationController(vsync: this,
+      duration: const Duration(milliseconds: 200));
+    _loadUser();
   }
 
-  void _toggleTheme() {
-    setState(() => _isDark = !_isDark);
-    widget.toggleTheme();
+  @override
+  void dispose() { _tabAnim.dispose(); super.dispose(); }
+
+  Future<void> _loadUser() async {
+    final u = await LocalDB.getCurrentUser();
+    if (mounted) setState(() => _user = u);
   }
 
   Future<void> _signOut() async {
     await LocalDB.signOut();
-    if (mounted) Navigator.pushReplacement(context, PageRouteBuilder(
+    if (!mounted) return;
+    Navigator.pushReplacement(context, PageRouteBuilder(
       pageBuilder: (_, a, __) => LoginScreen(toggleTheme: widget.toggleTheme),
-      transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+      transitionsBuilder: (_, a, __, child) =>
+          FadeTransition(opacity: a, child: child),
       transitionDuration: const Duration(milliseconds: 400)));
-  }
-
-  bool get _isAdmin {
-    final desig = (_currentUser?['designation']?.toString() ?? '').toLowerCase();
-    return desig.contains('agm') || desig.contains('gm') ||
-           desig.contains('manager') || desig.contains('admin');
   }
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
+    final sl = SL.of(context);
     final tabs = [
-      DashboardTab(user: _currentUser, toggleTheme: _toggleTheme, onSignOut: _signOut),
+      DashboardTab(user: _user, toggleTheme: widget.toggleTheme, onSignOut: _signOut),
       const AIScanTab(),
       const NearMissTab(),
       const ChatTab(),
@@ -60,88 +60,63 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: IndexedStack(index: _tabIndex, children: tabs),
-      floatingActionButton: _tabIndex == 3 ? null : FloatingActionButton(
-        onPressed: () => setState(() => _tabIndex = 3),
-        backgroundColor: AppColors.purple,
-        elevation: 4,
-        child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white, size: 22)),
-      bottomNavigationBar: _bottomNav(),
+      backgroundColor: sl.bg,
+      body: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 250),
+        child: KeyedSubtree(key: ValueKey(_tabIndex), child: tabs[_tabIndex])),
+      bottomNavigationBar: _bottomNav(sl),
     );
   }
 
-  Widget _bottomNav() {
-    const items = [
-      BottomNavigationBarItem(
-        icon: Icon(Icons.home_outlined),
-        activeIcon: Icon(Icons.home_rounded),
-        label: 'Home'),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.document_scanner_outlined),
-        activeIcon: Icon(Icons.document_scanner_rounded),
-        label: 'AI Scan'),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.warning_amber_outlined),
-        activeIcon: Icon(Icons.warning_amber_rounded),
-        label: 'Near Miss'),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.chat_outlined),
-        activeIcon: Icon(Icons.chat_rounded),
-        label: 'Ask AI'),
-      BottomNavigationBarItem(
-        icon: Icon(Icons.bar_chart_outlined),
-        activeIcon: Icon(Icons.bar_chart_rounded),
-        label: 'Reports'),
+  Widget _bottomNav(SL sl) {
+    final items = [
+      _NavItem(Icons.home_outlined, Icons.home_rounded, 'Home'),
+      _NavItem(Icons.document_scanner_outlined, Icons.document_scanner_rounded, 'AI Scan'),
+      _NavItem(Icons.warning_amber_outlined, Icons.warning_amber_rounded, 'Near Miss'),
+      _NavItem(Icons.chat_bubble_outline_rounded, Icons.chat_bubble_rounded, 'Ask AI'),
+      _NavItem(Icons.bar_chart_outlined, Icons.bar_chart_rounded, 'Reports'),
     ];
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.bg2,
-        border: const Border(top: BorderSide(color: AppColors.border, width: 0.5)),
+        color: sl.bg2,
+        border: Border(top: BorderSide(
+          color: sl.border.withOpacity(0.4), width: 1)),
         boxShadow: [BoxShadow(
           color: Colors.black.withOpacity(0.3),
-          blurRadius: 20, offset: const Offset(0, -5))],
-      ),
+          blurRadius: 20, offset: const Offset(0, -4))]),
       child: SafeArea(
         child: SizedBox(
-          height: 62,
+          height: 64,
           child: Row(
             children: List.generate(items.length, (i) {
-              final selected = _tabIndex == i;
+              final sel = _tabIndex == i;
               final item = items[i];
               return Expanded(child: GestureDetector(
-                onTap: () => setState(() => _tabIndex = i),
+                onTap: () { setState(() => _tabIndex = i); },
                 behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? AppColors.accent.withOpacity(0.15)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20)),
-                        child: IconTheme(
-                          data: IconThemeData(
-                            size: 20,
-                            color: selected ? AppColors.accent : AppColors.text4),
-                          child: selected ? item.activeIcon! : item.icon),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(item.label!, style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                        color: selected ? AppColors.accent : AppColors.text4)),
-                    ],
-                  ),
-                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? AppColors.accent.withOpacity(0.15)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(24)),
+                      child: Icon(
+                        sel ? item.activeIcon : item.icon,
+                        size: 22,
+                        color: sel ? AppColors.accent : sl.text4)),
+                    const SizedBox(height: 2),
+                    Text(item.label, style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                      color: sel ? AppColors.accent : sl.text4)),
+                  ]),
               ));
             }),
           ),
@@ -149,4 +124,10 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class _NavItem {
+  final IconData icon, activeIcon;
+  final String label;
+  const _NavItem(this.icon, this.activeIcon, this.label);
 }
