@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/sync_service.dart';
+import '../services/local_db.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -59,9 +60,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _busy = false;
       if (result['ok'] == true) {
-        _status = 'Connected! Backend responded at ${result['time']}';
+        _status = '✓ Connected! Backend responded at ${result['time']}';
       } else {
-        _status = 'Failed: ${result['error'] ?? 'Unknown error'}';
+        _status = '✗ Failed: ${result['error'] ?? 'Unknown error'}';
       }
     });
   }
@@ -73,9 +74,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _busy = false;
       if (result['ok'] == true) {
-        _status = 'Sync complete · Pushed: ${result['pushed']} · Pulled: ${result['pulled']}';
+        _status = '✓ Sync complete · Pushed: ${result['pushed']} · Pulled: ${result['pulled']}';
       } else {
-        _status = '${result['error']}';
+        _status = '✗ ${result['error']}';
       }
     });
     await _load();
@@ -91,11 +92,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.bg,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppColors.bg2,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         title: const Text('Settings · Sync',
-          style: TextStyle(color: AppColors.text1, fontSize: 15, fontWeight: FontWeight.w600)),
+          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600)),
         iconTheme: const IconThemeData(color: AppColors.text1),
       ),
       body: SingleChildScrollView(
@@ -103,6 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Status card
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -141,22 +143,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
+
             const SizedBox(height: 20),
             const Text('GOOGLE APPS SCRIPT URL',
               style: TextStyle(color: AppColors.text4, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
             const SizedBox(height: 6),
             const Text(
-              'Paste the Web App URL from your Apps Script deployment.',
+              'Paste the Web App URL from your Apps Script deployment. Format:\nhttps://script.google.com/macros/s/.../exec',
               style: TextStyle(color: AppColors.text3, fontSize: 10, height: 1.4),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _urlCtrl,
-              style: const TextStyle(color: AppColors.text1, fontSize: 11),
+              style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11),
               maxLines: 2,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: AppColors.card2,
+                fillColor: Theme.of(context).inputDecorationTheme.fillColor ?? Theme.of(context).colorScheme.surface,
                 hintText: 'https://script.google.com/macros/s/.../exec',
                 hintStyle: const TextStyle(color: AppColors.text4, fontSize: 10),
                 contentPadding: const EdgeInsets.all(10),
@@ -198,22 +201,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 minimumSize: const Size(double.infinity, 0),
               ),
             ),
+
             if (_status.isNotEmpty) ...[
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppColors.card2,
+                  color: Theme.of(context).colorScheme.surfaceVariant ?? Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Text(_status,
-                  style: const TextStyle(color: AppColors.text1, fontSize: 11, height: 1.4)),
+                  style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, height: 1.4)),
               ),
             ],
+
+            const SizedBox(height: 24),
+            const Divider(color: AppColors.border),
+            const SizedBox(height: 12),
+            const Text('SETUP GUIDE',
+              style: TextStyle(color: AppColors.text4, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8)),
+            const SizedBox(height: 8),
+            ..._guideStep(1, 'Create a Google Sheet at sheets.google.com — name it "SAIL Safety Lens DB"'),
+            ..._guideStep(2, 'Click Extensions → Apps Script'),
+            ..._guideStep(3, 'Delete default code, paste the code from backend/google_apps_script.gs (in the repo)'),
+            ..._guideStep(4, 'Click Deploy → New deployment → Web app → Anyone access → Deploy'),
+            ..._guideStep(5, 'Copy the Web App URL → paste above → Save → Test'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.amber.withOpacity(0.4)),
+              ),
+              child: const Row(children: [
+                Icon(Icons.info_outline, color: AppColors.amber, size: 16),
+                SizedBox(width: 8),
+                Expanded(child: Text(
+                  'Pilot only: "Anyone access" means anyone with the URL can read/write. For production, restrict to your domain and add API key auth.',
+                  style: TextStyle(color: AppColors.amber, fontSize: 10, height: 1.4),
+                )),
+              ]),
+            ),
           ],
         ),
       ),
     );
   }
+
+  List<Widget> _guideStep(int n, String text) => [
+    Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 22, height: 22,
+          decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+          child: Center(child: Text('$n',
+            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700))),
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(text, style: const TextStyle(color: AppColors.text2, fontSize: 11, height: 1.4)),
+        )),
+      ]),
+    ),
+  ];
 }
