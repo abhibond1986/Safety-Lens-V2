@@ -9,8 +9,10 @@ class DashboardTab extends StatefulWidget {
   final Map<String, dynamic>? user;
   final VoidCallback toggleTheme;
   final VoidCallback onSignOut;
+  final ValueChanged<int>? onTabChange; // 0=home 1=scan 2=nearmiss 3=chat 4=reports
   const DashboardTab({super.key, this.user,
-    required this.toggleTheme, required this.onSignOut});
+    required this.toggleTheme, required this.onSignOut,
+    this.onTabChange});
   @override
   State<DashboardTab> createState() => _DashboardTabState();
 }
@@ -79,6 +81,8 @@ class _DashboardTabState extends State<DashboardTab>
                 _scoreHero(sl, score, open),
                 const SizedBox(height: 16),
                 _statsRow(sl, critical, high, medium, open),
+                const SizedBox(height: 16),
+                _plantSummary(sl),
                 const SizedBox(height: 16),
                 _quoteCard(sl),
                 const SizedBox(height: 16),
@@ -382,26 +386,30 @@ class _DashboardTabState extends State<DashboardTab>
         const SizedBox(height: 10),
         Row(children: [
           _actionCard(sl, Icons.document_scanner_rounded,
-            'AI Scan', 'Scan workplace', AppColors.accent, AppColors.cyan),
+            'AI Scan', 'Scan workplace', AppColors.accent, AppColors.cyan,
+            () => widget.onTabChange?.call(1)),
           const SizedBox(width: 10),
           _actionCard(sl, Icons.warning_amber_rounded,
-            'Near Miss', 'Report hazard', AppColors.amber, AppColors.pink),
+            'Near Miss', 'Report hazard', AppColors.amber, AppColors.pink,
+            () => widget.onTabChange?.call(2)),
         ]),
         const SizedBox(height: 10),
         Row(children: [
           _actionCard(sl, Icons.chat_bubble_rounded,
-            'Ask AI', 'Safety queries', AppColors.purple, AppColors.cyan),
+            'Ask AI', 'Safety queries', AppColors.purple, AppColors.cyan,
+            () => widget.onTabChange?.call(3)),
           const SizedBox(width: 10),
           _actionCard(sl, Icons.bar_chart_rounded,
-            'Reports', 'View history', AppColors.green, AppColors.accent),
+            'Reports', 'View history', AppColors.green, AppColors.accent,
+            () => widget.onTabChange?.call(4)),
         ]),
       ]);
   }
 
   Widget _actionCard(SL sl, IconData icon, String title,
-      String sub, Color c1, Color c2) {
+      String sub, Color c1, Color c2, VoidCallback onTap) {
     return Expanded(child: GestureDetector(
-      onTap: () {},
+      onTap: onTap,
       child: GlassCard(
         padding: const EdgeInsets.all(14),
         border: Border.all(color: c1.withOpacity(0.25)),
@@ -449,7 +457,9 @@ class _DashboardTabState extends State<DashboardTab>
         const SizedBox(height: 10),
         ...recent.map((inc) => Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: GlassCard(
+          child: GestureDetector(
+            onTap: () => widget.onTabChange?.call(4),
+            child: GlassCard(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Row(children: [
               Container(
@@ -471,7 +481,7 @@ class _DashboardTabState extends State<DashboardTab>
                 ])),
               SeverityBadge(inc['severity']?.toString() ?? 'LOW', small: true),
             ]),
-          ),
+          )),
         )).toList(),
       ]);
   }
