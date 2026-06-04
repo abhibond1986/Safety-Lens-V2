@@ -66,7 +66,7 @@ class _ReportsTabState extends State<ReportsTab> {
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
               border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
             ),
@@ -128,7 +128,7 @@ class _ReportsTabState extends State<ReportsTab> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Row(children: [
+        Row(children: [
           Icon(Icons.picture_as_pdf, size: 18, color: AppColors.green),
           SizedBox(width: 8),
           Text('Export All Reports',
@@ -174,11 +174,11 @@ class _ReportsTabState extends State<ReportsTab> {
         children: [
           Container(
             padding: const EdgeInsets.all(10),
-            decoration: const BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant ?? Theme.of(context).cardColor,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
               border: Border(bottom: BorderSide(color: AppColors.border)),
             ),
-            child: const Row(children: [
+            child: Row(children: [
               SizedBox(width: 32),
               Expanded(child: Text('Incident',
                 style: TextStyle(color: AppColors.text3, fontSize: 9, fontWeight: FontWeight.w600, letterSpacing: 0.5))),
@@ -201,7 +201,7 @@ class _ReportsTabState extends State<ReportsTab> {
       onTap: () => _showIncidentDetail(inc),
       child: Container(
         padding: const EdgeInsets.all(10),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 0.5)),
         ),
         child: Row(
@@ -225,7 +225,7 @@ class _ReportsTabState extends State<ReportsTab> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(inc['title']?.toString() ?? '',
-                    style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w600)),
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w600)),
                   Text('${inc['plant']} · $dateStr · by ${inc['reportedBy']}',
                     style: const TextStyle(color: AppColors.text3, fontSize: 9)),
                 ],
@@ -273,7 +273,7 @@ class _ReportsTabState extends State<ReportsTab> {
           children: [
             Row(children: [
               Expanded(child: Text(inc['title']?.toString() ?? 'Incident',
-                style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700))),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700))),
               IconButton(
                 icon: const Icon(Icons.close, color: AppColors.text3, size: 20),
                 onPressed: () => Navigator.pop(context),
@@ -344,7 +344,7 @@ class _ReportsTabState extends State<ReportsTab> {
       SizedBox(width: 80, child: Text(k,
         style: const TextStyle(color: AppColors.text4, fontSize: 10, fontWeight: FontWeight.w600))),
       Expanded(child: Text(v,
-        style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11))),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11))),
     ]),
   );
 
