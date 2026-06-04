@@ -155,7 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _urlCtrl,
-              style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11),
               maxLines: 2,
               decoration: InputDecoration(
                 filled: true,
@@ -207,12 +207,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant ?? Theme.of(context).cardColor,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.border),
                 ),
                 child: Text(_status,
-                  style: const TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, height: 1.4)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, height: 1.4)),
               ),
             ],
 
@@ -235,7 +235,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppColors.amber.withOpacity(0.4)),
               ),
-              child: const Row(children: [
+              child: Row(children: [
                 Icon(Icons.info_outline, color: AppColors.amber, size: 16),
                 SizedBox(width: 8),
                 Expanded(child: Text(
@@ -256,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
           width: 22, height: 22,
-          decoration: const BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: AppColors.accent, shape: BoxShape.circle),
           child: Center(child: Text('$n',
             style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700))),
         ),
