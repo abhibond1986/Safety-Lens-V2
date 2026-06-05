@@ -1218,7 +1218,7 @@ class _AllPlantsSheet extends StatelessWidget {
                       Text(name.split(' ').take(3).join(' '),
                         style: TextStyle(color: sl.text4, fontSize: 9),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ]))));
+                    ])));
             })),
         ])));
   }
