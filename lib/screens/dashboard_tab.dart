@@ -9,7 +9,7 @@ class DashboardTab extends StatefulWidget {
   final Map<String, dynamic>? user;
   final VoidCallback toggleTheme;
   final VoidCallback onSignOut;
-  final ValueChanged<int>? onTabChange; // 0=home 1=scan 2=nearmiss 3=chat 4=reports
+  final ValueChanged<int>? onTabChange;
   const DashboardTab({super.key, this.user,
     required this.toggleTheme, required this.onSignOut,
     this.onTabChange});
@@ -97,35 +97,89 @@ class _DashboardTabState extends State<DashboardTab>
     );
   }
 
-  // ─── TOP BAR ─────────────────────────────────────────────────────────────
+  // ─── TOP BAR — redesigned ─────────────────────────────────────────────────
   Widget _topBar(SL sl) {
     final isDark = sl.isDark;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       decoration: BoxDecoration(
         color: sl.bg2,
         border: Border(bottom: BorderSide(
           color: sl.border.withOpacity(0.4), width: 1))),
       child: Row(children: [
+
+        // ── Logo block: rounded card with gradient border ──────────────────
         Container(
-          width: 36, height: 36,
+          width: 40, height: 40,
           decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.accent.withOpacity(0.3))),
-          child: Padding(
-            padding: const EdgeInsets.all(5),
-            child: Image.asset('assets/images/sail_logo.png', fit: BoxFit.contain))),
+            borderRadius: BorderRadius.circular(12),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: isDark
+                ? [const Color(0xFF1E1E3F), const Color(0xFF2A2A50)]
+                : [const Color(0xFFEEEDFE), const Color(0xFFE0DFFF)]),
+            border: Border.all(
+              color: AppColors.accent.withOpacity(isDark ? 0.4 : 0.5),
+              width: 1.5)),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(11),
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Image.asset('assets/images/sail_logo.png',
+                fit: BoxFit.contain)))),
+
         const SizedBox(width: 10),
+
+        // ── Brand text ───────────────────────────────────────────────────
         Expanded(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const BrandTitle(size: 15),
-            Text('IS 14489 · AI Safety Platform', style: TextStyle(
-              color: sl.text4, fontSize: 9, letterSpacing: 1.2,
-              fontWeight: FontWeight.w600)),
+            // "SAIL Safety Lens" — using ShaderMask for gradient on "Safety Lens"
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Text('SAIL ', style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: sl.text1,
+                height: 1.1)),
+              ShaderMask(
+                shaderCallback: (b) => const LinearGradient(
+                  colors: [AppColors.accent, AppColors.cyan])
+                    .createShader(b),
+                child: Text('Safety', style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  height: 1.1))),
+              ShaderMask(
+                shaderCallback: (b) => const LinearGradient(
+                  colors: [AppColors.pink, AppColors.amber])
+                    .createShader(b),
+                child: Text(' Lens', style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  fontStyle: FontStyle.italic,
+                  height: 1.1))),
+            ]),
+            // Tagline — "AI Safety Platform" only (IS 14489 removed)
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Container(
+                width: 5, height: 5,
+                margin: const EdgeInsets.only(right: 5),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent)),
+              Text('AI Safety Platform',
+                style: TextStyle(
+                  color: sl.text3,
+                  fontSize: 9.5,
+                  letterSpacing: 1.0,
+                  fontWeight: FontWeight.w600)),
+            ]),
           ])),
-        // Theme toggle switch
+
+        // ── Theme toggle ────────────────────────────────────────────────
         GestureDetector(
           onTap: widget.toggleTheme,
           child: AnimatedContainer(
@@ -133,24 +187,22 @@ class _DashboardTabState extends State<DashboardTab>
             width: 52, height: 28,
             padding: const EdgeInsets.all(3),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isDark
-                  ? [AppColors.darkCard2, AppColors.darkCard3]
-                  : [AppColors.accent.withOpacity(0.2), AppColors.cyan.withOpacity(0.2)]),
+              color: isDark
+                ? AppColors.darkCard2
+                : AppColors.lightCard2,
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: isDark ? AppColors.darkBorder : AppColors.accent.withOpacity(0.4))),
+                color: isDark
+                  ? AppColors.darkBorder
+                  : AppColors.accent.withOpacity(0.35),
+                width: 1)),
             child: Stack(children: [
-              // Track icons
               Positioned(left: 3, top: 4,
-                child: Icon(Icons.nightlight_round,
-                  size: 11,
+                child: Icon(Icons.nightlight_round, size: 11,
                   color: isDark ? AppColors.accent : sl.text4)),
               Positioned(right: 3, top: 4,
-                child: Icon(Icons.wb_sunny_rounded,
-                  size: 11,
+                child: Icon(Icons.wb_sunny_rounded, size: 11,
                   color: isDark ? sl.text4 : AppColors.amber)),
-              // Thumb
               AnimatedAlign(
                 duration: const Duration(milliseconds: 300),
                 curve: Curves.easeInOut,
@@ -160,45 +212,57 @@ class _DashboardTabState extends State<DashboardTab>
                   width: 20, height: 20,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      colors: isDark
-                        ? [AppColors.accent, AppColors.cyan]
-                        : [AppColors.amber, AppColors.pink]),
+                    color: isDark ? AppColors.accent : AppColors.amber,
                     boxShadow: [BoxShadow(
                       color: (isDark ? AppColors.accent : AppColors.amber)
-                          .withOpacity(0.5),
+                          .withOpacity(0.4),
                       blurRadius: 6)]))),
             ])),
         ),
-        const SizedBox(width: 6),
+
+        const SizedBox(width: 4),
+
+        // ── Admin button ─────────────────────────────────────────────────
         if (_isAdmin) IconButton(
+          padding: const EdgeInsets.all(4),
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           icon: Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(5),
             decoration: BoxDecoration(
-              color: AppColors.purple.withOpacity(0.15),
+              color: AppColors.purple.withOpacity(isDark ? 0.15 : 0.12),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.purple.withOpacity(0.4))),
+              border: Border.all(
+                color: AppColors.purple.withOpacity(0.4))),
             child: const Icon(Icons.admin_panel_settings_outlined,
               color: AppColors.purple, size: 15)),
           onPressed: () => Navigator.push(context,
             MaterialPageRoute(builder: (_) => const AdminScreen()))),
-        IconButton(
-          icon: CircleAvatar(
-            radius: 15,
-            backgroundColor: AppColors.accent.withOpacity(0.15),
-            child: Text(
+
+        // ── Avatar ───────────────────────────────────────────────────────
+        GestureDetector(
+          onTap: _showProfileSheet,
+          child: Container(
+            width: 34, height: 34,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [AppColors.accent, AppColors.cyan]),
+              boxShadow: [BoxShadow(
+                color: AppColors.accent.withOpacity(0.3),
+                blurRadius: 8)]),
+            child: Center(child: Text(
               (widget.user?['name']?.toString() ?? 'U')[0].toUpperCase(),
               style: const TextStyle(
-                color: AppColors.accent, fontSize: 13,
-                fontWeight: FontWeight.w800))),
-          onPressed: _showProfileSheet),
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w800))))),
       ]),
     );
   }
 
   // ─── WELCOME ──────────────────────────────────────────────────────────────
   Widget _welcomeSection(SL sl) {
-    final name = widget.user?['name']?.toString().split(' ').first ?? 'User';
+    final name  = widget.user?['name']?.toString().split(' ').first ?? 'User';
     final desig = widget.user?['designation']?.toString() ?? '';
     final plant = widget.user?['plant']?.toString() ?? '';
     return Row(children: [
@@ -210,38 +274,36 @@ class _DashboardTabState extends State<DashboardTab>
           Text(name, style: GoogleFonts.poppins(
             color: sl.text1, fontSize: 24,
             fontWeight: FontWeight.w800, height: 1.1)),
-          const SizedBox(height: 3),
+          const SizedBox(height: 4),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.accent.withOpacity(0.15),
-                         AppColors.cyan.withOpacity(0.08)]),
+              color: AppColors.accent.withOpacity(sl.isDark ? 0.12 : 0.1),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: AppColors.accent.withOpacity(0.3))),
-            child: Text('$desig · $plant', style: TextStyle(
-              color: AppColors.accent, fontSize: 11,
+                color: AppColors.accent.withOpacity(sl.isDark ? 0.3 : 0.4))),
+            child: Text('$desig · $plant', style: const TextStyle(
+              color: AppColors.accent,
+              fontSize: 11,
               fontWeight: FontWeight.w600))),
         ])),
-      // Animated glow orb
       AnimatedBuilder(
         animation: _glowCtrl,
         builder: (_, __) => Container(
           width: 60, height: 60,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            gradient: RadialGradient(colors: [
-              AppColors.accent.withOpacity(0.3 * _glowCtrl.value),
-              Colors.transparent])),
+            color: AppColors.accent.withOpacity(
+              sl.isDark ? 0.08 * _glowCtrl.value : 0.06 * _glowCtrl.value)),
           child: Center(child: Container(
-            width: 40, height: 40,
+            width: 42, height: 42,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               gradient: const LinearGradient(
                 colors: [AppColors.accent, AppColors.cyan]),
               boxShadow: [BoxShadow(
-                color: AppColors.accent.withOpacity(0.4 * _glowCtrl.value),
+                color: AppColors.accent.withOpacity(
+                  sl.isDark ? 0.4 * _glowCtrl.value : 0.2 * _glowCtrl.value),
                 blurRadius: 16)]),
             child: const Icon(Icons.shield_outlined,
               color: Colors.white, size: 20)))),
@@ -260,21 +322,22 @@ class _DashboardTabState extends State<DashboardTab>
         begin: Alignment.topLeft, end: Alignment.bottomRight,
         colors: sl.isDark
           ? [const Color(0xFF1A1A40), const Color(0xFF22224A)]
-          : [const Color(0xFFFAFAFF), const Color(0xFFF0EFFF)]),
+          : [Colors.white, const Color(0xFFF5F4FF)]),
       border: Border.all(
-        color: AppColors.accent.withOpacity(0.2), width: 1),
+        color: AppColors.accent.withOpacity(sl.isDark ? 0.2 : 0.25)),
       padding: const EdgeInsets.all(18),
       shadows: [BoxShadow(
-        color: AppColors.accent.withOpacity(0.1),
-        blurRadius: 30, spreadRadius: 0)],
+        color: AppColors.accent.withOpacity(sl.isDark ? 0.1 : 0.06),
+        blurRadius: 24)],
       child: Row(children: [
-        // Score circle
         Stack(alignment: Alignment.center, children: [
           SizedBox(width: 88, height: 88,
             child: CircularProgressIndicator(
               value: score / 100,
               strokeWidth: 7,
-              backgroundColor: sl.card2,
+              backgroundColor: sl.isDark
+                ? AppColors.darkCard2
+                : const Color(0xFFE8E7FF),
               valueColor: AlwaysStoppedAnimation<Color>(color))),
           Column(mainAxisSize: MainAxisSize.min, children: [
             Text('$score', style: TextStyle(
@@ -312,7 +375,9 @@ class _DashboardTabState extends State<DashboardTab>
     child: LinearProgressIndicator(
       value: value,
       minHeight: 6,
-      backgroundColor: sl.card2,
+      backgroundColor: sl.isDark
+        ? AppColors.darkCard2
+        : const Color(0xFFE0DFFF),
       valueColor: AlwaysStoppedAnimation<Color>(color)));
 
   // ─── STATS ROW ────────────────────────────────────────────────────────────
@@ -331,18 +396,23 @@ class _DashboardTabState extends State<DashboardTab>
   Widget _statPill(SL sl, String value, String label, Color color) =>
     Expanded(child: GlassCard(
       padding: const EdgeInsets.symmetric(vertical: 12),
-      border: Border.all(color: color.withOpacity(0.25)),
+      border: Border.all(color: color.withOpacity(sl.isDark ? 0.25 : 0.35)),
+      gradient: LinearGradient(
+        begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: sl.isDark
+          ? [AppColors.darkCard, AppColors.darkCard2]
+          : [Colors.white, color.withOpacity(0.04)]),
       child: Column(children: [
         Text(value, style: TextStyle(
           color: color, fontSize: 22, fontWeight: FontWeight.w900)),
         Text(label, style: TextStyle(
-          color: sl.text4, fontSize: 9, fontWeight: FontWeight.w600)),
+          // LIGHT MODE FIX: use sl.text3 instead of sl.text4 for better visibility
+          color: sl.text3, fontSize: 9, fontWeight: FontWeight.w600)),
       ])));
 
-
-  // ─── PLANT SUMMARY ───────────────────────────────────────────────────────────
+  // ─── PLANT SUMMARY ────────────────────────────────────────────────────────
   Widget _plantSummary(SL sl) {
-    final Map<String, List<Map<String,dynamic>>> byPlant = {};
+    final Map<String, List<Map<String, dynamic>>> byPlant = {};
     for (final inc in _incidents) {
       final plant = inc['plant']?.toString() ?? 'Unknown';
       byPlant.putIfAbsent(plant, () => []).add(inc);
@@ -351,7 +421,8 @@ class _DashboardTabState extends State<DashboardTab>
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('PLANT / UNIT SUMMARY', style: TextStyle(
-        color: sl.text4, fontSize: 10,
+        // LIGHT MODE FIX: sl.text3 instead of sl.text4
+        color: sl.text3, fontSize: 10,
         fontWeight: FontWeight.w700, letterSpacing: 1.5)),
       const SizedBox(height: 10),
       ...byPlant.entries.map((entry) {
@@ -370,6 +441,15 @@ class _DashboardTabState extends State<DashboardTab>
           child: GestureDetector(
             onTap: () => widget.onTabChange?.call(4),
             child: GlassCard(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: sl.isDark
+                  ? [AppColors.darkCard, AppColors.darkCard2]
+                  : [Colors.white, const Color(0xFFF8F8FF)]),
+              border: Border.all(
+                color: sl.isDark
+                  ? sl.border.withOpacity(0.5)
+                  : const Color(0xFFD0CFFF)),
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
               child: Row(children: [
                 Container(
@@ -386,6 +466,7 @@ class _DashboardTabState extends State<DashboardTab>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(plant, style: TextStyle(
+                      // LIGHT MODE FIX: sl.text1 guaranteed visible
                       color: sl.text1, fontSize: 13,
                       fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
@@ -397,7 +478,8 @@ class _DashboardTabState extends State<DashboardTab>
                     ]),
                   ])),
                 Icon(Icons.chevron_right_rounded,
-                  color: sl.text4, size: 18),
+                  // LIGHT MODE FIX: sl.text3 instead of sl.text4
+                  color: sl.text3, size: 18),
               ]),
             ),
           ));
@@ -419,8 +501,14 @@ class _DashboardTabState extends State<DashboardTab>
       onTap: () => setState(() =>
         _quoteIndex = (_quoteIndex + 1) % _quotes.length),
       child: GlassCard(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: sl.isDark
+            ? [AppColors.darkCard, AppColors.darkCard2]
+            : [Colors.white, const Color(0xFFF0FFFE)]),
+        border: Border.all(
+          color: AppColors.cyan.withOpacity(sl.isDark ? 0.2 : 0.3)),
         padding: const EdgeInsets.all(14),
-        border: Border.all(color: AppColors.cyan.withOpacity(0.2)),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Container(
             width: 32, height: 32,
@@ -435,15 +523,21 @@ class _DashboardTabState extends State<DashboardTab>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('"${_quotes[_quoteIndex][0]}"',
-                style: TextStyle(color: sl.text1, fontSize: 13,
+                style: TextStyle(
+                  // LIGHT MODE FIX: sl.text1 for quote text
+                  color: sl.text1, fontSize: 13,
                   fontStyle: FontStyle.italic, height: 1.4,
                   fontWeight: FontWeight.w500)),
               const SizedBox(height: 4),
               Text('— ${_quotes[_quoteIndex][1]}',
-                style: TextStyle(color: AppColors.cyan,
+                style: const TextStyle(
+                  color: AppColors.cyan,
                   fontSize: 10, fontWeight: FontWeight.w700)),
             ])),
-          Icon(Icons.touch_app_outlined, size: 14, color: sl.text4),
+          Icon(Icons.touch_app_outlined,
+            size: 14,
+            // LIGHT MODE FIX: sl.text3
+            color: sl.text3),
         ]),
       ),
     );
@@ -455,26 +549,31 @@ class _DashboardTabState extends State<DashboardTab>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('QUICK ACTIONS', style: TextStyle(
-          color: sl.text4, fontSize: 10,
+          // LIGHT MODE FIX: sl.text3
+          color: sl.text3, fontSize: 10,
           fontWeight: FontWeight.w700, letterSpacing: 1.5)),
         const SizedBox(height: 10),
         Row(children: [
           _actionCard(sl, Icons.document_scanner_rounded,
-            'AI Scan', 'Scan workplace', AppColors.accent, AppColors.cyan,
+            'AI Scan', 'Scan workplace',
+            AppColors.accent, AppColors.cyan,
             () => widget.onTabChange?.call(1)),
           const SizedBox(width: 10),
           _actionCard(sl, Icons.warning_amber_rounded,
-            'Near Miss', 'Report hazard', AppColors.amber, AppColors.pink,
+            'Near Miss', 'Report hazard',
+            AppColors.amber, AppColors.pink,
             () => widget.onTabChange?.call(2)),
         ]),
         const SizedBox(height: 10),
         Row(children: [
           _actionCard(sl, Icons.chat_bubble_rounded,
-            'Ask AI', 'Safety queries', AppColors.purple, AppColors.cyan,
+            'Ask AI', 'Safety queries',
+            AppColors.purple, AppColors.cyan,
             () => widget.onTabChange?.call(3)),
           const SizedBox(width: 10),
           _actionCard(sl, Icons.bar_chart_rounded,
-            'Reports', 'View history', AppColors.green, AppColors.accent,
+            'Reports', 'View history',
+            AppColors.green, AppColors.accent,
             () => widget.onTabChange?.call(4)),
         ]),
       ]);
@@ -485,10 +584,17 @@ class _DashboardTabState extends State<DashboardTab>
     return Expanded(child: GestureDetector(
       onTap: onTap,
       child: GlassCard(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: sl.isDark
+            ? [AppColors.darkCard, AppColors.darkCard2]
+            : [Colors.white, c1.withOpacity(0.04)]),
+        border: Border.all(
+          color: c1.withOpacity(sl.isDark ? 0.25 : 0.3)),
         padding: const EdgeInsets.all(14),
-        border: Border.all(color: c1.withOpacity(0.25)),
         shadows: [BoxShadow(
-          color: c1.withOpacity(0.08), blurRadius: 16)],
+          color: c1.withOpacity(sl.isDark ? 0.08 : 0.05),
+          blurRadius: 16)],
         child: Row(children: [
           Container(
             width: 40, height: 40,
@@ -503,10 +609,12 @@ class _DashboardTabState extends State<DashboardTab>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title, style: TextStyle(
+                // LIGHT MODE FIX: sl.text1
                 color: sl.text1, fontSize: 12,
                 fontWeight: FontWeight.w700)),
               Text(sub, style: TextStyle(
-                color: sl.text4, fontSize: 10)),
+                // LIGHT MODE FIX: sl.text3 instead of sl.text4
+                color: sl.text3, fontSize: 10)),
             ])),
         ]),
       ),
@@ -521,12 +629,15 @@ class _DashboardTabState extends State<DashboardTab>
       children: [
         Row(children: [
           Text('RECENT ACTIVITY', style: TextStyle(
-            color: sl.text4, fontSize: 10,
+            // LIGHT MODE FIX: sl.text3
+            color: sl.text3, fontSize: 10,
             fontWeight: FontWeight.w700, letterSpacing: 1.5)),
           const Spacer(),
-          Text('View all →', style: const TextStyle(
-            color: AppColors.accent, fontSize: 11,
-            fontWeight: FontWeight.w600)),
+          GestureDetector(
+            onTap: () => widget.onTabChange?.call(4),
+            child: const Text('View all →', style: TextStyle(
+              color: AppColors.accent, fontSize: 11,
+              fontWeight: FontWeight.w600))),
         ]),
         const SizedBox(height: 10),
         ...recent.map((inc) => Padding(
@@ -534,28 +645,41 @@ class _DashboardTabState extends State<DashboardTab>
           child: GestureDetector(
             onTap: () => widget.onTabChange?.call(4),
             child: GlassCard(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            child: Row(children: [
-              Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: SeverityBadge.color(
-                    inc['severity']?.toString() ?? 'LOW'))),
-              const SizedBox(width: 10),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(inc['title']?.toString() ?? '',
-                    style: TextStyle(color: sl.text1, fontSize: 12,
-                      fontWeight: FontWeight.w600),
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(inc['plant']?.toString() ?? '',
-                    style: TextStyle(color: sl.text4, fontSize: 10)),
-                ])),
-              SeverityBadge(inc['severity']?.toString() ?? 'LOW', small: true),
-            ]),
-          )),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
+                colors: sl.isDark
+                  ? [AppColors.darkCard, AppColors.darkCard2]
+                  : [Colors.white, const Color(0xFFF8F8FF)]),
+              border: Border.all(
+                color: sl.isDark
+                  ? sl.border.withOpacity(0.4)
+                  : const Color(0xFFD8D7FF)),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              child: Row(children: [
+                Container(
+                  width: 8, height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: SeverityBadge.color(
+                      inc['severity']?.toString() ?? 'LOW'))),
+                const SizedBox(width: 10),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(inc['title']?.toString() ?? '',
+                      style: TextStyle(
+                        // LIGHT MODE FIX: sl.text1
+                        color: sl.text1, fontSize: 12,
+                        fontWeight: FontWeight.w600),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text(inc['plant']?.toString() ?? '',
+                      style: TextStyle(
+                        // LIGHT MODE FIX: sl.text3
+                        color: sl.text3, fontSize: 10)),
+                  ])),
+                SeverityBadge(inc['severity']?.toString() ?? 'LOW', small: true),
+              ]),
+            )),
         )).toList(),
       ]);
   }
@@ -579,19 +703,26 @@ class _DashboardTabState extends State<DashboardTab>
               color: sl.border,
               borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
-          CircleAvatar(radius: 28,
-            backgroundColor: AppColors.accent.withOpacity(0.15),
-            child: Text(
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                colors: [AppColors.accent, AppColors.cyan]),
+              boxShadow: [BoxShadow(
+                color: AppColors.accent.withOpacity(0.3),
+                blurRadius: 12)]),
+            child: Center(child: Text(
               (widget.user?['name']?.toString() ?? 'U')[0].toUpperCase(),
-              style: const TextStyle(color: AppColors.accent, fontSize: 22,
-                fontWeight: FontWeight.w800))),
+              style: const TextStyle(color: Colors.white, fontSize: 22,
+                fontWeight: FontWeight.w800)))),
           const SizedBox(height: 10),
           Text(widget.user?['name'] ?? '', style: TextStyle(
             color: sl.text1, fontSize: 16, fontWeight: FontWeight.w700)),
-          Text(widget.user?['designation'] ?? '', style: TextStyle(
+          Text(widget.user?['designation'] ?? '', style: const TextStyle(
             color: AppColors.accent, fontSize: 12)),
           Text('P.No: ${widget.user?['pno'] ?? ''}', style: TextStyle(
-            color: sl.text4, fontSize: 11)),
+            color: sl.text3, fontSize: 11)),
           const SizedBox(height: 20),
           const NeonDivider(),
           const SizedBox(height: 16),
@@ -632,7 +763,8 @@ class _DashboardTabState extends State<DashboardTab>
         child: Row(mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 16,
-              color: isRed ? AppColors.red : sl.text2),
+              // LIGHT MODE FIX: use explicit colors
+              color: isRed ? AppColors.red : sl.text1),
             const SizedBox(width: 6),
             Text(label, style: TextStyle(
               fontSize: 13,
