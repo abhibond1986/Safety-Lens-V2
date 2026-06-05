@@ -19,7 +19,7 @@ class PdfExport {
   static final PdfColor _medBg       = PdfColor.fromHex('#E0F7FA');
   static final PdfColor _lowCol      = PdfColor.fromHex('#2E7D32');
   static final PdfColor _lowBg       = PdfColor.fromHex('#E8F5E9');
-  static final PdfColor _divider     = PdfColor.fromHex('#BDBDBD');
+  static final PdfColor _divider     = PdfColor.fromHex('#9E9E9E');
   static final PdfColor _textDark    = PdfColor.fromHex('#212121');
   static final PdfColor _textMed     = PdfColor.fromHex('#616161');
   static final PdfColor _textLight   = PdfColor.fromHex('#9E9E9E');
@@ -229,7 +229,7 @@ class PdfExport {
       pw.Container(
         padding: const pw.EdgeInsets.fromLTRB(8, 5, 8, 5),
         decoration: pw.BoxDecoration(
-          border: pw.Border.all(color: _divider, width: 0.4),
+          border: pw.Border.all(color: _divider, width: 0.6),
           color: hi ? _sailLight : PdfColors.white),
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
@@ -284,7 +284,7 @@ class PdfExport {
     final c  = (conf is int ? conf : int.tryParse('$conf') ?? 0).clamp(0, 100);
     return pw.Container(
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: _divider, width: 0.5)),
+        border: pw.Border.all(color: _divider, width: 0.6)),
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
@@ -363,7 +363,7 @@ class PdfExport {
   // ─── PHOTO ───────────────────────────────────────────────────────────────
   static pw.Widget _photoBox(Uint8List img, int count) => pw.Container(
     decoration: pw.BoxDecoration(
-      border: pw.Border.all(color: _divider, width: 0.5)),
+      border: pw.Border.all(color: _divider, width: 0.6)),
     child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
         pw.Padding(padding: const pw.EdgeInsets.all(8),
@@ -389,7 +389,7 @@ class PdfExport {
         fontWeight: pw.FontWeight.bold)));
 
     return pw.Table(
-      border: pw.TableBorder.all(color: _divider, width: 0.4),
+      border: pw.TableBorder.all(color: PdfColor.fromHex('#9E9E9E'), width: 0.8),
       columnWidths: const {
         0: pw.FixedColumnWidth(18),   // #
         1: pw.FlexColumnWidth(1.8),   // Hazard
@@ -511,7 +511,7 @@ class PdfExport {
                 height: 8,
                 decoration: pw.BoxDecoration(
                   color: PdfColors.white,
-                  border: pw.Border.all(color: _divider, width: 0.5))),
+                  border: pw.Border.all(color: _divider, width: 0.6))),
               pw.Container(height: 8, width: (score / 100) * 300, color: sc),
             ]),
             pw.SizedBox(height: 4),
@@ -760,7 +760,7 @@ class PdfExport {
             fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 12),
         pw.Table(
-          border: pw.TableBorder.all(color: _divider, width: 0.4),
+          border: pw.TableBorder.all(color: PdfColor.fromHex('#9E9E9E'), width: 0.8),
           columnWidths: const {
             0: pw.FixedColumnWidth(22),
             1: pw.FixedColumnWidth(54),
