@@ -124,15 +124,22 @@ class SyncService {
   }
 
   /// Fetch all incidents from backend (admin/sync use case)
-  static Future<List<Map<String, dynamic>>> fetchIncidents() async {
+ static Future<List<Map<String, dynamic>>> fetchUsers() async {
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
       final response = await http.get(
-        Uri.parse('$url?action=listIncidents'),
-      ).timeout(const Duration(seconds: 30));
+        Uri.parse('$url?action=listUsers'),
+      ).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
+        // backend returns { success: true, users: [...] }
+        if (data['success'] == true && data['users'] is List) {
+          return (data['users'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+        // backward compat — old backend returns { ok: true, items: [...] }
         if (data['ok'] == true && data['items'] is List) {
           return (data['items'] as List)
               .map((e) => Map<String, dynamic>.from(e as Map))
@@ -144,6 +151,7 @@ class SyncService {
       return [];
     }
   }
+
 
   // ============================================================
   // KNOWLEDGE BASE SYNC (admin uploads PDF docs that all users can search)
