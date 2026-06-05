@@ -1,0 +1,1019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAIL Safety Lens — Admin Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════ TOKENS ═══════════ */
+:root{
+  --bg:#f0f2f7;--surface:#fff;--s2:#f7f8fc;--border:#e4e7f0;
+  --text:#1a1d2e;--muted:#6b7280;
+  --accent:#5b4fcf;--ah:#4a3fb8;--al:#ede9fb;
+  --danger:#dc2626;--dbg:#fef2f2;
+  --success:#059669;--sbg:#ecfdf5;
+  --warn:#d97706;--wbg:#fffbeb;
+  --high:#ea580c;--hbg:#fff7ed;
+  --med:#ca8a04;--mbg:#fefce8;
+  --low:#16a34a;--lbg:#f0fdf4;
+  --sh:0 1px 3px rgba(0,0,0,.07),0 4px 16px rgba(0,0,0,.05);
+  --shl:0 8px 32px rgba(0,0,0,.14);
+  --r:14px;--rs:8px;--rx:6px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
+
+/* ═══════════ PAGES ═══════════ */
+.page{display:none}.page.active{display:block}
+
+/* ═══════════ AUTH ═══════════ */
+.auth-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:linear-gradient(135deg,#ede9fb 0%,#f0f2f7 50%,#e8f4f8 100%)}
+.auth-card{background:var(--surface);border-radius:20px;box-shadow:var(--shl);padding:36px 32px;width:100%;max-width:420px}
+.logo-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.logo-icon{width:42px;height:42px;border-radius:12px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.logo-name{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700}
+.logo-sub{font-size:11px;color:var(--muted)}
+.auth-title{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;margin:18px 0 4px}
+.auth-sub{font-size:13px;color:var(--muted);margin-bottom:22px}
+
+.fg{margin-bottom:14px}
+.fl{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px}
+.fi{width:100%;padding:10px 13px;background:var(--s2);border:1.5px solid var(--border);border-radius:var(--rs);font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);transition:border-color .15s}
+.fi:focus{outline:none;border-color:var(--accent);background:#fff}
+.fsel{width:100%;padding:10px 13px;background:var(--s2);border:1.5px solid var(--border);border-radius:var(--rs);font-family:'DM Sans',sans-serif;font-size:14px;color:var(--text);cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:36px}
+.fsel:focus{outline:none;border-color:var(--accent)}
+.fr{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+
+.btn-p{width:100%;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:var(--rs);font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s,transform .1s}
+.btn-p:hover{background:var(--ah)}.btn-p:active{transform:scale(.99)}.btn-p:disabled{background:#a0aec0;cursor:not-allowed}
+
+.auth-sw{text-align:center;margin-top:18px;font-size:13px;color:var(--muted)}
+.auth-sw a{color:var(--accent);font-weight:600;cursor:pointer;text-decoration:none}.auth-sw a:hover{text-decoration:underline}
+
+.alert{padding:9px 13px;border-radius:var(--rx);font-size:13px;margin-bottom:14px;display:none;align-items:center;gap:7px}
+.alert.show{display:flex}
+.ae{background:var(--dbg);color:var(--danger);border:1px solid #fca5a5}
+.as{background:var(--sbg);color:var(--success);border:1px solid #6ee7b7}
+
+.div{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--muted);font-size:12px}
+.div::before,.div::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ═══════════ ADMIN SHELL ═══════════ */
+.admin-wrap{max-width:1100px;margin:0 auto}
+
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 var(--border)}
+.tb-brand{display:flex;align-items:center;gap:10px}
+.tb-icon{width:34px;height:34px;background:var(--accent);border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px}
+.tb-name{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px}
+.tb-role{font-size:11px;color:var(--muted)}
+
+.admin-nav{display:flex;gap:3px}
+.anb{padding:7px 13px;border-radius:var(--rx);border:none;background:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--muted);transition:all .12s;display:flex;align-items:center;gap:5px}
+.anb:hover,.anb.active{background:var(--al);color:var(--accent)}
+
+.tb-right{display:flex;align-items:center;gap:8px}
+.avtr{width:32px;height:32px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'Space Grotesk',sans-serif;flex-shrink:0}
+.logout-btn{padding:6px 12px;border-radius:var(--rx);border:1px solid var(--border);background:var(--s2);cursor:pointer;font-size:12px;font-weight:500;color:var(--muted);display:flex;align-items:center;gap:4px;transition:all .12s}
+.logout-btn:hover{border-color:var(--danger);color:var(--danger);background:var(--dbg)}
+
+.abody{padding:24px}
+
+/* ═══════════ TAB PANELS ═══════════ */
+.tp{display:none}.tp.active{display:block}
+
+/* ═══════════ STAT CARDS ═══════════ */
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px}
+.sc{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);padding:16px 18px;box-shadow:var(--sh)}
+.sc-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.sc-val{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700}
+.sc-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ═══════════ TABLE CARD ═══════════ */
+.tcard{background:var(--surface);border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--sh);overflow:hidden}
+.thead-row{padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.tc-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700}
+.tactions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.srch{padding:7px 11px;border:1px solid var(--border);border-radius:var(--rx);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--s2);width:190px}
+.srch:focus{outline:none;border-color:var(--accent)}
+
+.bsm{padding:7px 13px;border-radius:var(--rx);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;display:flex;align-items:center;gap:4px;transition:all .12s;white-space:nowrap}
+.b-ac{background:var(--accent);color:#fff}.b-ac:hover{background:var(--ah)}
+.b-gh{background:var(--s2);color:var(--text);border:1px solid var(--border)}.b-gh:hover{background:var(--al);color:var(--accent);border-color:var(--accent)}
+.b-dn{background:var(--dbg);color:var(--danger);border:1px solid #fca5a5}.b-dn:hover{background:var(--danger);color:#fff}
+.b-gn{background:var(--sbg);color:var(--success);border:1px solid #6ee7b7}.b-gn:hover{background:var(--success);color:#fff}
+.b-pr{background:var(--al);color:var(--accent);border:1px solid #c4b8f5}.b-pr:hover{background:var(--accent);color:#fff}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{padding:9px 14px;text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:var(--s2);border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--s2)}
+td{padding:11px 14px;vertical-align:middle}
+
+.rb{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:99px;font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif}
+.r-admin{background:var(--al);color:var(--accent)}
+.r-emp{background:var(--s2);color:var(--muted);border:1px solid var(--border)}
+.s-on{color:var(--success);font-size:11px;font-weight:600}
+.s-off{color:var(--muted);font-size:11px;font-weight:600}
+
+.uc{display:flex;align-items:center;gap:9px}
+.ta{width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif;flex-shrink:0}
+.un{font-weight:600}
+.um{font-size:11px;color:var(--muted)}
+
+.ar{display:flex;gap:3px;flex-wrap:wrap}
+
+.filter-row{padding:10px 14px 0;display:flex;gap:5px;flex-wrap:wrap}
+.fb{padding:4px 11px;border-radius:99px;border:1px solid var(--border);background:var(--surface);font-size:11px;cursor:pointer;transition:all .12s;font-family:'DM Sans',sans-serif}
+.fb.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+.pt{display:inline-block;padding:2px 7px;border-radius:5px;background:var(--al);color:var(--accent);font-size:10px;font-weight:700;font-family:'Space Grotesk',sans-serif}
+
+.sync-b{display:inline-flex;align-items:center;gap:3px;font-size:10px;padding:2px 7px;border-radius:99px}
+.sl{background:var(--sbg);color:var(--success)}
+.sw{background:var(--wbg);color:var(--warn)}
+
+/* ═══════════ MODAL ═══════════ */
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.46);z-index:300;display:none;align-items:center;justify-content:center;padding:20px}
+.mbg.show{display:flex}
+.mbox{background:var(--surface);border-radius:18px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:var(--shl);animation:popIn .2s cubic-bezier(.4,0,.2,1)}
+@keyframes popIn{from{transform:scale(.95);opacity:0}to{transform:scale(1);opacity:1}}
+.mhead{padding:18px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.mtitle{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700}
+.mclose{width:26px;height:26px;border-radius:50%;border:none;background:var(--s2);cursor:pointer;font-size:13px;color:var(--muted);display:flex;align-items:center;justify-content:center}
+.mclose:hover{background:var(--dbg);color:var(--danger)}
+.mbody{padding:18px 22px 22px}
+
+/* ═══════════ SPINNER / TOAST / LOADING ═══════════ */
+.spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--text);color:#fff;padding:10px 20px;border-radius:99px;font-size:13px;font-weight:500;z-index:9999;transition:transform .3s cubic-bezier(.4,0,.2,1);white-space:nowrap;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.lov{position:fixed;inset:0;background:rgba(255,255,255,.85);z-index:500;display:none;align-items:center;justify-content:center;flex-direction:column;gap:12px}
+.lov.show{display:flex}
+.lspin{width:38px;height:38px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite}
+.ltxt{font-size:13px;color:var(--muted)}
+
+/* ═══════════ SETTINGS CODE BLOCK ═══════════ */
+.codew{background:#1e1e2e;border-radius:10px;padding:16px;font-family:monospace;font-size:11px;color:#cdd6f4;overflow:auto;white-space:pre;line-height:1.65;max-height:340px}
+.st-title{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:7px}
+
+/* ═══════════ EMPTY STATE ═══════════ */
+.es{text-align:center;padding:44px 20px;color:var(--muted)}
+.es-ic{font-size:36px;margin-bottom:10px}
+
+/* ═══════════ RESPONSIVE ═══════════ */
+@media(max-width:680px){
+  .fr{grid-template-columns:1fr}
+  .admin-nav{display:none}
+  .abody{padding:14px}
+  .stats-row{grid-template-columns:1fr 1fr}
+  td:nth-child(4),td:nth-child(5),th:nth-child(4),th:nth-child(5){display:none}
+  .srch{width:130px}
+}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+<div class="lov" id="lov"><div class="lspin"></div><div class="ltxt" id="ltxt">Syncing…</div></div>
+
+<!-- ════════════════════════════════════════
+     PAGE: LOGIN
+════════════════════════════════════════ -->
+<div class="page active" id="pg-login">
+<div class="auth-wrap">
+<div class="auth-card">
+  <div class="logo-row">
+    <div class="logo-icon">🛡️</div>
+    <div><div class="logo-name">Safety Lens</div><div class="logo-sub">SAIL Safety Organisation</div></div>
+  </div>
+  <div class="auth-title">Welcome back</div>
+  <div class="auth-sub">Sign in to continue to Safety Lens</div>
+
+  <div class="alert ae" id="l-err"><span id="l-err-msg"></span></div>
+  <div class="alert as" id="l-ok"><span id="l-ok-msg"></span></div>
+
+  <div class="fg">
+    <label class="fl">Username or P.No / Employee ID</label>
+    <input class="fi" id="l-user" type="text" placeholder="e.g. rajesh.kumar or EMP001" autocomplete="username">
+  </div>
+  <div class="fg">
+    <label class="fl">Password</label>
+    <input class="fi" id="l-pass" type="password" placeholder="Enter password" autocomplete="current-password">
+  </div>
+
+  <button class="btn-p" id="l-btn" onclick="doLogin()">Sign In</button>
+
+  <div class="div">or</div>
+  <div class="auth-sw">New here? <a onclick="showPg('pg-reg')">Create account →</a></div>
+  <div class="auth-sw" style="margin-top:8px">
+    <a onclick="quickAdmin()" style="font-size:11px;color:var(--muted)">Admin quick login (admin / admin) →</a>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE: REGISTER
+════════════════════════════════════════ -->
+<div class="page" id="pg-reg">
+<div class="auth-wrap" style="padding-top:32px;padding-bottom:32px">
+<div class="auth-card">
+  <div class="logo-row">
+    <div class="logo-icon">🛡️</div>
+    <div><div class="logo-name">Safety Lens</div><div class="logo-sub">SAIL Safety Organisation</div></div>
+  </div>
+  <div class="auth-title">Create account</div>
+  <div class="auth-sub">Join the SAIL safety network · <b>Note:</b> first account = Admin, all others = Employee</div>
+
+  <div class="alert ae" id="r-err"><span id="r-err-msg"></span></div>
+  <div class="alert as" id="r-ok"><span id="r-ok-msg"></span></div>
+
+  <div class="fr">
+    <div class="fg"><label class="fl">First name</label><input class="fi" id="r-fn" type="text" placeholder="Rajesh"></div>
+    <div class="fg"><label class="fl">Last name</label><input class="fi" id="r-ln" type="text" placeholder="Kumar"></div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">P.No / Employee ID</label><input class="fi" id="r-pno" type="text" placeholder="EMP001"></div>
+    <div class="fg"><label class="fl">Username</label><input class="fi" id="r-un" type="text" placeholder="rajesh.kumar"></div>
+  </div>
+  <div class="fr">
+    <div class="fg">
+      <label class="fl">Plant</label>
+      <select class="fsel" id="r-plant">
+        <option value="">Select plant…</option>
+        <option>BSP – Bhilai</option><option>DSP – Durgapur</option>
+        <option>RSP – Rourkela</option><option>ISP – IISCO</option>
+        <option>BSL – Bokaro</option><option>SSP – Salem</option>
+        <option>VISL – Bhadravathi</option><option>MEL – Chandrapur</option>
+        <option>Corporate – Ranchi</option>
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Department</label><input class="fi" id="r-dept" type="text" placeholder="Blast Furnace"></div>
+  </div>
+  <div class="fg"><label class="fl">Designation</label><input class="fi" id="r-desg" type="text" placeholder="Safety Officer"></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Mobile</label><input class="fi" id="r-mob" type="tel" placeholder="9876543210"></div>
+    <div class="fg"><label class="fl">Email</label><input class="fi" id="r-email" type="email" placeholder="rajesh@sail.in"></div>
+  </div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Password</label><input class="fi" id="r-pw" type="password" placeholder="Min 6 chars"></div>
+    <div class="fg"><label class="fl">Confirm password</label><input class="fi" id="r-pw2" type="password" placeholder="Repeat"></div>
+  </div>
+
+  <button class="btn-p" id="r-btn" onclick="doRegister()">Create Account</button>
+  <div class="auth-sw" style="margin-top:14px">Already have an account? <a onclick="showPg('pg-login')">Sign in →</a></div>
+</div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE: ADMIN PANEL
+════════════════════════════════════════ -->
+<div class="page" id="pg-admin">
+<div class="admin-wrap">
+
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-icon">🛡️</div>
+      <div><div class="tb-name">Safety Lens — Admin</div><div class="tb-role" id="tb-greet">Welcome</div></div>
+    </div>
+    <div class="admin-nav">
+      <button class="anb active" id="nav-users"    onclick="switchTab('users')">👥 Users</button>
+      <button class="anb"        id="nav-activity" onclick="switchTab('activity')">📊 Activity</button>
+      <button class="anb"        id="nav-settings" onclick="switchTab('settings')">⚙️ Settings</button>
+    </div>
+    <div class="tb-right">
+      <div class="avtr" id="top-avtr">AD</div>
+      <button class="logout-btn" onclick="doLogout()">🚪 Logout</button>
+    </div>
+  </div>
+
+  <div class="abody">
+
+    <!-- ── TAB: USERS ── -->
+    <div class="tp active" id="tp-users">
+      <div class="stats-row">
+        <div class="sc"><div class="sc-lbl">Total Users</div><div class="sc-val" id="st-total">—</div><div class="sc-sub">registered</div></div>
+        <div class="sc"><div class="sc-lbl">Admins</div><div class="sc-val" style="color:var(--accent)" id="st-admins">—</div><div class="sc-sub">full access</div></div>
+        <div class="sc"><div class="sc-lbl">Employees</div><div class="sc-val" id="st-emps">—</div><div class="sc-sub">normal users</div></div>
+        <div class="sc"><div class="sc-lbl">Active</div><div class="sc-val" style="color:var(--success)" id="st-active">—</div><div class="sc-sub">accounts</div></div>
+        <div class="sc"><div class="sc-lbl">Plants</div><div class="sc-val" id="st-plants">—</div><div class="sc-sub">represented</div></div>
+      </div>
+
+      <div class="tcard">
+        <div class="thead-row">
+          <div>
+            <div class="tc-title">👥 Registered Users</div>
+            <div style="margin-top:3px"><span class="sync-b sw" id="sync-lbl">⏳ loading…</span></div>
+          </div>
+          <div class="tactions">
+            <input class="srch" placeholder="🔍 Search…" oninput="filterUsers(this.value)" id="u-srch">
+            <button class="bsm b-ac" onclick="openAddModal()">+ Add User</button>
+            <button class="bsm b-gh" onclick="loadUsers(true)" title="Refresh">🔄</button>
+          </div>
+        </div>
+        <div class="filter-row">
+          <button class="fb active" onclick="setFilter('all',this)">All</button>
+          <button class="fb" onclick="setFilter('admin',this)">Admins</button>
+          <button class="fb" onclick="setFilter('employee',this)">Employees</button>
+          <button class="fb" onclick="setFilter('active',this)">Active</button>
+          <button class="fb" onclick="setFilter('inactive',this)">Inactive</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table id="u-table">
+            <thead><tr>
+              <th>User</th><th>P.No</th><th>Plant</th><th>Designation</th><th>Mobile</th><th>Role</th><th>Status</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="u-tbody"><tr><td colspan="8"><div class="es"><div class="es-ic">⏳</div><p>Loading users from Google Sheets…</p></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: ACTIVITY ── -->
+    <div class="tp" id="tp-activity">
+      <div class="st-title">📊 User Activity Summary</div>
+      <div class="tcard">
+        <div class="thead-row">
+          <div class="tc-title">All users — safety activity</div>
+          <div class="tactions">
+            <button class="bsm b-gh" onclick="loadActivity()">🔄 Refresh</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr><th>User</th><th>Plant</th><th>AI Scans</th><th>Near Misses</th><th>Entries</th><th>Critical</th><th>High</th><th>Resolved</th></tr></thead>
+            <tbody id="act-tbody"><tr><td colspan="8"><div class="es"><div class="es-ic">📋</div><p>Click Refresh to load activity</p></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB: SETTINGS ── -->
+    <div class="tp" id="tp-settings">
+      <div class="st-title">⚙️ System Settings</div>
+
+      <div class="tcard" style="margin-bottom:16px">
+        <div class="thead-row"><div class="tc-title">🔗 Google Sheets / Apps Script connection</div></div>
+        <div style="padding:18px 20px">
+          <div class="fg">
+            <label class="fl">Apps Script Web App URL</label>
+            <input class="fi" id="gas-url" type="text" placeholder="https://script.google.com/macros/s/…/exec">
+          </div>
+          <div class="fg">
+            <label class="fl">Google Sheet ID (from URL)</label>
+            <input class="fi" id="sheet-id" type="text" placeholder="1gkN0Kxy5tulHN9oCb…">
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="bsm b-ac" onclick="testConn()">🔌 Test Connection</button>
+            <button class="bsm b-gh" onclick="openSheet()">📄 Open Sheet</button>
+            <button class="bsm b-gh" onclick="saveSettings()">💾 Save URL</button>
+          </div>
+          <div class="alert" id="conn-res" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div class="tcard" style="margin-bottom:16px">
+        <div class="thead-row"><div class="tc-title">📋 Required Sheet structure — <em>Users</em> tab</div></div>
+        <div style="padding:14px 18px;font-size:12px;color:var(--muted);overflow-x:auto">
+          <p style="margin-bottom:10px">Create a sheet tab named <strong style="color:var(--text)">users</strong> with this header row in row 1:</p>
+          <code style="display:block;background:var(--s2);padding:10px 14px;border-radius:8px;font-size:12px;color:var(--text);line-height:1.8">
+uid | name | designation | plant | department | pno | mobile | email | isAdmin | status | username | passwordHash | createdAt | lastLogin
+          </code>
+          <p style="margin-top:10px">The Apps Script code below creates this sheet automatically on first run.</p>
+        </div>
+      </div>
+
+      <div class="tcard">
+        <div class="thead-row">
+          <div class="tc-title">📜 Complete Apps Script code (v8)</div>
+          <button class="bsm b-gh" onclick="copyCode()">📋 Copy all</button>
+        </div>
+        <div style="padding:14px 18px">
+          <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Copy this and paste into your Apps Script editor (replacing ALL existing code), then deploy as Web App → Anyone.</p>
+          <div class="codew" id="code-block">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- abody -->
+</div><!-- admin-wrap -->
+</div><!-- pg-admin -->
+
+
+<!-- ════════════ MODALS ════════════ -->
+
+<!-- ADD / EDIT USER -->
+<div class="mbg" id="m-user">
+<div class="mbox">
+  <div class="mhead">
+    <div class="mtitle" id="m-user-title">Add New User</div>
+    <button class="mclose" onclick="closeM('m-user')">✕</button>
+  </div>
+  <div class="mbody">
+    <div class="alert ae" id="mu-err"><span id="mu-err-msg"></span></div>
+    <input type="hidden" id="m-edit-un">
+
+    <div class="fr">
+      <div class="fg"><label class="fl">First name</label><input class="fi" id="m-fn" type="text" placeholder="Rajesh"></div>
+      <div class="fg"><label class="fl">Last name</label><input class="fi" id="m-ln" type="text" placeholder="Kumar"></div>
+    </div>
+    <div class="fr">
+      <div class="fg"><label class="fl">P.No / Employee ID</label><input class="fi" id="m-pno" type="text" placeholder="EMP001"></div>
+      <div class="fg"><label class="fl">Username</label><input class="fi" id="m-un" type="text" placeholder="rajesh.kumar"></div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label class="fl">Plant</label>
+        <select class="fsel" id="m-plant">
+          <option value="">Select plant…</option>
+          <option>BSP – Bhilai</option><option>DSP – Durgapur</option>
+          <option>RSP – Rourkela</option><option>ISP – IISCO</option>
+          <option>BSL – Bokaro</option><option>SSP – Salem</option>
+          <option>VISL – Bhadravathi</option><option>MEL – Chandrapur</option>
+          <option>Corporate – Ranchi</option>
+        </select>
+      </div>
+      <div class="fg"><label class="fl">Department</label><input class="fi" id="m-dept" type="text" placeholder="Blast Furnace"></div>
+    </div>
+    <div class="fg"><label class="fl">Designation</label><input class="fi" id="m-desg" type="text" placeholder="Safety Officer"></div>
+    <div class="fr">
+      <div class="fg"><label class="fl">Mobile</label><input class="fi" id="m-mob" type="tel" placeholder="9876543210"></div>
+      <div class="fg"><label class="fl">Email</label><input class="fi" id="m-email" type="email" placeholder=""></div>
+    </div>
+    <div class="fr">
+      <div class="fg">
+        <label class="fl">Role</label>
+        <select class="fsel" id="m-role">
+          <option value="FALSE">Employee</option>
+          <option value="TRUE">Admin</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="fl">Status</label>
+        <select class="fsel" id="m-status">
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg" id="m-pw-grp">
+      <label class="fl">Password <span style="font-weight:400;text-transform:none;letter-spacing:0">(leave blank to keep existing)</span></label>
+      <input class="fi" id="m-pw" type="password" placeholder="Min 6 characters">
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <button class="bsm b-gh" style="flex:1;justify-content:center;padding:10px" onclick="closeM('m-user')">Cancel</button>
+      <button class="bsm b-ac" style="flex:2;justify-content:center;padding:10px;font-size:13px" id="m-save-btn" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- CONFIRM -->
+<div class="mbg" id="m-confirm">
+<div class="mbox" style="max-width:360px">
+  <div class="mhead">
+    <div class="mtitle" id="conf-title">Confirm</div>
+    <button class="mclose" onclick="closeM('m-confirm')">✕</button>
+  </div>
+  <div class="mbody">
+    <p style="font-size:14px;margin-bottom:20px;line-height:1.6" id="conf-msg">Are you sure?</p>
+    <div style="display:flex;gap:8px">
+      <button class="bsm b-gh" style="flex:1;justify-content:center;padding:9px" onclick="closeM('m-confirm')">Cancel</button>
+      <button class="bsm b-dn" style="flex:1;justify-content:center;padding:9px" id="conf-ok">Proceed</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     JAVASCRIPT
+════════════════════════════════════════ -->
+<script>
+// ─────────────────────────────────────────
+//  CONFIG  (loaded from localStorage on init)
+// ─────────────────────────────────────────
+const CFG = {
+  GAS: 'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec',
+  SHEET_ID: '1gkN0Kxy5tulHN9oCbvliI5bota7S1UpK6gusftWUZgI'
+};
+
+// ─────────────────────────────────────────
+//  STATE
+// ─────────────────────────────────────────
+let SESSION  = null;   // logged-in user
+let ALL_USERS = [];    // cached from Sheets
+let U_FILTER = 'all';
+
+// ─────────────────────────────────────────
+//  UTILITIES
+// ─────────────────────────────────────────
+function ls(k,v){ if(v===undefined){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}else localStorage.setItem(k,JSON.stringify(v)) }
+
+// Identical algorithm to the Apps Script simpleHash — MUST match exactly
+function simpleHash(str){
+  let h=0;
+  for(let i=0;i<str.length;i++){ h=((h<<5)-h)+str.charCodeAt(i); h=h|0; }
+  if(h<0) return '-'+((-h)>>>0).toString(36);
+  return (h>>>0).toString(36);
+}
+
+function initials(n){ return (n||'?').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+
+function toast(msg,ms=2800){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),ms);
+}
+function loading(msg='Syncing…'){ document.getElementById('ltxt').textContent=msg; document.getElementById('lov').classList.add('show'); }
+function doneLoading(){ document.getElementById('lov').classList.remove('show'); }
+function showErr(id,msg){ const e=document.getElementById(id); e.className='alert ae show'; e.querySelector('span').textContent=msg; setTimeout(()=>e.classList.remove('show'),5000); }
+function showOk(id,msg){ const e=document.getElementById(id); e.className='alert as show'; e.querySelector('span').textContent=msg; setTimeout(()=>e.classList.remove('show'),5000); }
+function showPg(id){ document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(id).classList.add('active'); window.scrollTo(0,0); }
+function openM(id){ document.getElementById(id).classList.add('show'); }
+function closeM(id){ document.getElementById(id).classList.remove('show'); }
+
+// ─────────────────────────────────────────
+//  API CALLS
+// ─────────────────────────────────────────
+function gasUrl(){ return document.getElementById('gas-url')?.value || CFG.GAS; }
+
+async function gasGet(params){
+  try{
+    const r=await fetch(gasUrl()+'?'+new URLSearchParams(params).toString(),{mode:'cors'});
+    return await r.json();
+  }catch(e){ return {offline:true,error:e.message}; }
+}
+async function gasPost(body){
+  try{
+    const r=await fetch(gasUrl(),{method:'POST',mode:'cors',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    return await r.json();
+  }catch(e){ return {offline:true,error:e.message}; }
+}
+
+// ─────────────────────────────────────────
+//  LOCAL USER STORE (fallback)
+// ─────────────────────────────────────────
+function localUsers(){ return ls('sl_users')||[{uid:'SYSTEM_ADMIN',name:'System Admin',designation:'Administrator',plant:'Corporate – Ranchi',department:'Safety HQ',pno:'ADMIN001',mobile:'',email:'',isAdmin:true,status:'active',username:'admin',passwordHash:simpleHash('admin'),createdAt:new Date().toISOString(),lastLogin:''}]; }
+function saveLocal(u){ ls('sl_users',u); }
+
+// ─────────────────────────────────────────
+//  AUTH — LOGIN
+// ─────────────────────────────────────────
+function quickAdmin(){ document.getElementById('l-user').value='admin'; document.getElementById('l-pass').value='admin'; doLogin(); }
+
+async function doLogin(){
+  const uname=document.getElementById('l-user').value.trim();
+  const pass =document.getElementById('l-pass').value;
+  if(!uname||!pass){ showErr('l-err','Please fill all fields'); return; }
+
+  const btn=document.getElementById('l-btn');
+  btn.innerHTML='<span class="spin"></span> Signing in…'; btn.disabled=true;
+
+  let user=null;
+
+  // Try Sheets
+  const resp=await gasGet({action:'login',username:uname,passwordHash:simpleHash(pass)});
+  if(resp.success && resp.user){
+    user=resp.user;
+    // Normalise isAdmin
+    user.isAdmin=(String(user.isAdmin).toUpperCase()==='TRUE'||user.isAdmin===true);
+    // Cache
+    const loc=localUsers();
+    const idx=loc.findIndex(u=>u.username===user.username);
+    if(idx>=0) loc[idx]=user; else loc.push(user);
+    saveLocal(loc);
+  } else {
+    // Fallback to local
+    const loc=localUsers();
+    const found=loc.find(u=>(u.username===uname||u.pno===uname)&&u.passwordHash===simpleHash(pass));
+    if(found) user={...found, isAdmin:(String(found.isAdmin).toUpperCase()==='TRUE'||found.isAdmin===true)};
+  }
+
+  btn.innerHTML='Sign In'; btn.disabled=false;
+
+  if(!user){ showErr('l-err','Invalid username or password'); return; }
+  if(user.status==='inactive'){ showErr('l-err','Account inactive. Contact admin.'); return; }
+
+  SESSION=user;
+  ls('sl_session',user);
+
+  if(user.isAdmin){ enterAdmin(); }
+  else { toast('Welcome, '+user.name.split(' ')[0]+'! 👋'); setTimeout(()=>alert('Employee logged in.\n\nConnect this session to your Flutter home_screen.dart using the same GAS endpoint.'),600); }
+}
+
+function enterAdmin(){
+  showPg('pg-admin');
+  document.getElementById('tb-greet').textContent='Welcome, '+(SESSION.name||'Admin');
+  document.getElementById('top-avtr').textContent=initials(SESSION.name||'Admin');
+  document.getElementById('gas-url').value=CFG.GAS;
+  document.getElementById('sheet-id').value=CFG.SHEET_ID;
+  loadUsers();
+  loadGasCode();
+}
+
+function doLogout(){ SESSION=null; ls('sl_session',null); showPg('pg-login'); toast('Signed out'); }
+
+// ─────────────────────────────────────────
+//  AUTH — REGISTER
+// ─────────────────────────────────────────
+async function doRegister(){
+  const fn   =document.getElementById('r-fn').value.trim();
+  const ln   =document.getElementById('r-ln').value.trim();
+  const pno  =document.getElementById('r-pno').value.trim();
+  const uname=document.getElementById('r-un').value.trim();
+  const plant=document.getElementById('r-plant').value;
+  const dept =document.getElementById('r-dept').value.trim();
+  const desg =document.getElementById('r-desg').value.trim();
+  const mob  =document.getElementById('r-mob').value.trim();
+  const email=document.getElementById('r-email').value.trim();
+  const pw   =document.getElementById('r-pw').value;
+  const pw2  =document.getElementById('r-pw2').value;
+
+  if(!fn||!ln||!pno||!uname||!plant||!dept||!desg||!mob||!pw){ showErr('r-err','Please fill all required fields'); return; }
+  if(pw!==pw2){ showErr('r-err','Passwords do not match'); return; }
+  if(pw.length<6){ showErr('r-err','Password must be at least 6 characters'); return; }
+
+  const loc=localUsers();
+  if(loc.find(u=>u.username===uname||u.pno===pno)){ showErr('r-err','Username or P.No already exists'); return; }
+
+  const btn=document.getElementById('r-btn');
+  btn.innerHTML='<span class="spin"></span> Creating…'; btn.disabled=true;
+
+  const payload={
+    action:'register',
+    name:`${fn} ${ln}`, designation:desg,
+    plant, department:dept,
+    pno, mobile:mob, email:uname,
+    username:uname, passwordHash:simpleHash(pw)
+  };
+
+  const resp=await gasPost(payload);
+
+  // Always save locally too
+  const newUser={
+    uid:resp.uid||('LOCAL_'+Date.now()),
+    name:`${fn} ${ln}`, designation:desg,
+    plant, department:dept, pno, mobile:mob, email,
+    isAdmin:resp.isAdmin||false, status:'active',
+    username:uname, passwordHash:simpleHash(pw),
+    createdAt:new Date().toISOString(), lastLogin:''
+  };
+  loc.push(newUser); saveLocal(loc);
+
+  btn.innerHTML='Create Account'; btn.disabled=false;
+
+  const note=resp.offline?' (saved locally — will sync when online)':' and synced to Google Sheets';
+  const adminNote=resp.isAdmin?' You are the first user — Admin access granted.':'';
+  showOk('r-ok','Account created'+note+'!'+adminNote+' Redirecting to login…');
+
+  // Clear
+  ['r-fn','r-ln','r-pno','r-un','r-dept','r-desg','r-mob','r-email','r-pw','r-pw2'].forEach(id=>{ document.getElementById(id).value=''; });
+  document.getElementById('r-plant').selectedIndex=0;
+  setTimeout(()=>showPg('pg-login'),2200);
+}
+
+// ─────────────────────────────────────────
+//  LOAD USERS
+// ─────────────────────────────────────────
+async function loadUsers(force=false){
+  document.getElementById('sync-lbl').innerHTML='⏳ loading…';
+  document.getElementById('sync-lbl').className='sync-b sw';
+  if(force) loading('Fetching users from Google Sheets…');
+
+  const resp=await gasGet({action:'listUsers'});
+  doneLoading();
+
+  if(resp.success && resp.users && resp.users.length){
+    ALL_USERS=resp.users.map(u=>({...u,isAdmin:(String(u.isAdmin).toUpperCase()==='TRUE'||u.isAdmin===true)}));
+    saveLocal(ALL_USERS);
+    document.getElementById('sync-lbl').innerHTML='🟢 Live — Google Sheets';
+    document.getElementById('sync-lbl').className='sync-b sl';
+  } else {
+    ALL_USERS=localUsers().map(u=>({...u,isAdmin:(String(u.isAdmin).toUpperCase()==='TRUE'||u.isAdmin===true)}));
+    document.getElementById('sync-lbl').innerHTML='🟡 Offline — local cache';
+    document.getElementById('sync-lbl').className='sync-b sw';
+    if(force) toast('⚠️ Sheets unavailable — showing local cache');
+  }
+
+  renderTable(ALL_USERS);
+  updateStats(ALL_USERS);
+}
+
+function updateStats(users){
+  const admins =users.filter(u=>u.isAdmin).length;
+  const actives=users.filter(u=>u.status==='active').length;
+  const plants =[...new Set(users.map(u=>u.plant).filter(Boolean))].length;
+  document.getElementById('st-total').textContent=users.length;
+  document.getElementById('st-admins').textContent=admins;
+  document.getElementById('st-emps').textContent=users.length-admins;
+  document.getElementById('st-active').textContent=actives;
+  document.getElementById('st-plants').textContent=plants;
+}
+
+// ─────────────────────────────────────────
+//  RENDER TABLE
+// ─────────────────────────────────────────
+function renderTable(users){
+  let list=[...users];
+  if(U_FILTER==='admin')    list=list.filter(u=>u.isAdmin);
+  else if(U_FILTER==='employee') list=list.filter(u=>!u.isAdmin);
+  else if(U_FILTER==='active')   list=list.filter(u=>u.status==='active');
+  else if(U_FILTER==='inactive') list=list.filter(u=>u.status==='inactive');
+
+  const q=(document.getElementById('u-srch').value||'').toLowerCase();
+  if(q) list=list.filter(u=>((u.name||'')+(u.username||'')+(u.pno||'')+(u.plant||'')).toLowerCase().includes(q));
+
+  const tbody=document.getElementById('u-tbody');
+  if(!list.length){ tbody.innerHTML=`<tr><td colspan="8"><div class="es"><div class="es-ic">🔍</div><p>No users found</p></div></td></tr>`; return; }
+
+  const isMe=u=>SESSION&&u.username===SESSION.username;
+
+  tbody.innerHTML=list.map(u=>{
+    const pcode=u.plant?(u.plant.split('–')[0]||u.plant).trim():'—';
+    const adminBadge=u.isAdmin?`<span class="rb r-admin">⚡ Admin</span>`:`<span class="rb r-emp">👤 Employee</span>`;
+    const statusHtml=u.status==='active'?`<span class="s-on">● Active</span>`:`<span class="s-off">● Inactive</span>`;
+    const meBadge=isMe(u)?` <span style="font-size:9px;color:var(--accent)">(you)</span>`:'';
+    const uStr=JSON.stringify(u).replace(/'/g,"&#39;").replace(/"/g,"&quot;");
+    return `<tr>
+      <td><div class="uc">
+        <div class="ta">${initials(u.name||u.username)}</div>
+        <div><div class="un">${u.name||u.username}${meBadge}</div><div class="um">@${u.username}</div></div>
+      </div></td>
+      <td>${u.pno||'—'}</td>
+      <td><span class="pt">${pcode}</span></td>
+      <td>${u.designation||'—'}</td>
+      <td>${u.mobile||'—'}</td>
+      <td>${adminBadge}</td>
+      <td>${statusHtml}</td>
+      <td><div class="ar">
+        <button class="bsm b-gh" onclick='editUser("${u.username}")' title="Edit">✏️</button>
+        ${u.isAdmin
+          ?`<button class="bsm b-gh" onclick="changeRole('${u.username}',false)" ${isMe(u)?'disabled':''} title="Demote to Employee" style="font-size:10px">⬇ Emp</button>`
+          :`<button class="bsm b-pr" onclick="changeRole('${u.username}',true)"  title="Promote to Admin"    style="font-size:10px">⬆ Admin</button>`}
+        <button class="bsm ${u.status==='active'?'b-dn':'b-gn'}" onclick="toggleStatus('${u.username}')" ${isMe(u)?'disabled':''} title="${u.status==='active'?'Deactivate':'Activate'}">${u.status==='active'?'🔒':'🔓'}</button>
+        <button class="bsm b-dn" onclick="deleteUser('${u.username}')" ${isMe(u)?'disabled':''} title="Delete">🗑️</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+function setFilter(f,btn){ U_FILTER=f; document.querySelectorAll('.fb').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); renderTable(ALL_USERS); }
+function filterUsers(){ renderTable(ALL_USERS); }
+
+// ─────────────────────────────────────────
+//  ADD / EDIT USER
+// ─────────────────────────────────────────
+function openAddModal(){
+  document.getElementById('m-user-title').textContent='Add New User';
+  document.getElementById('m-save-btn').textContent='Add User';
+  document.getElementById('m-edit-un').value='';
+  document.getElementById('m-pw-grp').querySelector('label .fl') // keep visible
+  document.getElementById('m-pw').placeholder='Min 6 characters (required)';
+  ['m-fn','m-ln','m-pno','m-un','m-dept','m-desg','m-mob','m-email','m-pw'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('m-plant').selectedIndex=0;
+  document.getElementById('m-role').value='FALSE';
+  document.getElementById('m-status').value='active';
+  openM('m-user');
+}
+
+function editUser(username){
+  const u=ALL_USERS.find(u=>u.username===username);
+  if(!u) return;
+  document.getElementById('m-user-title').textContent='Edit User';
+  document.getElementById('m-save-btn').textContent='Save Changes';
+  document.getElementById('m-edit-un').value=username;
+  document.getElementById('m-pw').placeholder='Leave blank to keep existing password';
+
+  const np=(u.name||'').split(' ');
+  document.getElementById('m-fn').value=np[0]||'';
+  document.getElementById('m-ln').value=np.slice(1).join(' ')||'';
+  document.getElementById('m-pno').value=u.pno||'';
+  document.getElementById('m-un').value=u.username||'';
+  document.getElementById('m-dept').value=u.department||'';
+  document.getElementById('m-desg').value=u.designation||'';
+  document.getElementById('m-mob').value=u.mobile||'';
+  document.getElementById('m-email').value=u.email||'';
+  document.getElementById('m-role').value=u.isAdmin?'TRUE':'FALSE';
+  document.getElementById('m-status').value=u.status||'active';
+  // Plant
+  const ps=document.getElementById('m-plant');
+  for(let i=0;i<ps.options.length;i++){ if(ps.options[i].text.trim()===u.plant||ps.options[i].value===u.plant){ps.selectedIndex=i;break;} }
+  openM('m-user');
+}
+
+async function saveUser(){
+  const fn   =document.getElementById('m-fn').value.trim();
+  const ln   =document.getElementById('m-ln').value.trim();
+  const pno  =document.getElementById('m-pno').value.trim();
+  const uname=document.getElementById('m-un').value.trim();
+  const plant=document.getElementById('m-plant').value;
+  const dept =document.getElementById('m-dept').value.trim();
+  const desg =document.getElementById('m-desg').value.trim();
+  const mob  =document.getElementById('m-mob').value.trim();
+  const email=document.getElementById('m-email').value.trim();
+  const role =document.getElementById('m-role').value;
+  const stat =document.getElementById('m-status').value;
+  const pw   =document.getElementById('m-pw').value;
+  const editUn=document.getElementById('m-edit-un').value;
+
+  if(!fn||!ln||!pno||!uname||!plant||!dept||!desg){ showErr('mu-err','Fill all required fields'); return; }
+  if(!editUn && (!pw||pw.length<6)){ showErr('mu-err','Password required (min 6 chars)'); return; }
+
+  const btn=document.getElementById('m-save-btn');
+  btn.innerHTML='<span class="spin"></span> Saving…'; btn.disabled=true;
+
+  const payload={
+    name:`${fn} ${ln}`, designation:desg, plant, department:dept,
+    pno, mobile:mob, email, isAdmin:role, status:stat, username:uname
+  };
+  if(pw) payload.passwordHash=simpleHash(pw);
+
+  const loc=localUsers();
+
+  if(editUn){
+    // UPDATE
+    payload.action='updateUser';
+    payload.username=editUn;
+    // local
+    const idx=loc.findIndex(u=>u.username===editUn);
+    if(idx>=0){ Object.assign(loc[idx],{name:payload.name,designation:desg,plant,department:dept,pno,mobile:mob,email,isAdmin:role==='TRUE',status:stat}); if(pw) loc[idx].passwordHash=simpleHash(pw); }
+    saveLocal(loc); ALL_USERS=loc;
+    const resp=await gasPost(payload);
+    toast(resp.offline?'⚠️ Saved locally':'✅ User updated in Sheets');
+  } else {
+    // ADD
+    if(loc.find(u=>u.username===uname||u.pno===pno)){ showErr('mu-err','Username or P.No already exists'); btn.textContent='Add User'; btn.disabled=false; return; }
+    payload.action='addUser';
+    const resp=await gasPost(payload);
+    const newU={...payload,uid:resp.uid||('L'+Date.now()),isAdmin:role==='TRUE',passwordHash:simpleHash(pw),createdAt:new Date().toISOString(),lastLogin:''};
+    loc.push(newU); saveLocal(loc); ALL_USERS=loc;
+    toast(resp.offline?'⚠️ Saved locally':'✅ User added to Sheets');
+  }
+
+  renderTable(ALL_USERS); updateStats(ALL_USERS);
+  btn.textContent=editUn?'Save Changes':'Add User'; btn.disabled=false;
+  closeM('m-user');
+}
+
+// ─────────────────────────────────────────
+//  ROLE / STATUS / DELETE
+// ─────────────────────────────────────────
+async function changeRole(username, makeAdmin){
+  const label=makeAdmin?'promote to Admin':'demote to Employee';
+  confirm_(`Change role — ${label} for @${username}?`, async()=>{
+    const loc=localUsers();
+    const u=loc.find(u=>u.username===username);
+    if(!u) return;
+    u.isAdmin=makeAdmin;
+    saveLocal(loc); ALL_USERS=loc;
+    renderTable(loc); updateStats(loc);
+    const resp=await gasPost({action:'updateRole',username,isAdmin:makeAdmin?'TRUE':'FALSE'});
+    toast(resp.offline?`⚠️ Role updated locally`:`✅ @${username} is now ${makeAdmin?'Admin':'Employee'}`);
+  });
+}
+
+async function toggleStatus(username){
+  const u=ALL_USERS.find(u=>u.username===username);
+  if(!u) return;
+  const ns=u.status==='active'?'inactive':'active';
+  confirm_(`${ns==='inactive'?'Deactivate':'Activate'} account @${username}?`, async()=>{
+    const loc=localUsers();
+    const lu=loc.find(u=>u.username===username);
+    if(lu) lu.status=ns;
+    saveLocal(loc); ALL_USERS=loc;
+    renderTable(loc);
+    const resp=await gasPost({action:'updateStatus',username,status:ns});
+    toast(resp.offline?`⚠️ Status updated locally`:`✅ @${username} ${ns}`);
+  });
+}
+
+async function deleteUser(username){
+  if(username==='admin'){ toast('⚠️ Cannot delete system admin'); return; }
+  confirm_(`Permanently delete user @${username}? This cannot be undone.`, async()=>{
+    const loc=localUsers().filter(u=>u.username!==username);
+    saveLocal(loc); ALL_USERS=loc;
+    renderTable(loc); updateStats(loc);
+    const resp=await gasPost({action:'deleteUser',username});
+    toast(resp.offline?'⚠️ Deleted locally':'✅ User deleted from Sheets');
+  });
+}
+
+// ─────────────────────────────────────────
+//  ACTIVITY TAB
+// ─────────────────────────────────────────
+async function loadActivity(){
+  const tbody=document.getElementById('act-tbody');
+  tbody.innerHTML=`<tr><td colspan="8"><div class="es"><div class="es-ic">⏳</div><p>Loading incidents from Sheets…</p></div></td></tr>`;
+
+  // Load incidents to compute real per-user stats
+  const [usersResp, incResp]=await Promise.all([
+    gasGet({action:'listUsers'}),
+    gasGet({action:'listIncidents'})
+  ]);
+
+  const users=usersResp.success?usersResp.users:localUsers();
+  const incidents=(incResp.ok?incResp.items:null)||[];
+
+  if(!users.length){ tbody.innerHTML=`<tr><td colspan="8"><div class="es"><div class="es-ic">📋</div><p>No users found</p></div></td></tr>`; return; }
+
+  tbody.innerHTML=users.map(u=>{
+    const uInc=incidents.filter(i=>(i.reportedBy||'').toLowerCase()===((u.name||'').toLowerCase())||(i.reportedByPno||'')===(u.pno||''));
+    const scans   =uInc.filter(i=>i.type==='AI Scan'||i.type==='scan').length;
+    const nm      =uInc.filter(i=>i.type==='Near Miss'||i.type==='nm').length;
+    const crit    =uInc.filter(i=>(i.severity||'').toUpperCase()==='CRITICAL').length;
+    const high    =uInc.filter(i=>(i.severity||'').toUpperCase()==='HIGH').length;
+    const resolved=uInc.filter(i=>(i.status||'').toLowerCase()==='closed'||(i.status||'').toLowerCase()==='resolved').length;
+    const total   =uInc.length;
+    const pcode   =(u.plant||'—').split('–')[0].trim();
+    return `<tr>
+      <td><div class="uc"><div class="ta">${initials(u.name||u.username)}</div><div><div class="un">${u.name||u.username}</div><div class="um">@${u.username}</div></div></div></td>
+      <td><span class="pt">${pcode}</span></td>
+      <td style="color:#7c3aed;font-weight:700;font-family:'Space Grotesk',sans-serif">${scans}</td>
+      <td style="color:var(--warn);font-weight:700;font-family:'Space Grotesk',sans-serif">${nm}</td>
+      <td style="font-weight:700;font-family:'Space Grotesk',sans-serif">${total}</td>
+      <td style="color:var(--danger);font-weight:700;font-family:'Space Grotesk',sans-serif">${crit}</td>
+      <td style="color:var(--high);font-weight:700;font-family:'Space Grotesk',sans-serif">${high}</td>
+      <td style="color:var(--success);font-weight:700;font-family:'Space Grotesk',sans-serif">${resolved}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────
+//  SETTINGS
+// ─────────────────────────────────────────
+async function testConn(){
+  loading('Testing connection…');
+  const r=await gasGet({action:'ping'});
+  doneLoading();
+  const el=document.getElementById('conn-res');
+  el.classList.add('show');
+  if(r.offline||r.error){
+    el.className='alert ae show'; el.textContent='⚠️ Cannot reach Apps Script. Check URL and ensure deployed as Web App → Anyone.';
+  } else {
+    el.className='alert as show'; el.textContent='✅ Connected! Server time: '+r.time;
+  }
+}
+function openSheet(){ window.open('https://docs.google.com/spreadsheets/d/'+document.getElementById('sheet-id').value,'_blank'); }
+function saveSettings(){ CFG.GAS=document.getElementById('gas-url').value; CFG.SHEET_ID=document.getElementById('sheet-id').value; ls('sl_cfg',CFG); toast('✅ Settings saved'); }
+
+function loadGasCode(){
+  fetch('/mnt/user-data/outputs/sail_safety_lens_appscript.js')
+    .then(r=>r.text()).then(t=>{ document.getElementById('code-block').textContent=t; })
+    .catch(()=>{ document.getElementById('code-block').textContent='// Run from the downloaded .js file'; });
+}
+
+function copyCode(){
+  const txt=document.getElementById('code-block').textContent;
+  navigator.clipboard.writeText(txt).then(()=>toast('✅ Apps Script code copied to clipboard!'));
+}
+
+// ─────────────────────────────────────────
+//  CONFIRM HELPER
+// ─────────────────────────────────────────
+let _cb=null;
+function confirm_(msg,cb){
+  document.getElementById('conf-msg').textContent=msg;
+  _cb=cb;
+  document.getElementById('conf-ok').onclick=()=>{ closeM('m-confirm'); if(_cb) _cb(); };
+  openM('m-confirm');
+}
+
+// ─────────────────────────────────────────
+//  TAB SWITCH
+// ─────────────────────────────────────────
+function switchTab(tab){
+  document.querySelectorAll('.tp').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.anb').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tp-'+tab).classList.add('active');
+  document.getElementById('nav-'+tab).classList.add('active');
+  if(tab==='activity') loadActivity();
+}
+
+// ─────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────
+window.addEventListener('DOMContentLoaded',()=>{
+  // Load saved config
+  const sc=ls('sl_cfg'); if(sc&&sc.GAS) Object.assign(CFG,sc);
+
+  // Restore session
+  const s=ls('sl_session');
+  if(s){
+    SESSION=s;
+    SESSION.isAdmin=(String(s.isAdmin).toUpperCase()==='TRUE'||s.isAdmin===true);
+    if(SESSION.isAdmin) enterAdmin();
+  }
+
+  // Enter key
+  ['l-user','l-pass'].forEach(id=>{
+    document.getElementById(id)?.addEventListener('keydown',e=>{ if(e.key==='Enter') doLogin(); });
+  });
+});
+</script>
+</body>
+</html>
