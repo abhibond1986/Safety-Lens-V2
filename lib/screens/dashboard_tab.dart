@@ -164,8 +164,7 @@ class _DashboardTabState extends State<DashboardTab> {
                           onPressed: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => AdminScreen(
-                                toggleTheme: widget.toggleTheme))),
+                              builder: (_) => const AdminScreen())),
                           icon: Icon(
                             Icons.admin_panel_settings_outlined,
                             color: AppColors.amber, size: 22)),
