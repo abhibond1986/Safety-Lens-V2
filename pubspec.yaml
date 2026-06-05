@@ -9,24 +9,39 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:        # ← moved here, same level as flutter
+  flutter_localizations:
     sdk: flutter
+
+  # UI
   cupertino_icons: ^1.0.6
   google_fonts: ^6.1.0
+
+  # Charts
   fl_chart: ^0.66.0
+
+  # Storage & Prefs
   shared_preferences: ^2.2.2
+  path_provider: ^2.1.2
+
+  # Localisation
   intl: ^0.18.1
+
+  # Media & Input
   image_picker: ^1.0.7
   speech_to_text: ^6.6.0
   permission_handler: ^11.3.0
+  file_picker: ^6.1.1
+
+  # Sharing & Networking
   share_plus: ^9.0.0
-  path_provider: ^2.1.2
   http: ^1.2.0
+
   # PDF export
   pdf: ^3.10.7
   printing: ^5.12.0
-  # File picker for knowledge base PDF/Word uploads
-  file_picker: ^6.1.1
+
+  # ── Admin Panel — open in browser ──
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
@@ -35,5 +50,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
   assets:
     - assets/images/
