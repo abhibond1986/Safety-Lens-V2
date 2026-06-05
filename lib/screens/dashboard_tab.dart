@@ -499,7 +499,7 @@ class _DashboardTabState extends State<DashboardTab> {
                 filter: (i) => (i['severity']?.toString().toUpperCase() ?? '') == 'CRITICAL',
                 sl: sl)),
             Divider(height: 1, color: sl.border),
-            _severityRow('🟠  High',     _high,     AppColors.high,   max, sl,
+            _severityRow('🟠  High',     _high,     AppColors.red, max, sl,
               onTap: () => _showCasesSheet(
                 title: 'High severity cases',
                 filter: (i) => (i['severity']?.toString().toUpperCase() ?? '') == 'HIGH',
@@ -939,7 +939,7 @@ class _CaseCard extends StatelessWidget {
   Color _sevColor(String s) {
     switch (s.toUpperCase()) {
       case 'CRITICAL': return AppColors.crit;
-      case 'HIGH':     return AppColors.high;
+      case 'HIGH':     return AppColors.red;
       case 'MEDIUM':
       case 'MODERATE': return AppColors.amber;
       default:         return AppColors.green;
@@ -1067,7 +1067,7 @@ class _PlantSheet extends StatelessWidget {
             child: Row(children: [
               _statPill('Critical', critical, AppColors.crit),
               const SizedBox(width: 6),
-              _statPill('High',     high,     AppColors.high),
+              _statPill('High',     high,     AppColors.red),
               const SizedBox(width: 6),
               _statPill('Open',     open,     AppColors.amber),
               const SizedBox(width: 6),
@@ -1218,7 +1218,7 @@ class _AllPlantsSheet extends StatelessWidget {
                       Text(name.split(' ').take(3).join(' '),
                         style: TextStyle(color: sl.text4, fontSize: 9),
                         maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ]));
+                    ]))));
             })),
         ])));
   }
