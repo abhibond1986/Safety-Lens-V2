@@ -37,21 +37,17 @@ class PdfExport {
     final dateStr = DateFormat('dd MMM yyyy, HH:mm').format(
       DateTime.parse(incident['date'] ?? DateTime.now().toIso8601String()));
 
-    // Decode image
     Uint8List? imgBytes = imageBytes;
     if (imgBytes == null && incident['imageBase64'] != null) {
       try { imgBytes = base64Decode(incident['imageBase64'].toString()); } catch (_) {}
     }
 
-    // Parse hazards
     List<Map<String, dynamic>> hazards = _parseHazards(incident['hazards']);
-
-    // Extract clean summary (first sentence before === or newline block)
     String summary = _cleanSummary(incident);
 
-    final severity  = incident['severity']?.toString() ?? 'MEDIUM';
-    final isAiScan  = incident['type']?.toString() == 'AI_SCAN';
-    final riskScore = incident['riskScore'] ?? 0;
+    final severity   = incident['severity']?.toString() ?? 'MEDIUM';
+    final isAiScan   = incident['type']?.toString() == 'AI_SCAN';
+    final riskScore  = incident['riskScore'] ?? 0;
     final confidence = incident['confidence'] ?? 0;
 
     pdf.addPage(pw.MultiPage(
@@ -61,18 +57,12 @@ class PdfExport {
       footer: (ctx) => _pageFooter(ctx.pageNumber, ctx.pagesCount, reporterName, dateStr),
       build: (context) {
         final w = <pw.Widget>[];
-
-        // 1 — Banner
         w.add(_banner(incident, severity, isAiScan, riskScore, confidence));
         w.add(pw.SizedBox(height: 12));
-
-        // 2 — Incident details grid
         w.add(_sectionTitle('INCIDENT DETAILS'));
         w.add(pw.SizedBox(height: 5));
         w.add(_detailsGrid(incident, dateStr, reporterName, reporterPno));
         w.add(pw.SizedBox(height: 14));
-
-        // 3 — Photo + Summary side by side
         if (imgBytes != null) {
           w.add(_sectionTitle('EVIDENCE PHOTOGRAPH  &  INCIDENT SUMMARY'));
           w.add(pw.SizedBox(height: 5));
@@ -84,8 +74,6 @@ class PdfExport {
           w.add(_summaryBox(summary));
           w.add(pw.SizedBox(height: 14));
         }
-
-        // 4 — Hazards table
         if (hazards.isNotEmpty) {
           w.add(_sectionTitle('HAZARDS IDENTIFIED  —  ${hazards.length} TOTAL'));
           w.add(pw.SizedBox(height: 5));
@@ -94,14 +82,9 @@ class PdfExport {
           w.add(_riskScoreBar(riskScore, severity));
           w.add(pw.SizedBox(height: 14));
         }
-
-        // 6 — Root cause + immediate action (2 columns)
         w.add(_twoCol(incident));
         w.add(pw.SizedBox(height: 14));
-
-        // 7 — Sign-off
         w.add(_signOff(reporterName, reporterPno));
-
         return w;
       },
     ));
@@ -122,7 +105,8 @@ class PdfExport {
             pw.Container(width: 18, height: 18, color: _sailBlue,
               alignment: pw.Alignment.center,
               child: pw.Text('SAIL', style: pw.TextStyle(
-                color: PdfColors.white, fontSize: 5, fontWeight: pw.FontWeight.bold))),
+                color: PdfColors.white, fontSize: 5,
+                fontWeight: pw.FontWeight.bold))),
             pw.SizedBox(width: 5),
             pw.Text('SAFETY LENS', style: pw.TextStyle(
               color: _sailBlue, fontSize: 8, fontWeight: pw.FontWeight.bold)),
@@ -159,7 +143,6 @@ class PdfExport {
     final sc = _getSevCol(sev);
     final sb = _getSevBg(sev);
     return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-      // Blue top bar
       pw.Container(
         padding: const pw.EdgeInsets.fromLTRB(12, 9, 12, 9),
         color: _sailBlue,
@@ -178,23 +161,26 @@ class PdfExport {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text('STEEL AUTHORITY OF INDIA LIMITED', style: pw.TextStyle(
-                color: PdfColors.white, fontSize: 11, fontWeight: pw.FontWeight.bold)),
-              pw.Text('Safety Lens  ·  Workplace Hazard Report', style: pw.TextStyle(
-                color: PdfColor.fromHex('#BBDEFB'), fontSize: 8)),
+                color: PdfColors.white, fontSize: 11,
+                fontWeight: pw.FontWeight.bold)),
+              pw.Text('Safety Lens  ·  Workplace Hazard Report',
+                style: pw.TextStyle(
+                  color: PdfColor.fromHex('#BBDEFB'), fontSize: 8)),
             ])),
           pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
             pw.Container(
               padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               color: sc,
               child: pw.Text(sev, style: pw.TextStyle(
-                color: PdfColors.white, fontSize: 11, fontWeight: pw.FontWeight.bold))),
+                color: PdfColors.white, fontSize: 11,
+                fontWeight: pw.FontWeight.bold))),
             pw.SizedBox(height: 3),
             pw.Text('IS 14489:1998  |  Factories Act 1948',
-              style: pw.TextStyle(color: PdfColor.fromHex('#90CAF9'), fontSize: 6)),
+              style: pw.TextStyle(
+                color: PdfColor.fromHex('#90CAF9'), fontSize: 6)),
           ]),
         ]),
       ),
-      // Title bar
       pw.Container(
         padding: const pw.EdgeInsets.fromLTRB(12, 7, 12, 7),
         color: sb,
@@ -217,7 +203,8 @@ class PdfExport {
             decoration: pw.BoxDecoration(
               border: pw.Border.all(color: sc, width: 1)),
             child: pw.Text(isAi ? 'AI HAZARD SCAN' : 'NEAR MISS REPORT',
-              style: pw.TextStyle(color: sc, fontSize: 8, fontWeight: pw.FontWeight.bold))),
+              style: pw.TextStyle(color: sc, fontSize: 8,
+                fontWeight: pw.FontWeight.bold))),
         ]),
       ),
     ]);
@@ -235,7 +222,7 @@ class PdfExport {
         color: _sailBlue, letterSpacing: 0.4)),
     ]));
 
-  // ─── DETAILS GRID ─────────────────────────────────────────────────────────
+  // ─── DETAILS GRID ────────────────────────────────────────────────────────
   static pw.Widget _detailsGrid(Map<String, dynamic> inc, String date,
       String reporter, String pno) {
     pw.Widget cell(String lbl, String val, {bool hi = false}) =>
@@ -247,10 +234,12 @@ class PdfExport {
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text(lbl.toUpperCase(), style: pw.TextStyle(
-              fontSize: 6.5, color: _textLight, fontWeight: pw.FontWeight.bold)),
+              fontSize: 6.5, color: _textLight,
+              fontWeight: pw.FontWeight.bold)),
             pw.SizedBox(height: 2),
             pw.Text(val.isEmpty ? '—' : val, style: pw.TextStyle(
-              fontSize: 9, color: _textDark, fontWeight: pw.FontWeight.bold)),
+              fontSize: 9, color: _textDark,
+              fontWeight: pw.FontWeight.bold)),
           ]));
 
     return pw.Table(
@@ -274,17 +263,19 @@ class PdfExport {
           cell('Status', inc['status']?.toString() ?? 'OPEN', hi: true),
         ]),
         pw.TableRow(children: [
-          cell('Report Type', inc['type'] == 'AI_SCAN' ? 'AI Image Scan' : 'Near Miss'),
+          cell('Report Type',
+            inc['type'] == 'AI_SCAN' ? 'AI Image Scan' : 'Near Miss'),
           cell('WSA Category', inc['wsaCategory']?.toString() ?? ''),
           cell('Reference No.', (inc['id']?.toString() ?? 'N/A').length > 8
-              ? inc['id'].toString().substring(0, 8) : inc['id']?.toString() ?? 'N/A'),
+              ? inc['id'].toString().substring(0, 8)
+              : inc['id']?.toString() ?? 'N/A'),
           cell('People Involved', inc['people']?.toString() ?? '0'),
         ]),
       ],
     );
   }
 
-  // ─── PHOTO + SUMMARY SIDE BY SIDE ───────────────────────────────────────────
+  // ─── PHOTO + SUMMARY SIDE BY SIDE ────────────────────────────────────────
   static pw.Widget _photoAndSummary(Uint8List img, int count, String summary,
       String severity, dynamic score, dynamic conf) {
     final sc = _getSevCol(severity);
@@ -297,13 +288,13 @@ class PdfExport {
       child: pw.Row(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          // LEFT: photo
           pw.Expanded(
             flex: 5,
             child: pw.Column(children: [
               pw.Container(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Image(pw.MemoryImage(img), height: 185, fit: pw.BoxFit.contain)),
+                child: pw.Image(pw.MemoryImage(img),
+                  height: 185, fit: pw.BoxFit.contain)),
               pw.Container(
                 padding: const pw.EdgeInsets.fromLTRB(6, 3, 6, 4),
                 color: PdfColor.fromHex('#F5F5F5'),
@@ -312,9 +303,7 @@ class PdfExport {
                   style: pw.TextStyle(fontSize: 7, color: _textMed,
                     fontStyle: pw.FontStyle.italic))),
             ])),
-          // Divider
           pw.Container(width: 0.5, color: _divider),
-          // RIGHT: summary + risk score
           pw.Expanded(
             flex: 4,
             child: pw.Padding(
@@ -322,24 +311,23 @@ class PdfExport {
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
-                  // Risk badge
                   pw.Container(
-                    padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
                     color: sb,
                     child: pw.Row(children: [
                       pw.Container(width: 3, height: 3, color: sc),
                       pw.SizedBox(width: 4),
-                      pw.Text('RISK: $severity',
-                        style: pw.TextStyle(fontSize: 8,
-                          fontWeight: pw.FontWeight.bold, color: sc)),
+                      pw.Text('RISK: $severity', style: pw.TextStyle(
+                        fontSize: 8, fontWeight: pw.FontWeight.bold, color: sc)),
                     ])),
                   pw.SizedBox(height: 6),
-                  // Score row
                   pw.Row(children: [
                     pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
                       children: [
                         pw.Text('$s / 100', style: pw.TextStyle(
-                          fontSize: 22, fontWeight: pw.FontWeight.bold, color: sc)),
+                          fontSize: 22, fontWeight: pw.FontWeight.bold,
+                          color: sc)),
                         pw.Text('Risk Score', style: pw.TextStyle(
                           fontSize: 7, color: _textLight)),
                       ]),
@@ -356,12 +344,12 @@ class PdfExport {
                   pw.SizedBox(height: 8),
                   pw.Container(height: 0.5, color: _divider),
                   pw.SizedBox(height: 8),
-                  // Summary text
                   pw.Text('SUMMARY', style: pw.TextStyle(
                     fontSize: 7, fontWeight: pw.FontWeight.bold,
                     color: _sailBlue, letterSpacing: 0.5)),
                   pw.SizedBox(height: 4),
-                  pw.Text(summary.isEmpty ? 'See hazards table below.' : summary,
+                  pw.Text(
+                    summary.isEmpty ? 'See hazards table below.' : summary,
                     style: pw.TextStyle(fontSize: 8, color: _textDark,
                       lineSpacing: 1.5)),
                 ],
@@ -372,14 +360,15 @@ class PdfExport {
     );
   }
 
-  // ─── PHOTO ────────────────────────────────────────────────────────────────
+  // ─── PHOTO ───────────────────────────────────────────────────────────────
   static pw.Widget _photoBox(Uint8List img, int count) => pw.Container(
     decoration: pw.BoxDecoration(
       border: pw.Border.all(color: _divider, width: 0.5)),
     child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
         pw.Padding(padding: const pw.EdgeInsets.all(8),
-          child: pw.Image(pw.MemoryImage(img), height: 190, fit: pw.BoxFit.contain)),
+          child: pw.Image(pw.MemoryImage(img),
+            height: 190, fit: pw.BoxFit.contain)),
         if (count > 0)
           pw.Container(
             padding: const pw.EdgeInsets.fromLTRB(8, 4, 8, 4),
@@ -390,26 +379,27 @@ class PdfExport {
                 fontStyle: pw.FontStyle.italic))),
       ]));
 
-  // ─── HAZARDS TABLE ────────────────────────────────────────────────────────
+  // ─── HAZARDS TABLE ───────────────────────────────────────────────────────
   static pw.Widget _hazardsTable(List<Map<String, dynamic>> hazards) {
     pw.Widget hdrCell(String t) => pw.Container(
       padding: const pw.EdgeInsets.fromLTRB(6, 6, 6, 6),
       color: _sailBlue,
       child: pw.Text(t, style: pw.TextStyle(
-        color: PdfColors.white, fontSize: 7.5, fontWeight: pw.FontWeight.bold)));
+        color: PdfColors.white, fontSize: 7.5,
+        fontWeight: pw.FontWeight.bold)));
 
     return pw.Table(
       border: pw.TableBorder.all(color: _divider, width: 0.4),
       columnWidths: const {
         0: pw.FixedColumnWidth(18),   // #
         1: pw.FlexColumnWidth(1.8),   // Hazard
-        2: pw.FixedColumnWidth(46),   // Severity
+        // FIX: was FixedColumnWidth(46) — "SEVERITY" needs ~58pt at 7.5pt bold
+        2: pw.FixedColumnWidth(58),   // Severity
         3: pw.FlexColumnWidth(2.4),   // Description
         4: pw.FlexColumnWidth(1.6),   // Regulation
         5: pw.FlexColumnWidth(2.4),   // Action
       },
       children: [
-        // Header
         pw.TableRow(children: [
           hdrCell('#'),
           hdrCell('HAZARD'),
@@ -418,7 +408,6 @@ class PdfExport {
           hdrCell('REGULATION'),
           hdrCell('CORRECTIVE ACTION'),
         ]),
-        // Data rows
         ...List.generate(hazards.length, (i) {
           final h   = hazards[i];
           final sev = h['severity']?.toString().toUpperCase() ?? 'MEDIUM';
@@ -427,20 +416,22 @@ class PdfExport {
           final bg  = i % 2 == 0 ? _rowNorm : _rowAlt;
 
           return pw.TableRow(children: [
-            // # (bold, sail-blue background)
+            // #
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(5, 6, 5, 6),
               color: PdfColor.fromHex('#E3F2FD'),
               child: pw.Text('${i + 1}', style: pw.TextStyle(
-                fontSize: 8, fontWeight: pw.FontWeight.bold, color: _sailBlue),
+                fontSize: 8, fontWeight: pw.FontWeight.bold,
+                color: _sailBlue),
                 textAlign: pw.TextAlign.center)),
             // Hazard name
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 6, 6, 6),
               color: bg,
-              child: pw.Text(h['name']?.toString() ?? '', style: pw.TextStyle(
-                fontSize: 8, fontWeight: pw.FontWeight.bold, color: _textDark))),
-            // Severity pill
+              child: pw.Text(h['name']?.toString() ?? '',
+                style: pw.TextStyle(fontSize: 8,
+                  fontWeight: pw.FontWeight.bold, color: _textDark))),
+            // Severity — text + bar, centered
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(4, 6, 4, 6),
               color: sb,
@@ -449,11 +440,12 @@ class PdfExport {
                 mainAxisAlignment: pw.MainAxisAlignment.center,
                 children: [
                   pw.Text(sev, style: pw.TextStyle(
-                    fontSize: 7, fontWeight: pw.FontWeight.bold, color: sc),
+                    fontSize: 7, fontWeight: pw.FontWeight.bold,
+                    color: sc),
                     textAlign: pw.TextAlign.center),
                   pw.SizedBox(height: 2),
-                  // Small colored bar under severity text
-                  pw.Container(height: 2, width: 30, color: sc),
+                  // Bar trimmed to 26pt to fit within 58pt column with padding
+                  pw.Container(height: 2, width: 26, color: sc),
                 ])),
             // Description
             pw.Container(
@@ -482,12 +474,12 @@ class PdfExport {
     );
   }
 
-  // ─── RISK SCORE BAR ───────────────────────────────────────────────────────
+  // ─── RISK SCORE BAR ──────────────────────────────────────────────────────
   static pw.Widget _riskScoreBar(dynamic rawScore, String severity) {
-    final score = (rawScore is int ? rawScore : int.tryParse('$rawScore') ?? 0).clamp(0, 100);
-    final sc    = _getSevCol(severity);
-    final sb    = _getSevBg(severity);
-    final crit  = hazards_countBySev([], 'CRITICAL'); // placeholder
+    final score = (rawScore is int
+        ? rawScore : int.tryParse('$rawScore') ?? 0).clamp(0, 100);
+    final sc = _getSevCol(severity);
+    final sb = _getSevBg(severity);
 
     return pw.Container(
       padding: const pw.EdgeInsets.fromLTRB(10, 8, 10, 8),
@@ -497,12 +489,14 @@ class PdfExport {
       child: pw.Row(children: [
         pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
           pw.Text('TOTAL RISK SCORE', style: pw.TextStyle(
-            fontSize: 7, color: _textLight, fontWeight: pw.FontWeight.bold)),
+            fontSize: 7, color: _textLight,
+            fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 2),
           pw.Row(children: [
             pw.Text('$score', style: pw.TextStyle(
               fontSize: 28, fontWeight: pw.FontWeight.bold, color: sc)),
-            pw.Text(' / 100', style: pw.TextStyle(fontSize: 10, color: _textMed)),
+            pw.Text(' / 100', style: pw.TextStyle(
+              fontSize: 10, color: _textMed)),
           ]),
         ]),
         pw.SizedBox(width: 16),
@@ -512,36 +506,35 @@ class PdfExport {
             pw.Text('OVERALL RISK: $severity', style: pw.TextStyle(
               fontSize: 9, fontWeight: pw.FontWeight.bold, color: sc)),
             pw.SizedBox(height: 6),
-            // Score bar
             pw.Stack(children: [
               pw.Container(
                 height: 8,
                 decoration: pw.BoxDecoration(
                   color: PdfColors.white,
                   border: pw.Border.all(color: _divider, width: 0.5))),
-              pw.Container(
-                height: 8,
-                width: (score / 100) * 300,
-                color: sc),
+              pw.Container(height: 8, width: (score / 100) * 300, color: sc),
             ]),
             pw.SizedBox(height: 4),
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text('0 — LOW', style: pw.TextStyle(fontSize: 6.5, color: _lowCol)),
-                pw.Text('50 — MEDIUM', style: pw.TextStyle(fontSize: 6.5, color: _medCol)),
-                pw.Text('75 — HIGH', style: pw.TextStyle(fontSize: 6.5, color: _highCol)),
-                pw.Text('90+ CRITICAL', style: pw.TextStyle(fontSize: 6.5, color: _critCol)),
+                pw.Text('0 — LOW', style: pw.TextStyle(
+                  fontSize: 6.5, color: _lowCol)),
+                pw.Text('50 — MEDIUM', style: pw.TextStyle(
+                  fontSize: 6.5, color: _medCol)),
+                pw.Text('75 — HIGH', style: pw.TextStyle(
+                  fontSize: 6.5, color: _highCol)),
+                pw.Text('90+ CRITICAL', style: pw.TextStyle(
+                  fontSize: 6.5, color: _critCol)),
               ]),
           ])),
       ]),
     );
   }
 
-  // dummy helper used only inside _riskScoreBar for syntax — remove
   static int hazards_countBySev(List l, String s) => 0;
 
-  // ─── SUMMARY BOX ──────────────────────────────────────────────────────────
+  // ─── SUMMARY BOX ─────────────────────────────────────────────────────────
   static pw.Widget _summaryBox(String summary) => pw.Container(
     padding: const pw.EdgeInsets.all(10),
     decoration: pw.BoxDecoration(
@@ -550,7 +543,7 @@ class PdfExport {
     child: pw.Text(summary.isEmpty ? 'No summary provided.' : summary,
       style: pw.TextStyle(fontSize: 9, color: _textDark, lineSpacing: 1.6)));
 
-  // ─── TWO COLUMN ───────────────────────────────────────────────────────────
+  // ─── TWO COLUMN ──────────────────────────────────────────────────────────
   static pw.Widget _twoCol(Map<String, dynamic> inc) => pw.Row(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
@@ -568,7 +561,8 @@ class PdfExport {
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
                 pw.Text('Category:', style: pw.TextStyle(
-                  fontSize: 7.5, color: _textLight, fontWeight: pw.FontWeight.bold)),
+                  fontSize: 7.5, color: _textLight,
+                  fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 3),
                 pw.Text(inc['wsaCategory']?.toString() ?? 'Not classified',
                   style: pw.TextStyle(fontSize: 9, color: _textDark,
@@ -593,7 +587,8 @@ class PdfExport {
               inc['immediateAction']?.toString().isNotEmpty == true
                   ? inc['immediateAction'].toString()
                   : 'Investigate and apply corrective actions per IS 14489:1998.',
-              style: pw.TextStyle(fontSize: 9, color: _textDark, lineSpacing: 1.4))),
+              style: pw.TextStyle(fontSize: 9, color: _textDark,
+                lineSpacing: 1.4))),
         ])),
     ]);
 
@@ -608,22 +603,26 @@ class PdfExport {
       children: [
         pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
           pw.Text('REPORTED BY', style: pw.TextStyle(
-            fontSize: 7, color: _textLight, fontWeight: pw.FontWeight.bold)),
+            fontSize: 7, color: _textLight,
+            fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 2),
           pw.Text(reporter, style: pw.TextStyle(
-            fontSize: 10, fontWeight: pw.FontWeight.bold, color: _textDark)),
+            fontSize: 10, fontWeight: pw.FontWeight.bold,
+            color: _textDark)),
           pw.Text('P.No.: $pno',
             style: pw.TextStyle(fontSize: 8, color: _textMed)),
         ]),
         pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.center, children: [
           pw.Text('SIGNATURE', style: pw.TextStyle(
-            fontSize: 7, color: _textLight, fontWeight: pw.FontWeight.bold)),
+            fontSize: 7, color: _textLight,
+            fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 18),
           pw.Container(width: 100, height: 0.5, color: _textDark),
         ]),
         pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.end, children: [
           pw.Text('REVIEWED BY', style: pw.TextStyle(
-            fontSize: 7, color: _textLight, fontWeight: pw.FontWeight.bold)),
+            fontSize: 7, color: _textLight,
+            fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 18),
           pw.Container(width: 100, height: 0.5, color: _textDark),
           pw.Text('Safety Officer / HOD',
@@ -631,31 +630,28 @@ class PdfExport {
         ]),
       ]));
 
-  // ─── HELPERS ──────────────────────────────────────────────────────────────
+  // ─── HELPERS ─────────────────────────────────────────────────────────────
   static List<Map<String, dynamic>> _parseHazards(dynamic raw) {
     if (raw == null) return [];
     if (raw is List) {
-      return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      return raw.whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e)).toList();
     }
     if (raw is String && raw.isNotEmpty) {
       try {
         final d = jsonDecode(raw);
-        if (d is List) return d.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+        if (d is List) return d.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e)).toList();
       } catch (_) {}
     }
     return [];
   }
 
-  /// Extract only the clean AI summary — strip the === HAZARDS === text block
   static String _cleanSummary(Map<String, dynamic> inc) {
-    // Prefer top-level summary key (AI result stores it here)
     final s = inc['summary']?.toString() ?? '';
     if (s.isNotEmpty && !s.contains('===')) return s;
-
-    // Fall back to desc, but strip the === blocks
     final d = inc['desc']?.toString() ?? '';
     if (d.isEmpty) return '';
-    // Take only lines before the first === separator
     final lines = d.split('\n');
     final clean = <String>[];
     for (final line in lines) {
@@ -683,7 +679,7 @@ class PdfExport {
     }
   }
 
-  // ─── PUBLIC API ───────────────────────────────────────────────────────────
+  // ─── PUBLIC API ──────────────────────────────────────────────────────────
   static Future<void> downloadOrShareIncident({
     required Map<String, dynamic> incident,
     String reporterName = 'SAIL Safety Officer',
@@ -693,7 +689,8 @@ class PdfExport {
     final bytes = await generateIncidentReportBytes(
       incident: incident, reporterName: reporterName,
       reporterPno: reporterPno, imageBytes: imageBytes);
-    final fn = 'SafetyLens_${incident['type'] ?? 'Report'}_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
+    final fn = 'SafetyLens_${incident['type'] ?? 'Report'}'
+        '_${incident['id'] ?? DateTime.now().millisecondsSinceEpoch}.pdf';
     if (kIsWeb) {
       final blob   = html.Blob([bytes], 'application/pdf');
       final url    = html.Url.createObjectUrlFromBlob(blob);
@@ -715,7 +712,8 @@ class PdfExport {
     String reporterPno = '',
   }) async {
     final bytes = await generateIncidentReportBytes(
-      incident: incident, reporterName: reporterName, reporterPno: reporterPno);
+      incident: incident, reporterName: reporterName,
+      reporterPno: reporterPno);
     final dir  = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/SafetyLens_${incident['id']}.pdf');
     await file.writeAsBytes(bytes);
@@ -732,7 +730,8 @@ class PdfExport {
   }) async {
     final pdf   = pw.Document();
     final now   = DateTime.now();
-    final title = reportTitle ?? 'SAIL Safety Lens — Consolidated Incident Report';
+    final title = reportTitle
+        ?? 'SAIL Safety Lens — Consolidated Incident Report';
 
     pdf.addPage(pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
@@ -747,28 +746,34 @@ class PdfExport {
           child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Text('SAIL SAFETY LENS', style: pw.TextStyle(
-                color: PdfColors.white, fontSize: 18, fontWeight: pw.FontWeight.bold)),
+                color: PdfColors.white, fontSize: 18,
+                fontWeight: pw.FontWeight.bold)),
               pw.Text(title, style: pw.TextStyle(
                 color: PdfColor.fromHex('#BBDEFB'), fontSize: 11)),
               pw.Text('Generated: ${DateFormat('dd MMM yyyy, HH:mm').format(now)}',
-                style: pw.TextStyle(color: PdfColor.fromHex('#90CAF9'), fontSize: 9)),
+                style: pw.TextStyle(
+                  color: PdfColor.fromHex('#90CAF9'), fontSize: 9)),
             ])),
         pw.SizedBox(height: 16),
         pw.Text('Total Incidents: ${incidents.length}',
-          style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          style: pw.TextStyle(fontSize: 12,
+            fontWeight: pw.FontWeight.bold)),
         pw.SizedBox(height: 12),
         pw.Table(
           border: pw.TableBorder.all(color: _divider, width: 0.4),
           columnWidths: const {
-            0: pw.FixedColumnWidth(22), 1: pw.FixedColumnWidth(54),
-            2: pw.FlexColumnWidth(2.0), 3: pw.FlexColumnWidth(1.5),
-            4: pw.FixedColumnWidth(50), 5: pw.FixedColumnWidth(46),
+            0: pw.FixedColumnWidth(22),
+            1: pw.FixedColumnWidth(54),
+            2: pw.FlexColumnWidth(2.0),
+            3: pw.FlexColumnWidth(1.5),
+            4: pw.FixedColumnWidth(58),  // FIX: was 50, same SEVERITY fix
+            5: pw.FixedColumnWidth(46),
           },
           children: [
             pw.TableRow(children: [
-              for (final h in ['#','Date','Title','Plant','Severity','Status'])
+              for (final h in ['#', 'Date', 'Title', 'Plant', 'Severity', 'Status'])
                 pw.Container(
-                  padding: const pw.EdgeInsets.fromLTRB(6,5,6,5),
+                  padding: const pw.EdgeInsets.fromLTRB(6, 5, 6, 5),
                   color: _sailBlue,
                   child: pw.Text(h, style: pw.TextStyle(
                     color: PdfColors.white, fontSize: 7.5,
@@ -779,16 +784,19 @@ class PdfExport {
               final sev = inc['severity']?.toString() ?? 'MEDIUM';
               final bg  = i % 2 == 0 ? _rowNorm : _rowAlt;
               pw.Widget c(String t) => pw.Container(
-                padding: const pw.EdgeInsets.fromLTRB(6,5,6,5), color: bg,
-                child: pw.Text(t, style: const pw.TextStyle(fontSize: 8)));
+                padding: const pw.EdgeInsets.fromLTRB(6, 5, 6, 5),
+                color: bg,
+                child: pw.Text(t,
+                  style: const pw.TextStyle(fontSize: 8)));
               return pw.TableRow(children: [
-                c('${i+1}'),
+                c('${i + 1}'),
                 c(inc['date'] != null
-                    ? DateFormat('dd/MM/yy').format(DateTime.parse(inc['date'])) : ''),
+                    ? DateFormat('dd/MM/yy')
+                        .format(DateTime.parse(inc['date'])) : ''),
                 c(inc['title']?.toString() ?? ''),
                 c(inc['plant']?.toString() ?? ''),
                 pw.Container(
-                  padding: const pw.EdgeInsets.fromLTRB(6,5,6,5),
+                  padding: const pw.EdgeInsets.fromLTRB(6, 5, 6, 5),
                   color: _getSevBg(sev),
                   child: pw.Text(sev, style: pw.TextStyle(
                     fontSize: 7, fontWeight: pw.FontWeight.bold,
@@ -800,7 +808,8 @@ class PdfExport {
       ]));
 
     final dir  = await getApplicationDocumentsDirectory();
-    final file = File('${dir.path}/SafetyLens_Consolidated_${DateFormat('yyyyMMdd').format(now)}.pdf');
+    final file = File('${dir.path}/SafetyLens_Consolidated_'
+        '${DateFormat('yyyyMMdd').format(now)}.pdf');
     await file.writeAsBytes(await pdf.save());
     return file;
   }
