@@ -76,7 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() { _loading = true; _err = ''; });
     try {
-      final user = await LocalDB.login(
+      final user = await LocalDB.signIn(
         _userCtrl.text.trim(), _passCtrl.text);
       if (!mounted) return;
       if (user != null) {
@@ -109,12 +109,12 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() { _loading = true; _err = ''; });
     try {
-      final ok = await LocalDB.register(
-        name: name, username: user, password: pass,
-        designation: desig, plant: plant,
-        pno: _regPnoCtrl.text.trim());
+      final ok = await LocalDB.register({
+        'name': name, 'username': user, 'password': pass,
+        'designation': desig, 'plant': plant,
+        'pno': _regPnoCtrl.text.trim()});
       if (!mounted) return;
-      if (ok) {
+      if (ok != null) {
         setState(() { _isLogin = true; _err = ''; });
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Account created! Please login.'),
