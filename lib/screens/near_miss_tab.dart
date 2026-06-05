@@ -36,9 +36,183 @@ class _NearMissTabState extends State<NearMissTab> {
   String _severity = 'MEDIUM';
   String _obsType = 'Unsafe Condition';
 
+  // ── FIXED VOICE INPUT ─────────────────────────────────────────────────
   final stt.SpeechToText _speech = stt.SpeechToText();
+  bool _speechAvailable = false;
   bool _isListening = false;
   TextEditingController? _activeMicField;
+
+  // Maps LocaleService language codes to BCP-47 locale IDs for speech_to_text
+  // BUG FIX 1: Use hyphen (en-IN) not underscore (en_IN)
+  static const Map<String, String> _voiceLocaleMap = {
+    'en': 'en-IN',
+    'hi': 'hi-IN',
+    'bn': 'bn-IN',
+    'or': 'or-IN',
+  };
+
+  // Returns correct locale ID based on current app language
+  // BUG FIX 4: Language now connected to LocaleService
+  String get _voiceLocaleId {
+    final lang = LocaleService().locale.languageCode;
+    return _voiceLocaleMap[lang] ?? 'en-IN';
+  }
+
+  String get _voiceLanguageName {
+    final lang = LocaleService().locale.languageCode;
+    return {'en': 'English', 'hi': 'हिंदी', 'bn': 'বাংলা', 'or': 'ଓଡ଼ିଆ'}[lang] ?? 'English';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _initSpeech();
+  }
+
+  // Initialise speech recognition once at startup
+  Future<void> _initSpeech() async {
+    try {
+      _speechAvailable = await _speech.initialize(
+        onError: (e) {
+          debugPrint('Speech error: ${e.errorMsg}');
+          if (mounted) setState(() => _isListening = false);
+        },
+        onStatus: (s) {
+          debugPrint('Speech status: $s');
+          // Auto-restart listening on Android when it times out mid-session
+          // BUG FIX 5: Continuous listening pattern
+          if (s == 'done' && _isListening && _activeMicField != null) {
+            _restartListening();
+          } else if (s == 'notListening') {
+            if (mounted) setState(() => _isListening = false);
+          }
+        },
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint('Speech init error: $e');
+    }
+  }
+
+  // Restart listening after Android auto-timeout (keeps mic "live")
+  Future<void> _restartListening() async {
+    if (!_isListening || _activeMicField == null) return;
+    final field = _activeMicField!;
+    final baseText = field.text;
+    try {
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted || _activeMicField != field) return;
+          final appended = result.recognizedWords.isEmpty
+              ? baseText
+              : '$baseText ${result.recognizedWords}'.trim();
+          setState(() {
+            field.text = appended;
+            field.selection = TextSelection.fromPosition(
+              TextPosition(offset: field.text.length));
+          });
+        },
+        localeId: _voiceLocaleId,
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 5),
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: stt.ListenMode.dictation,
+      );
+    } catch (e) {
+      debugPrint('Restart listen error: $e');
+      if (mounted) setState(() => _isListening = false);
+    }
+  }
+
+  // Toggle voice listening for a specific field
+  // BUG FIX 2: Web no longer blocked — Chrome supports Web Speech API
+  // BUG FIX 3: All fields work correctly
+  // BUG FIX 6: Race condition fixed — stops previous field before starting new
+  Future<void> _toggleVoice([TextEditingController? field]) async {
+    final targetField = field ?? _location;
+
+    // If already listening on THIS field — stop
+    if (_isListening && _activeMicField == targetField) {
+      await _speech.stop();
+      setState(() { _isListening = false; _activeMicField = null; });
+      return;
+    }
+
+    // If listening on a DIFFERENT field — stop that one first
+    // BUG FIX 6: No more race condition
+    if (_isListening) {
+      await _speech.stop();
+      setState(() { _isListening = false; _activeMicField = null; });
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+
+    if (!_speechAvailable) {
+      // Try to reinitialise if not available
+      await _initSpeech();
+      if (!_speechAvailable) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                kIsWeb
+                    ? 'Voice input requires Chrome browser. Please allow microphone access.'
+                    : 'Microphone not available. Check app permissions in Settings.',
+              ),
+              backgroundColor: AppColors.amber,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    // Save current field text as base — new words will be appended
+    final baseText = targetField.text;
+    _activeMicField = targetField;
+
+    try {
+      setState(() => _isListening = true);
+
+      await _speech.listen(
+        onResult: (result) {
+          if (!mounted || _activeMicField != targetField) return;
+          final words = result.recognizedWords;
+          if (words.isEmpty) return;
+          final appended = baseText.isEmpty ? words : '$baseText $words';
+          setState(() {
+            targetField.text = appended.trim();
+            targetField.selection = TextSelection.fromPosition(
+              TextPosition(offset: targetField.text.length));
+          });
+        },
+        // BUG FIX 1 + 4: Correct BCP-47 locale from LocaleService
+        localeId: _voiceLocaleId,
+        listenFor: const Duration(seconds: 30),
+        pauseFor: const Duration(seconds: 5),
+        partialResults: true,
+        cancelOnError: false,
+        listenMode: stt.ListenMode.dictation,
+      );
+    } catch (e) {
+      debugPrint('Listen error: $e');
+      if (mounted) setState(() { _isListening = false; _activeMicField = null; });
+    }
+  }
+
+  @override
+  void dispose() {
+    _speech.cancel();
+    _brief.dispose();
+    _dept.dispose();
+    _location.dispose();
+    _people.dispose();
+    _description.dispose();
+    _immediateAction.dispose();
+    super.dispose();
+  }
+  // ── END VOICE INPUT ───────────────────────────────────────────────────
 
   final _plants = const [
     'BSP Bhilai', 'DSP Durgapur', 'RSP Rourkela', 'BSL Bokaro', 'ISP Burnpur', 'SAIL Safety Organisation'
@@ -80,7 +254,6 @@ class _NearMissTabState extends State<NearMissTab> {
       final hazards = (result?['hazards'] as List?) ?? [];
       final first = hazards.isNotEmpty ? Map<String, dynamic>.from(hazards.first) : null;
 
-      // Build a complete pre-fill from analysis
       final name = first?['name']?.toString() ?? 'Near miss observed';
       final desc = first?['description']?.toString() ?? result?['summary']?.toString() ?? '';
       final action = first?['correctiveAction']?.toString() ?? '';
@@ -88,10 +261,8 @@ class _NearMissTabState extends State<NearMissTab> {
       final sev = (first?['severity']?.toString() ?? 'MEDIUM').toUpperCase();
       final hazardType = first?['type']?.toString() ?? 'Unsafe Condition';
 
-      // Map AI hazard category to WSA cause dropdown
       String wsaCause = _mapToWsaCause(first?['category']?.toString() ?? '', name);
 
-      // User's plant from profile
       final user = await LocalDB.getCurrentUser();
       String plantFromProfile = user?['plant']?.toString() ?? _plant;
       if (!_plants.contains(plantFromProfile)) plantFromProfile = _plant;
@@ -104,7 +275,6 @@ class _NearMissTabState extends State<NearMissTab> {
           'severity': sev,
           'confidence': result?['confidence'] ?? 75,
         };
-        // PRE-FILL ALL FIELDS from AI analysis — user can edit if needed
         _brief.text = '$name. $desc'.trim();
         _description.text = desc;
         _immediateAction.text = action;
@@ -132,7 +302,6 @@ class _NearMissTabState extends State<NearMissTab> {
     }
   }
 
-  /// Map AI hazard category to one of the WSA cause options
   String _mapToWsaCause(String category, String name) {
     final c = category.toUpperCase();
     final n = name.toLowerCase();
@@ -144,34 +313,6 @@ class _NearMissTabState extends State<NearMissTab> {
     if (c == 'HOUSEKEEPING' || n.contains('spill') || n.contains('slip')) return 'Slip / Fall';
     if (c == 'PPE') return 'Other';
     return 'Other';
-  }
-
-  Future<void> _toggleVoice([TextEditingController? field]) async {
-    if (field != null) _activeMicField = field;
-    if (kIsWeb) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Voice input is not available on web. Please type the location.'),
-          backgroundColor: AppColors.amber,
-        ),
-      );
-      return;
-    }
-    if (!_isListening) {
-      bool available = await _speech.initialize();
-      if (available) {
-        setState(() => _isListening = true);
-        _speech.listen(
-          localeId: 'en_IN',
-          onResult: (result) {
-            if (mounted) setState(() { (_activeMicField ?? _location).text = result.recognizedWords; });
-          },
-        );
-      }
-    } else {
-      _speech.stop();
-      setState(() => _isListening = false);
-    }
   }
 
   Future<bool> _submit({bool exportAfter = false}) async {
@@ -200,17 +341,13 @@ class _NearMissTabState extends State<NearMissTab> {
       'reportedByPno': user?['pno'] ?? '',
       'date': DateTime.now().toIso8601String(),
       'id': DateTime.now().millisecondsSinceEpoch.toString(),
-      // Store image bytes as base64 for PDF inclusion later (web-safe)
       'imageBase64': _imageBytes != null ? base64Encode(_imageBytes!) : null,
     };
 
     await LocalDB.saveIncident(incident);
-
-    // Push to cloud backend (Google Sheets) — silent, queues if offline
     SyncService.pushIncident(incident).catchError((_) => false);
 
     if (exportAfter) {
-      // Generate and download/share PDF including the image
       try {
         await PdfExport.downloadOrShareIncident(
           incident: incident,
@@ -232,16 +369,11 @@ class _NearMissTabState extends State<NearMissTab> {
           backgroundColor: AppColors.green,
         ),
       );
-      // Reset form
       setState(() {
         _pickedFile = null; _imageBytes = null;
         _aiBrief = null;
-        _brief.clear();
-        _dept.clear();
-        _location.clear();
-        _people.clear();
-        _description.clear();
-        _immediateAction.clear();
+        _brief.clear(); _dept.clear(); _location.clear();
+        _people.clear(); _description.clear(); _immediateAction.clear();
       });
     }
     return true;
@@ -258,12 +390,28 @@ class _NearMissTabState extends State<NearMissTab> {
               color: AppColors.bg2,
               border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.warning_amber, size: 18, color: AppColors.amber),
-                SizedBox(width: 8),
-                Expanded(child: Text('Near Miss Report',
+                const Icon(Icons.warning_amber, size: 18, color: AppColors.amber),
+                const SizedBox(width: 8),
+                Expanded(child: const Text('Near Miss Report',
                   style: TextStyle(color: AppColors.text1, fontSize: 15, fontWeight: FontWeight.w600))),
+                // Show current voice language indicator
+                if (_speechAvailable)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.mic_none_rounded, size: 11, color: AppColors.accent),
+                      const SizedBox(width: 4),
+                      Text(_voiceLanguageName,
+                        style: const TextStyle(color: AppColors.accent, fontSize: 10, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
               ],
             ),
           ),
@@ -556,18 +704,7 @@ class _NearMissTabState extends State<NearMissTab> {
           Row(children: [
             Expanded(child: _txt(_location, hint: 'e.g. BF-2 Cast House, Bay 4')),
             const SizedBox(width: 6),
-            IconButton(
-              onPressed: () => _toggleVoice(_location),
-              icon: Icon(_isListening ? Icons.mic : Icons.mic_none,
-                color: _isListening ? AppColors.red : AppColors.amber, size: 18),
-              style: IconButton.styleFrom(
-                backgroundColor: (_isListening ? AppColors.red : AppColors.amber).withOpacity(0.15),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  side: BorderSide(color: _isListening ? AppColors.red : AppColors.amber, width: 1.5),
-                ),
-              ),
-            ),
+            _micButton(_location),
           ]),
           const SizedBox(height: 10),
           _lbl('Cause category (WSA 13)'),
@@ -597,6 +734,41 @@ class _NearMissTabState extends State<NearMissTab> {
           _lbl('Immediate action taken at site'),
           _txtWithMic(_immediateAction, hint: 'e.g. Barricaded the area... (or use mic)', lines: 2),
         ],
+      ),
+    );
+  }
+
+  // Standalone mic button (used for location field)
+  Widget _micButton(TextEditingController c) {
+    final isActive = _isListening && _activeMicField == c;
+    return GestureDetector(
+      onTap: () => _toggleVoice(c),
+      child: Tooltip(
+        message: isActive
+            ? 'Listening in $_voiceLanguageName… tap to stop'
+            : 'Tap to speak in $_voiceLanguageName',
+        child: Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: (isActive ? AppColors.red : AppColors.amber).withOpacity(0.15),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive ? AppColors.red : AppColors.amber,
+              width: 1.5),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isActive ? Icons.mic_rounded : Icons.mic_none_rounded,
+                color: isActive ? AppColors.red : AppColors.amber,
+                size: 18),
+              if (isActive)
+                Text('Live',
+                  style: TextStyle(color: AppColors.red, fontSize: 7, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -684,30 +856,35 @@ class _NearMissTabState extends State<NearMissTab> {
           )),
           GestureDetector(
             onTap: () => _toggleVoice(c),
-            child: Container(
-              width: 46,
-              height: lines > 1 ? (lines * 24.0 + 22) : 46,
-              decoration: BoxDecoration(
-                color: isMicActive
-                  ? AppColors.red.withOpacity(0.15)
-                  : AppColors.accent.withOpacity(0.1),
-                borderRadius: const BorderRadius.only(
-                  topRight: Radius.circular(10),
-                  bottomRight: Radius.circular(10))),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    isMicActive ? Icons.mic_rounded : Icons.mic_none_rounded,
-                    color: isMicActive ? AppColors.red : AppColors.accent,
-                    size: 20),
-                  if (isMicActive) ...[
-                    const SizedBox(height: 2),
-                    Text('Live', style: TextStyle(
-                      color: AppColors.red, fontSize: 8,
-                      fontWeight: FontWeight.w700)),
+            child: Tooltip(
+              message: isMicActive
+                  ? 'Listening in $_voiceLanguageName… tap to stop'
+                  : 'Tap to speak in $_voiceLanguageName',
+              child: Container(
+                width: 46,
+                height: lines > 1 ? (lines * 24.0 + 22) : 46,
+                decoration: BoxDecoration(
+                  color: isMicActive
+                    ? AppColors.red.withOpacity(0.15)
+                    : AppColors.accent.withOpacity(0.1),
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(10),
+                    bottomRight: Radius.circular(10))),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isMicActive ? Icons.mic_rounded : Icons.mic_none_rounded,
+                      color: isMicActive ? AppColors.red : AppColors.accent,
+                      size: 20),
+                    if (isMicActive) ...[
+                      const SizedBox(height: 2),
+                      Text('Live', style: TextStyle(
+                        color: AppColors.red, fontSize: 8,
+                        fontWeight: FontWeight.w700)),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),
