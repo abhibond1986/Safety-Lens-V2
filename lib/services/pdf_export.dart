@@ -6,7 +6,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
-import 'dart:html' as html if (dart.library.io) 'pdf_export_stub.dart';
+import 'pdf_export_stub.dart' if (dart.library.html) 'dart:html' as html; // ignore: avoid_web_libraries_in_flutter
 
 class PdfExport {
   static final PdfColor _sailBlue    = PdfColor.fromHex('#0D47A1');
