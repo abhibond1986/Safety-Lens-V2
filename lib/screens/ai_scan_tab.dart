@@ -453,16 +453,18 @@ class _AIScanTabState extends State<AIScanTab> {
           horizontalInside: BorderSide(
             color: AppColors.border, width: 0.5)),
         columnWidths: const {
-          0: FlexColumnWidth(2.5),
-          1: FlexColumnWidth(2.2),
-          2: FlexColumnWidth(1.4),
-          3: FlexColumnWidth(3),
+          0: FlexColumnWidth(2.0),   // Hazard
+          1: FlexColumnWidth(2.8),   // Description
+          2: FlexColumnWidth(2.0),   // Regulation
+          3: FlexColumnWidth(1.2),   // Severity
+          4: FlexColumnWidth(2.8),   // Action
         },
         children: [
           TableRow(
             decoration: const BoxDecoration(color: AppColors.card2),
             children: [
-              _hth('HAZARD'), _hth('REGULATION'),
+              _hth('HAZARD'), _hth('DESCRIPTION'),
+              _hth('REGULATION'),
               _hth('SEVERITY', center: true), _hth('ACTION'),
             ]),
           ...hazards.asMap().entries.map((entry) {
@@ -518,6 +520,7 @@ class _AIScanTabState extends State<AIScanTab> {
                     ],
                   ),
                 ),
+                _htd(hm['description']?.toString() ?? ''),
                 _htd(hm['regulation']?.toString() ?? ''),
                 Padding(
                   padding: const EdgeInsets.all(7),
