@@ -1,32 +1,16 @@
-import 'dart:async';
 import 'dart:convert';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
 
 /// SAIL Safety Lens — Google Sheets Sync Service
 ///
-/// HONEST DISCLOSURE:
-/// This is NOT real-time sync. It's a periodic push/pull to a Google Sheet via
-/// Google Apps Script Web App. Pros: completely free, admin can open the sheet
-/// in browser to see all data. Cons: ~60 req/min rate limit, eventual consistency,
-/// not for high-concurrency production.
-///
-/// SETUP STEPS (for the admin):
-/// 1. Create a Google Sheet
-/// 2. Extensions → Apps Script → paste backend/google_apps_script.gs
-/// 3. Deploy → New deployment → Web app → Anyone access → Deploy
-/// 4. Copy the Web App URL
-/// 5. Paste it into _backendUrl below (or set via app settings)
+/// Periodic push/pull to Google Sheet via Google Apps Script Web App.
+/// Pros: completely free, admin can open sheet in browser.
+/// Cons: ~60 req/min rate limit, eventual consistency.
 class SyncService {
-  // ============================================================
-  // PASTE YOUR GOOGLE APPS SCRIPT WEB APP URL HERE:
-  // It looks like: https://script.google.com/macros/s/AKfycby.../exec
-  // ============================================================
   static const String _defaultBackendUrl = 'YOUR_APPS_SCRIPT_URL_HERE';
-
-  static const String _kBackendUrl = 'sync_backend_url';
+  static const String _kBackendUrl   = 'sync_backend_url';
   static const String _kPendingQueue = 'sync_pending_queue';
   static const String _kLastSyncTime = 'sync_last_time';
 
@@ -50,21 +34,24 @@ class SyncService {
 
   static Future<bool> get isConfigured async {
     final url = await getBackendUrl();
-    return url.isNotEmpty && url != 'YOUR_APPS_SCRIPT_URL_HERE' && url.startsWith('https://');
+    return url.isNotEmpty &&
+        url != 'YOUR_APPS_SCRIPT_URL_HERE' &&
+        url.startsWith('https://');
   }
 
-  // ============================================================
-  // HEALTH CHECK
-  // ============================================================
+  // ═══════════════════════════════════════════════════════════════
+  //  HEALTH CHECK
+  // ═══════════════════════════════════════════════════════════════
+
   static Future<Map<String, dynamic>> ping() async {
-    final url = await getBackendUrl();
     if (!await isConfigured) {
       return {'ok': false, 'error': 'Backend URL not configured'};
     }
     try {
-      final response = await http.get(
-        Uri.parse('$url?action=health'),
-      ).timeout(const Duration(seconds: 15));
+      final url = await getBackendUrl();
+      final response = await http
+          .get(Uri.parse('$url?action=health'))
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       }
@@ -74,38 +61,78 @@ class SyncService {
     }
   }
 
-  // ============================================================
-  // INCIDENT SYNC
-  // ============================================================
+  // ═══════════════════════════════════════════════════════════════
+  //  USERS
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Fetch all registered users from Apps Script backend.
+  /// Used by the dashboard user-switcher dropdown.
+  /// Results are automatically cached in LocalDB for offline use.
+  static Future<List<Map<String, dynamic>>> fetchUsers() async {
+    if (!await isConfigured) return [];
+    try {
+      final url = await getBackendUrl();
+      final response = await http
+          .get(Uri.parse('$url?action=listUsers'))
+          .timeout(const Duration(seconds: 20));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+        List<Map<String, dynamic>> users = [];
+
+        // New backend format: { success: true, users: [...] }
+        if (data['success'] == true && data['users'] is List) {
+          users = (data['users'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+        // Old backend format: { ok: true, items: [...] }
+        else if (data['ok'] == true && data['items'] is List) {
+          users = (data['items'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+
+        // Cache for offline use
+        if (users.isNotEmpty) {
+          await LocalDB.cacheUsers(users);
+        }
+
+        return users;
+      }
+      return [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  INCIDENTS
+  // ═══════════════════════════════════════════════════════════════
+
   /// Push a single incident to the backend.
   /// If offline/failed, adds to pending queue for later retry.
-  static Future<bool> pushIncident(Map<String, dynamic> incident) async {
+  static Future<bool> pushIncident(
+      Map<String, dynamic> incident) async {
     if (!await isConfigured) {
       await _addToPendingQueue('addIncident', incident);
       return false;
     }
-
     try {
       final url = await getBackendUrl();
-      final params = {
-        'action': 'addIncident',
-        ...incident,
-      };
-      // Convert all values to strings for URL safety
-      final body = <String, dynamic>{};
-      params.forEach((k, v) {
-        if (v == null) {
-          body[k] = '';
-        } else {
-          body[k] = v.toString();
-        }
+      final body = <String, dynamic>{'action': 'addIncident'};
+      incident.forEach((k, v) {
+        body[k] = v == null ? '' : v.toString();
       });
 
-      final response = await http.post(
-        Uri.parse(url),
-        body: jsonEncode(body),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(url),
+            body: jsonEncode(body),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -114,7 +141,6 @@ class SyncService {
           return true;
         }
       }
-      // On failure, queue for retry
       await _addToPendingQueue('addIncident', incident);
       return false;
     } catch (e) {
@@ -123,23 +149,16 @@ class SyncService {
     }
   }
 
-  /// Fetch all incidents from backend (admin/sync use case)
- static Future<List<Map<String, dynamic>>> fetchUsers() async {
+  /// Fetch all incidents from backend.
+  static Future<List<Map<String, dynamic>>> fetchIncidents() async {
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
-      final response = await http.get(
-        Uri.parse('$url?action=listUsers'),
-      ).timeout(const Duration(seconds: 20));
+      final response = await http
+          .get(Uri.parse('$url?action=listIncidents'))
+          .timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
-        // backend returns { success: true, users: [...] }
-        if (data['success'] == true && data['users'] is List) {
-          return (data['users'] as List)
-              .map((e) => Map<String, dynamic>.from(e as Map))
-              .toList();
-        }
-        // backward compat — old backend returns { ok: true, items: [...] }
         if (data['ok'] == true && data['items'] is List) {
           return (data['items'] as List)
               .map((e) => Map<String, dynamic>.from(e as Map))
@@ -152,37 +171,39 @@ class SyncService {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  KNOWLEDGE BASE
+  // ═══════════════════════════════════════════════════════════════
 
-  // ============================================================
-  // KNOWLEDGE BASE SYNC (admin uploads PDF docs that all users can search)
-  // ============================================================
-  static Future<bool> pushKnowledgeDoc(Map<String, dynamic> doc) async {
+  static Future<bool> pushKnowledgeDoc(
+      Map<String, dynamic> doc) async {
     if (!await isConfigured) return false;
     try {
-      final url = await getBackendUrl();
+      final url  = await getBackendUrl();
       final body = <String, dynamic>{'action': 'addKnowledge'};
       doc.forEach((k, v) => body[k] = (v ?? '').toString());
 
-      final response = await http.post(
-        Uri.parse(url),
-        body: jsonEncode(body),
-        headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(url),
+            body: jsonEncode(body),
+            headers: {'Content-Type': 'application/json'},
+          )
+          .timeout(const Duration(seconds: 30));
       return response.statusCode == 200;
     } catch (_) {
       return false;
     }
   }
 
-
   static Future<void> syncKnowledgeFromCloud() async {
     final docs = await fetchKnowledgeDocs();
     if (docs.isEmpty) return;
     for (final doc in docs) {
       await LocalDB.addKnowledgeDoc(
-        title: doc['title']?.toString() ?? 'Untitled',
+        title:   doc['title']?.toString()   ?? 'Untitled',
         content: doc['content']?.toString() ?? '',
-        source: doc['source']?.toString() ?? 'cloud',
+        source:  doc['source']?.toString()  ?? 'cloud',
       );
     }
   }
@@ -191,9 +212,9 @@ class SyncService {
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
-      final response = await http.get(
-        Uri.parse('$url?action=listKnowledge'),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .get(Uri.parse('$url?action=listKnowledge'))
+          .timeout(const Duration(seconds: 30));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
         if (data['ok'] == true && data['items'] is List) {
@@ -208,30 +229,36 @@ class SyncService {
     }
   }
 
-  // ============================================================
-  // PENDING QUEUE (for offline writes)
-  // ============================================================
-  static Future<void> _addToPendingQueue(String action, Map<String, dynamic> payload) async {
+  // ═══════════════════════════════════════════════════════════════
+  //  PENDING QUEUE (offline writes)
+  // ═══════════════════════════════════════════════════════════════
+
+  static Future<void> _addToPendingQueue(
+      String action, Map<String, dynamic> payload) async {
     _prefs ??= await SharedPreferences.getInstance();
-    final raw = _prefs!.getString(_kPendingQueue);
+    final raw   = _prefs!.getString(_kPendingQueue);
     final queue = raw != null ? (jsonDecode(raw) as List) : [];
-    queue.add({'action': action, 'payload': payload, 'queuedAt': DateTime.now().toIso8601String()});
+    queue.add({
+      'action':    action,
+      'payload':   payload,
+      'queuedAt':  DateTime.now().toIso8601String(),
+    });
     await _prefs!.setString(_kPendingQueue, jsonEncode(queue));
   }
 
-  /// Try to drain the queue. Returns number of items synced.
   static Future<int> drainPendingQueue() async {
     _prefs ??= await SharedPreferences.getInstance();
     final raw = _prefs!.getString(_kPendingQueue);
     if (raw == null) return 0;
-    final queue = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    final queue =
+        (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     if (queue.isEmpty) return 0;
     if (!await isConfigured) return 0;
 
     final remaining = <Map<String, dynamic>>[];
     int synced = 0;
     for (final item in queue) {
-      final action = item['action']?.toString();
+      final action  = item['action']?.toString();
       final payload = Map<String, dynamic>.from(item['payload'] ?? {});
       bool ok = false;
       if (action == 'addIncident') {
@@ -254,9 +281,10 @@ class SyncService {
     return (jsonDecode(raw) as List).length;
   }
 
-  // ============================================================
-  // STATUS
-  // ============================================================
+  // ═══════════════════════════════════════════════════════════════
+  //  STATUS
+  // ═══════════════════════════════════════════════════════════════
+
   static Future<DateTime?> getLastSyncTime() async {
     _prefs ??= await SharedPreferences.getInstance();
     final raw = _prefs!.getString(_kLastSyncTime);
@@ -266,34 +294,50 @@ class SyncService {
 
   static Future<void> _markSyncTime() async {
     _prefs ??= await SharedPreferences.getInstance();
-    await _prefs!.setString(_kLastSyncTime, DateTime.now().toIso8601String());
+    await _prefs!
+        .setString(_kLastSyncTime, DateTime.now().toIso8601String());
   }
 
-  // ============================================================
-  // FULL SYNC (push pending + pull latest)
-  // ============================================================
+  // ═══════════════════════════════════════════════════════════════
+  //  FULL SYNC
+  // ═══════════════════════════════════════════════════════════════
+
   static Future<Map<String, dynamic>> fullSync() async {
     if (!await isConfigured) {
-      return {'ok': false, 'error': 'Backend URL not configured. Open Settings to add Apps Script URL.'};
+      return {
+        'ok': false,
+        'error':
+            'Backend URL not configured. Open Settings to add Apps Script URL.',
+      };
     }
+
+    // Push any queued offline writes
     final pushed = await drainPendingQueue();
+
+    // Pull latest incidents from Sheets
     final pulled = await fetchIncidents();
-    // Merge fetched incidents into local DB (preserve local-only ones)
     if (pulled.isNotEmpty) {
-      final local = await LocalDB.getIncidents();
+      final local    = await LocalDB.getIncidents();
       final localIds = local.map((i) => i['id']?.toString()).toSet();
       for (final remote in pulled) {
         if (!localIds.contains(remote['id']?.toString())) {
-          // Add remote-only items to local
           await LocalDB.saveIncident(remote);
         }
       }
     }
+
+    // Pull latest users from Sheets and cache them
+    final users = await fetchUsers();
+    if (users.isNotEmpty) {
+      await LocalDB.cacheUsers(users);
+    }
+
     await _markSyncTime();
     return {
-      'ok': true,
-      'pushed': pushed,
-      'pulled': pulled.length,
+      'ok':       true,
+      'pushed':   pushed,
+      'pulled':   pulled.length,
+      'users':    users.length,
       'syncTime': DateTime.now().toIso8601String(),
     };
   }
