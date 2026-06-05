@@ -28,30 +28,33 @@ class AppColors {
   static const text3  = Color(0xFF94A3B8);
   static const text4  = Color(0xFF64748B);
 
-  static const accent     = Color(0xFF6C63FF);
-  static const accentDark = Color(0xFF5A52E0);
-  static const accentGlow = Color(0xFF8B83FF);
-  static const cyan       = Color(0xFF00D4FF);
-  static const purple     = Color(0xFFBB86FC);
-  static const pink       = Color(0xFFFF6584);
+  // Vibrant accent palette — Image 3 style
+  static const accent     = Color(0xFF7C4DFF);   // deep violet-purple
+  static const accentDark = Color(0xFF6534E0);
+  static const accentGlow = Color(0xFF9B6BFF);
+  static const cyan       = Color(0xFF00BCD4);   // teal-cyan
+  static const purple     = Color(0xFFE040FB);   // bright magenta-purple
+  static const pink       = Color(0xFFFF4081);   // vivid pink
 
-  static const crit  = Color(0xFFFF3B3B);
-  static const red   = Color(0xFFFF6B6B);
-  static const amber = Color(0xFFFFB84C);
-  static const green = Color(0xFF22C55E);
+  static const crit  = Color(0xFFFF1744);
+  static const red   = Color(0xFFFF5252);
+  static const amber = Color(0xFFFFAB00);
+  static const green = Color(0xFF00E676);
 
-  static const darkBg     = Color(0xFF0D0D1A);
-  static const darkBg2    = Color(0xFF13132B);
-  static const darkCard   = Color(0xFF1A1A35);
-  static const darkCard2  = Color(0xFF22224A);
-  static const darkCard3  = Color(0xFF2A2A5A);
-  static const darkBorder = Color(0xFF3A3A6A);
+  // Dark mode — Image 3 style: true dark grey (not deep purple/blue)
+  static const darkBg     = Color(0xFF121212);   // Material dark baseline
+  static const darkBg2    = Color(0xFF1E1E1E);   // slightly lighter
+  static const darkCard   = Color(0xFF242424);   // card surface
+  static const darkCard2  = Color(0xFF2D2D2D);   // elevated card
+  static const darkCard3  = Color(0xFF373737);   // top-most surface
+  static const darkBorder = Color(0xFF424242);   // subtle separator
 
-  static const lightBg     = Color(0xFFF0F0FF);
-  static const lightBg2    = Color(0xFFE8E8FF);
-  static const lightCard   = Color(0xFFFFFFFF);
-  static const lightCard2  = Color(0xFFF5F4FF);
-  static const lightBorder = Color(0xFFD0CFFF);
+  // Light mode — clean white with very subtle tint
+  static const lightBg     = Color(0xFFF8F8F8);  // near-white, no tint
+  static const lightBg2    = Color(0xFFEFEFEF);  // very light grey
+  static const lightCard   = Color(0xFFFFFFFF);  // pure white cards
+  static const lightCard2  = Color(0xFFF3F3F3);  // input field bg
+  static const lightBorder = Color(0xFFE0E0E0);  // clear grey border
 }
 
 // ─── THEME HELPER ─────────────────────────────────────────────────────────────
@@ -68,15 +71,15 @@ class SL {
   Color get card2  => isDark ? AppColors.darkCard2  : AppColors.lightCard2;
   Color get card3  => isDark ? AppColors.darkCard3  : const Color(0xFFECEBFF);
   Color get border => isDark ? AppColors.darkBorder : AppColors.lightBorder;
-  Color get text1  => isDark ? const Color(0xFFF1F5F9) : const Color(0xFF1A1A3E);
-  Color get text2  => isDark ? const Color(0xFFCBD5E1) : const Color(0xFF3A3A6A);
-  Color get text3  => isDark ? const Color(0xFF94A3B8) : const Color(0xFF6B6B9A);
-  Color get text4  => isDark ? const Color(0xFF64748B) : const Color(0xFF7070A0);
+  Color get text1  => isDark ? const Color(0xFFF1F5F9) : const Color(0xFF111111);  // near-black on white
+  Color get text2  => isDark ? const Color(0xFFCBD5E1) : const Color(0xFF333333);  // dark grey
+  Color get text3  => isDark ? const Color(0xFF94A3B8) : const Color(0xFF555555);  // medium grey
+  Color get text4  => isDark ? const Color(0xFF64748B) : const Color(0xFF777777);  // light grey (still visible)
   Color get surface => isDark ? AppColors.darkCard  : Colors.white;
 
   List<Color> get bgGradient => isDark
-      ? [const Color(0xFF0D0D1A), const Color(0xFF13132B)]
-      : [const Color(0xFFF0F0FF), const Color(0xFFE8E8FF)];
+      ? [const Color(0xFF121212), const Color(0xFF1E1E1E)]
+      : [const Color(0xFFF8F8F8), const Color(0xFFEFEFEF)];
 
   Gradient get cardGradient => isDark
       ? LinearGradient(
@@ -158,7 +161,7 @@ class _SafetyLensAppState extends State<SafetyLensApp> {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: AppColors.accent, width: 2)),
         labelStyle: TextStyle(
-            color: dark ? const Color(0xFF94A3B8) : const Color(0xFF6B6B9A)),
+            color: dark ? const Color(0xFF94A3B8) : const Color(0xFF555555)),
         hintStyle: TextStyle(
             color: dark ? const Color(0xFF64748B) : const Color(0xFF7070A0)),
       ),
