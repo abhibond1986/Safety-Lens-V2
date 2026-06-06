@@ -219,7 +219,7 @@ class _ReportsTabState extends State<ReportsTab>
                       _reportRow(_filtered[i], sl),
                 ))),
             ])),
-    ]));
+    ])));
   }
 
 
