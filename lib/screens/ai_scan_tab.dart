@@ -691,8 +691,8 @@ class _AIScanTabState extends State<AIScanTab> {
                         )),
                     ]),
                   ])),
-              ]));
-        })));
+              ]))); 
+        }));
   }
 
   // Severity dropdown for edit mode
