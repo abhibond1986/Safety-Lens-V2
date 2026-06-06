@@ -695,8 +695,8 @@ class _DashboardTabState extends State<DashboardTab> {
           // Mini badges — all tappable
           Row(children: [
             _miniBadge('C:$critical', AppColors.crit,
-              onTap: () => _showCasesSheet(
-                title: '$code — Critical',
+              onTap: () => _showAllCasesSheet(
+                title: '$code — Critical cases',
                 filter: (i) {
                   final p = i['plant']?.toString().toUpperCase() ?? '';
                   return p.startsWith(code) &&
@@ -704,16 +704,17 @@ class _DashboardTabState extends State<DashboardTab> {
                 }, sl: sl)),
             const SizedBox(width: 4),
             _miniBadge('O:$open', AppColors.amber,
-              onTap: () => _showCasesSheet(
-                title: '$code — Open',
+              onTap: () => _showAllCasesSheet(
+                title: '$code — Open cases',
                 filter: (i) {
                   final p = i['plant']?.toString().toUpperCase() ?? '';
+                  final s = i['status']?.toString().toUpperCase() ?? '';
                   return p.startsWith(code) &&
-                      (i['status']?.toString().toUpperCase() ?? '') == 'OPEN';
+                      (s == 'OPEN' || s == 'INVESTIGATING' || s == 'ACTION TAKEN');
                 }, sl: sl)),
             const SizedBox(width: 4),
             _miniBadge('S:$scans', AppColors.accent,
-              onTap: () => _showCasesSheet(
+              onTap: () => _showAllCasesSheet(
                 title: '$code — AI Scans',
                 filter: (i) {
                   final p = i['plant']?.toString().toUpperCase() ?? '';
@@ -733,6 +734,22 @@ class _DashboardTabState extends State<DashboardTab> {
   // ─────────────────────────────────────────────────────────────
 
   /// Generic cases bottom sheet — filtered list of incidents
+  // Shows cases filtered from ALL incidents (used by plant badges)
+  void _showAllCasesSheet({
+    required String title,
+    required bool Function(Map<String, dynamic>) filter,
+    required SL sl,
+  }) {
+    final cases = _incidents.where(filter).toList();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _CasesSheet(title: title, cases: cases, sl: sl),
+    );
+  }
+
+  // Shows cases filtered from selected USER's incidents
   void _showCasesSheet({
     required String title,
     required bool Function(Map<String, dynamic>) filter,
