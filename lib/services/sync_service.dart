@@ -341,4 +341,67 @@ class SyncService {
       'syncTime': DateTime.now().toIso8601String(),
     };
   }
+  // ═══════════════════════════════════════════════════════════════
+  //  ADMIN — USER MANAGEMENT
+  // ═══════════════════════════════════════════════════════════════
+
+  static Future<bool> updateUserField(
+      String username, String field, String value) async {
+    try {
+      final url = await getBackendUrl();
+      final resp = await http.post(Uri.parse(url),
+        body: jsonEncode({
+          'action':   'updateRole',
+          'username': username,
+          field:      value,
+        }),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'}).timeout(
+            const Duration(seconds: 20));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (_) { return false; }
+  }
+
+  static Future<bool> deleteUser(String username) async {
+    try {
+      final url = await getBackendUrl();
+      final resp = await http.post(Uri.parse(url),
+        body: jsonEncode({'action': 'deleteUser', 'username': username}),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'}).timeout(
+            const Duration(seconds: 20));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (_) { return false; }
+  }
+
+  static Future<bool> registerUser(Map<String, dynamic> params) async {
+    try {
+      final url = await getBackendUrl();
+      final body = Map<String, dynamic>.from(params);
+      body['action'] = 'register';
+      final resp = await http.post(Uri.parse(url),
+        body: jsonEncode(body),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'}).timeout(
+            const Duration(seconds: 20));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return data['success'] == true;
+      }
+      return false;
+    } catch (_) { return false; }
+  }
+
+  static Future<void> pushAllIncidents(
+      List<Map<String, dynamic>> incidents) async {
+    for (final inc in incidents) {
+      await pushIncident(inc);
+    }
+  }
+
 }
