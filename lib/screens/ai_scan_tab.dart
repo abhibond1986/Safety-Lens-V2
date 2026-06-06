@@ -158,167 +158,570 @@ class _AIScanTabState extends State<AIScanTab> {
     }
   }
 
-  // ─── STEP 3: REVIEW ──────────────────────────────────────────
+  // ─── STEP 3: REVIEW (with inline edit per hazard) ───────────
   void _openReviewSheet() {
     if (_result == null) return;
     setState(() => _currentStep = 3);
-    final hazards   = (_result!['hazards'] as List?) ?? [];
+
     final sl        = SL.of(context);
     final riskColor = _sevColor(
         _result!['overallRisk']?.toString() ?? 'MEDIUM');
+
+    // Build a mutable working copy of hazards for editing
+    final List<Map<String, dynamic>> editableHazards =
+        ((_result!['hazards'] as List?) ?? [])
+            .map((h) => Map<String, dynamic>.from(h as Map))
+            .toList();
+
+    // Per-hazard edit controllers — only created when user taps Edit
+    final Map<int, Map<String, TextEditingController>> editControllers = {};
+    final Map<int, bool> editingIndex = {};
+
+    // Summary controller
+    final summaryCtrl = TextEditingController(
+        text: _result!['summary']?.toString() ?? '');
+    bool editingSummary = false;
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        maxChildSize: 0.97,
-        minChildSize: 0.5,
-        builder: (_, ctrl) => Container(
-          decoration: BoxDecoration(
-            color: sl.isDark ? const Color(0xFF1C1F2E) : Colors.white,
-            borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(20))),
-          child: Column(children: [
-            // Handle
-            Center(child: Container(
-              margin: const EdgeInsets.only(top: 10, bottom: 4),
-              width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: sl.border,
-                borderRadius: BorderRadius.circular(99)))),
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-              child: Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: riskColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: riskColor)),
-                  child: Text(
-                    '${_result!['overallRisk']} · ${_result!['riskScore']}/100',
-                    style: TextStyle(color: riskColor,
-                        fontSize: 12, fontWeight: FontWeight.w800))),
-                const SizedBox(width: 10),
-                Expanded(child: Text(
-                  '${hazards.length} Hazards Identified',
-                  style: TextStyle(color: sl.text1, fontSize: 15,
-                      fontWeight: FontWeight.w700))),
-                IconButton(
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  icon: Icon(Icons.close, color: sl.text4, size: 20),
-                  onPressed: () => Navigator.pop(context)),
-              ])),
-            Divider(height: 1, color: sl.border),
-            // Summary
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: sl.isDark
-                      ? const Color(0xFF252840)
-                      : const Color(0xFFF5F6FA),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          // Helper: get or create controllers for hazard i
+          Map<String, TextEditingController> ctrlsFor(int i) {
+            if (!editControllers.containsKey(i)) {
+              final h = editableHazards[i];
+              editControllers[i] = {
+                'name':             TextEditingController(text: h['name']?.toString() ?? ''),
+                'description':      TextEditingController(text: h['description']?.toString() ?? ''),
+                'regulation':       TextEditingController(text: h['regulation']?.toString() ?? ''),
+                'correctiveAction': TextEditingController(text: h['correctiveAction']?.toString() ?? ''),
+                'wsaCause':         TextEditingController(text: h['wsaCause']?.toString() ?? ''),
+                'type':             TextEditingController(text: h['type']?.toString() ?? ''),
+              };
+            }
+            return editControllers[i]!;
+          }
+
+          // Save edits from controllers back to editableHazards
+          void applyEdits(int i) {
+            final ctrls = ctrlsFor(i);
+            editableHazards[i]['name']             = ctrls['name']!.text.trim();
+            editableHazards[i]['description']      = ctrls['description']!.text.trim();
+            editableHazards[i]['regulation']       = ctrls['regulation']!.text.trim();
+            editableHazards[i]['correctiveAction'] = ctrls['correctiveAction']!.text.trim();
+            editableHazards[i]['wsaCause']         = ctrls['wsaCause']!.text.trim();
+            editableHazards[i]['type']             = ctrls['type']!.text.trim();
+          }
+
+          final fieldBg = sl.isDark
+              ? const Color(0xFF1C1F2E)
+              : const Color(0xFFF0F1F5);
+
+          Widget editField(TextEditingController c,
+              {String hint = '', int lines = 1}) =>
+            TextField(
+              controller: c,
+              maxLines: lines,
+              style: TextStyle(color: sl.text1,
+                  fontSize: 11, height: 1.4),
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: sl.text4, fontSize: 10),
+                filled: true, fillColor: fieldBg,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 6),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  borderSide: BorderSide(
                       color: sl.border.withOpacity(0.5))),
-                child: Text(
-                  _result!['summary']?.toString() ?? '',
-                  style: TextStyle(color: sl.text2,
-                      fontSize: 11, height: 1.5)))),
-            const SizedBox(height: 8),
-            // Hazard cards
-            Expanded(child: ListView.separated(
-              controller: ctrl,
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              itemCount: hazards.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(height: 8),
-              itemBuilder: (_, i) {
-                final h  = Map<String, dynamic>.from(
-                    hazards[i] as Map);
-                final sc = _sevColor(
-                    h['severity']?.toString() ?? 'MEDIUM');
-                return Container(
-                  padding: const EdgeInsets.all(12),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  borderSide: const BorderSide(
+                      color: AppColors.accent, width: 2))));
+
+          Widget editableRow(String label, TextEditingController c,
+              {int lines = 1}) =>
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                SizedBox(width: 84, child: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(label, style: TextStyle(
+                      color: sl.text4, fontSize: 9,
+                      fontWeight: FontWeight.w600)))),
+                Expanded(child: editField(c,
+                    hint: label, lines: lines)),
+              ]));
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.88,
+            maxChildSize: 0.97,
+            minChildSize: 0.5,
+            builder: (_, ctrl) => Container(
+              decoration: BoxDecoration(
+                color: sl.isDark
+                    ? const Color(0xFF1C1F2E) : Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(20))),
+              child: Column(children: [
+                // Handle
+                Center(child: Container(
+                  margin: const EdgeInsets.only(
+                      top: 10, bottom: 4),
+                  width: 40, height: 4,
+                  decoration: BoxDecoration(
+                    color: sl.border,
+                    borderRadius: BorderRadius.circular(99)))),
+
+                // Header
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                      16, 6, 16, 8),
+                  child: Row(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: riskColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: riskColor)),
+                      child: Text(
+                        '${_result!['overallRisk']} · ${_result!['riskScore']}/100',
+                        style: TextStyle(color: riskColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800))),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(
+                      '${editableHazards.length} Hazards Identified',
+                      style: TextStyle(color: sl.text1,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700))),
+                    // Edit mode hint
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(7),
+                        border: Border.all(
+                            color: AppColors.accent
+                                .withOpacity(0.3))),
+                      child: const Text('✏️ Tap Edit',
+                        style: TextStyle(
+                            color: AppColors.accent,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700))),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      icon: Icon(Icons.close,
+                          color: sl.text4, size: 20),
+                      onPressed: () {
+                        for (final m in editControllers.values) {
+                          for (final c in m.values) { c.dispose(); }
+                        }
+                        summaryCtrl.dispose();
+                        Navigator.pop(ctx);
+                      }),
+                  ])),
+                Divider(height: 1, color: sl.border),
+
+                // Content list
+                Expanded(child: ListView(
+                  controller: ctrl,
+                  padding: const EdgeInsets.fromLTRB(
+                      16, 10, 16, 120),
+                  children: [
+
+                    // ── Editable summary ──────────────────
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: sl.isDark
+                            ? const Color(0xFF252840)
+                            : const Color(0xFFF5F6FA),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: sl.border.withOpacity(0.5))),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                        Row(children: [
+                          Text('SUMMARY', style: TextStyle(
+                              color: sl.text4, fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.6)),
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: () => setLocal(() =>
+                                editingSummary = !editingSummary),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: editingSummary
+                                    ? AppColors.accent
+                                    : AppColors.accent
+                                        .withOpacity(0.1),
+                                borderRadius:
+                                    BorderRadius.circular(6)),
+                              child: Text(
+                                editingSummary ? 'Done' : 'Edit',
+                                style: TextStyle(
+                                  color: editingSummary
+                                      ? Colors.white
+                                      : AppColors.accent,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700)))),
+                        ]),
+                        const SizedBox(height: 6),
+                        editingSummary
+                          ? editField(summaryCtrl,
+                              hint: 'Overall summary…',
+                              lines: 3)
+                          : Text(summaryCtrl.text.isNotEmpty
+                                ? summaryCtrl.text
+                                : _result!['summary']
+                                    ?.toString() ?? '',
+                              style: TextStyle(
+                                  color: sl.text2,
+                                  fontSize: 11,
+                                  height: 1.5)),
+                      ])),
+                    const SizedBox(height: 10),
+
+                    // ── Hazard cards ──────────────────────
+                    ...editableHazards.asMap().entries.map((e) {
+                      final i  = e.key;
+                      final h  = e.value;
+                      final sc = _sevColor(
+                          h['severity']?.toString() ?? 'MEDIUM');
+                      final isEditing = editingIndex[i] ?? false;
+                      final ctrls = isEditing ? ctrlsFor(i) : null;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: sl.isDark
+                                ? const Color(0xFF252840)
+                                : Colors.white,
+                            borderRadius:
+                                BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isEditing
+                                  ? AppColors.accent
+                                      .withOpacity(0.5)
+                                  : sc.withOpacity(0.35),
+                              width: isEditing ? 1.5 : 1)),
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+
+                            // ── Hazard header row ────────
+                            Row(children: [
+                              Container(
+                                width: 22, height: 22,
+                                decoration: BoxDecoration(
+                                    color: sc,
+                                    shape: BoxShape.circle),
+                                child: Center(child: Text(
+                                  '${i+1}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9,
+                                    fontWeight:
+                                        FontWeight.w800)))),
+                              const SizedBox(width: 8),
+                              Expanded(child: isEditing
+                                ? editField(ctrls!['name']!,
+                                    hint: 'Hazard name')
+                                : Text(h['name']?.toString() ?? '—',
+                                    style: TextStyle(
+                                        color: sl.text1,
+                                        fontSize: 13,
+                                        fontWeight:
+                                            FontWeight.w700))),
+                              const SizedBox(width: 8),
+                              // Severity selector
+                              isEditing
+                                ? _severityDropdown(
+                                    h['severity']?.toString()
+                                        ?? 'MEDIUM',
+                                    sl,
+                                    (val) => setLocal(() =>
+                                        editableHazards[i]
+                                            ['severity'] = val))
+                                : Container(
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: sc.withOpacity(0.12),
+                                      borderRadius:
+                                          BorderRadius.circular(6),
+                                      border: Border.all(
+                                          color: sc)),
+                                    child: Text(
+                                      h['severity']?.toString()
+                                          ?? '—',
+                                      style: TextStyle(
+                                          color: sc, fontSize: 8,
+                                          fontWeight:
+                                              FontWeight.w800))),
+                              const SizedBox(width: 8),
+                              // Edit / Save toggle
+                              GestureDetector(
+                                onTap: () => setLocal(() {
+                                  if (isEditing) {
+                                    applyEdits(i);
+                                    editingIndex[i] = false;
+                                  } else {
+                                    ctrlsFor(i); // initialise
+                                    editingIndex[i] = true;
+                                  }
+                                }),
+                                child: Container(
+                                  padding:
+                                      const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isEditing
+                                        ? AppColors.green
+                                        : AppColors.accent
+                                            .withOpacity(0.1),
+                                    borderRadius:
+                                        BorderRadius.circular(7)),
+                                  child: Text(
+                                    isEditing ? '✓ Done' : '✏️ Edit',
+                                    style: TextStyle(
+                                      color: isEditing
+                                          ? Colors.white
+                                          : AppColors.accent,
+                                      fontSize: 9,
+                                      fontWeight:
+                                          FontWeight.w700)))),
+                            ]),
+                            const SizedBox(height: 8),
+
+                            // ── Description ──────────────
+                            if (!isEditing) ...[
+                              Text(
+                                h['description']?.toString() ?? '',
+                                style: TextStyle(
+                                    color: sl.text2,
+                                    fontSize: 11, height: 1.4)),
+                              const SizedBox(height: 5),
+                              _reviewRow('⚖️ Regulation',
+                                  h['regulation']?.toString() ?? '',
+                                  sl),
+                              _reviewRow('🔧 Action',
+                                  h['correctiveAction']
+                                      ?.toString() ?? '',
+                                  sl),
+                              if ((h['wsaCause']?.toString() ?? '')
+                                  .isNotEmpty)
+                                _reviewRow('📋 WSA Cause',
+                                    h['wsaCause']?.toString() ?? '',
+                                    sl),
+                              if ((h['type']?.toString() ?? '')
+                                  .isNotEmpty)
+                                _reviewRow('🔍 Type',
+                                    h['type']?.toString() ?? '', sl),
+                            ] else ...[
+                              // Editable fields
+                              editableRow('Description',
+                                  ctrls!['description']!, lines: 3),
+                              editableRow('⚖️ Regulation',
+                                  ctrls['regulation']!, lines: 2),
+                              editableRow('🔧 Action',
+                                  ctrls['correctiveAction']!,
+                                  lines: 2),
+                              editableRow('📋 WSA Cause',
+                                  ctrls['wsaCause']!),
+                              editableRow('🔍 Type', ctrls['type']!),
+                              const SizedBox(height: 4),
+                              // Discard button
+                              GestureDetector(
+                                onTap: () => setLocal(() {
+                                  editControllers.remove(i);
+                                  editingIndex[i] = false;
+                                }),
+                                child: Row(children: [
+                                  Icon(Icons.undo_rounded,
+                                      size: 12, color: sl.text4),
+                                  const SizedBox(width: 4),
+                                  Text('Discard changes',
+                                    style: TextStyle(
+                                        color: sl.text4,
+                                        fontSize: 10)),
+                                ])),
+                            ],
+                          ])));
+                    }).toList(),
+                  ])),
+
+                // ── Bottom actions ────────────────────────
+                Container(
+                  padding: const EdgeInsets.fromLTRB(
+                      16, 10, 16, 28),
                   decoration: BoxDecoration(
                     color: sl.isDark
                         ? const Color(0xFF252840) : Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: sc.withOpacity(0.35))),
+                    border: Border(top: BorderSide(
+                        color: sl.border.withOpacity(0.4)))),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
+                    // Edited indicator
+                    if (editingIndex.values.any((v) => v))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppColors.amber.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                                color: AppColors.amber
+                                    .withOpacity(0.35))),
+                          child: const Row(children: [
+                            Icon(Icons.edit_note_rounded,
+                                color: AppColors.amber, size: 14),
+                            SizedBox(width: 6),
+                            Expanded(child: Text(
+                              'Tap ✓ Done on each hazard to apply edits before saving.',
+                              style: TextStyle(
+                                  color: AppColors.amber,
+                                  fontSize: 10, height: 1.4))),
+                          ]))),
                     Row(children: [
-                      Container(
-                        width: 22, height: 22,
-                        decoration: BoxDecoration(
-                            color: sc, shape: BoxShape.circle),
-                        child: Center(child: Text('${i+1}',
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 9,
-                              fontWeight: FontWeight.w800)))),
+                      // Save with edits
+                      Expanded(
+                        flex: 2,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            // Apply any still-open edits
+                            for (final i
+                                in editingIndex.keys) {
+                              if (editingIndex[i] == true) {
+                                applyEdits(i);
+                              }
+                            }
+                            // Apply summary edit
+                            if (editingSummary) {
+                              _result!['summary'] =
+                                  summaryCtrl.text.trim();
+                            }
+                            // Push edited hazards back to result
+                            _result!['hazards'] =
+                                editableHazards;
+                            // Dispose controllers
+                            for (final m
+                                in editControllers.values) {
+                              for (final c in m.values) {
+                                c.dispose();
+                              }
+                            }
+                            summaryCtrl.dispose();
+                            Navigator.pop(ctx);
+                            setState(() => _currentStep = 4);
+                            _save();
+                          },
+                          icon: const Icon(Icons.save_outlined,
+                              size: 14, color: Colors.white),
+                          label: const Text(
+                            'Save with edits',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.green,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(10))),
+                        )),
                       const SizedBox(width: 8),
-                      Expanded(child: Text(
-                        h['name']?.toString() ?? '—',
-                        style: TextStyle(color: sl.text1,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700))),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: sc.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: sc)),
-                        child: Text(
-                          h['severity']?.toString() ?? '—',
-                          style: TextStyle(color: sc, fontSize: 8,
-                              fontWeight: FontWeight.w800))),
+                      // Save as-is
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            for (final m
+                                in editControllers.values) {
+                              for (final c in m.values) {
+                                c.dispose();
+                              }
+                            }
+                            summaryCtrl.dispose();
+                            Navigator.pop(ctx);
+                            setState(() => _currentStep = 4);
+                            _save();
+                          },
+                          icon: const Icon(
+                              Icons.check_circle_outline,
+                              size: 13, color: AppColors.accent),
+                          label: const Text('Save as-is',
+                            style: TextStyle(
+                                color: AppColors.accent,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            side: const BorderSide(
+                                color: AppColors.accent,
+                                width: 1.5),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 13),
+                            shape: RoundedRectangleBorder(
+                                borderRadius:
+                                    BorderRadius.circular(10))),
+                        )),
                     ]),
-                    const SizedBox(height: 6),
-                    Text(h['description']?.toString() ?? '',
-                      style: TextStyle(color: sl.text2,
-                          fontSize: 11, height: 1.4)),
-                    const SizedBox(height: 5),
-                    _reviewRow('⚖️ Regulation',
-                        h['regulation']?.toString() ?? '', sl),
-                    _reviewRow('🔧 Action',
-                        h['correctiveAction']?.toString() ?? '', sl),
-                    if ((h['wsaCause']?.toString() ?? '').isNotEmpty)
-                      _reviewRow('📋 WSA Cause',
-                          h['wsaCause']?.toString() ?? '', sl),
-                    if ((h['type']?.toString() ?? '').isNotEmpty)
-                      _reviewRow('🔍 Type',
-                          h['type']?.toString() ?? '', sl),
-                  ]));
-              })),
-            // Bottom action
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  setState(() => _currentStep = 4);
-                },
-                icon: const Icon(Icons.save_outlined,
-                    size: 14, color: Colors.white),
-                label: const Text('Looks good — Save now',
-                  style: TextStyle(color: Colors.white,
-                      fontWeight: FontWeight.w700)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.green,
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12))),
-              )),
-          ]))));
+                  ])),
+              ]));
+        })));
+  }
+
+  // Severity dropdown for edit mode
+  Widget _severityDropdown(
+      String current, SL sl, ValueChanged<String> onChanged) {
+    const sevs = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      decoration: BoxDecoration(
+        color: _sevColor(current).withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: _sevColor(current))),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: sevs.contains(current) ? current : 'MEDIUM',
+          isDense: true,
+          dropdownColor: sl.isDark
+              ? const Color(0xFF252840) : Colors.white,
+          style: TextStyle(
+              color: _sevColor(current), fontSize: 9,
+              fontWeight: FontWeight.w800),
+          icon: Icon(Icons.arrow_drop_down,
+              color: _sevColor(current), size: 14),
+          items: sevs.map((s) => DropdownMenuItem(
+              value: s,
+              child: Text(s, style: TextStyle(
+                  color: _sevColor(s), fontSize: 9,
+                  fontWeight: FontWeight.w800)))).toList(),
+          onChanged: (v) { if (v != null) onChanged(v); })));
   }
 
   Widget _reviewRow(String label, String value, SL sl) =>
