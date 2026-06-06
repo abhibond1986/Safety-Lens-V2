@@ -1053,8 +1053,8 @@ class _NearMissTabState extends State<NearMissTab> {
                         color: AppColors.red, fontSize: 8,
                         fontWeight: FontWeight.w700)),
                   ],
-                ])))]),
-    ));
+                ]))))]),
+    );
   }
 
   Widget _micButton(TextEditingController c, SL sl) {
