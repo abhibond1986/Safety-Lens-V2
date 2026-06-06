@@ -1,3 +1,10 @@
+// lib/services/gemini_vision.dart
+// v9 FIXES:
+//   ✅ Offline library: FA S36 replaced with S32(c) for all height hazards
+//   ✅ Offline library: SMPV Rule 2016 cylinder hazards added
+//   ✅ analyzeImageBytes returns 'people' field from AI response
+//   ✅ promptMode: 'sail_full' always used (full regulatory prompt server-side)
+
 import 'dart:convert';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
@@ -13,32 +20,31 @@ class GeminiVision {
 
   static const String _cloudinaryPreset = 'safety_lens';
 
-  // ── analyseImage (mobile/File path) ──────────────────────────────────────
+  // ── analyseImage (mobile / File path) ─────────────────────────────────────
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
     return analyseImageBytes(bytes);
   }
 
-  // ── analyseImageBytes (web + mobile) ─────────────────────────────────────
+  // ── analyseImageBytes (web + mobile) ──────────────────────────────────────
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     try {
-      print('Image size: ${bytes.length} bytes');
+      print('GeminiVision: image size = ${bytes.length} bytes');
 
-      // Step 1: Upload directly to Cloudinary
+      // Step 1: Upload to Cloudinary
       final imageUrl = await _uploadToCloudinary(bytes);
       if (imageUrl == null) {
-        print('Cloudinary upload failed');
+        print('GeminiVision: Cloudinary upload failed → offline fallback');
         return _offlineFallback(bytes, reason: 'Cloudinary upload failed');
       }
-      print('Cloudinary URL: $imageUrl');
+      print('GeminiVision: Cloudinary URL = $imageUrl');
 
       // Step 2: Send URL to Apps Script
-      // promptMode: 'sail_full' tells Apps Script to use the full
-      // regulatory prompt stored server-side — avoids JSON parse errors
-      // from special characters in long client-side prompt strings.
+      // promptMode: 'sail_full' → Apps Script uses the full regulatory prompt
+      // stored server-side, avoiding JSON parse issues with long strings
       final body = jsonEncode({
-        'action': 'analyzeUrl',
-        'imageUrl': imageUrl,
+        'action':     'analyzeUrl',
+        'imageUrl':   imageUrl,
         'promptMode': 'sail_full',
       });
 
@@ -48,106 +54,242 @@ class GeminiVision {
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
       ).timeout(const Duration(seconds: 90));
 
-      print('Apps Script status: ${response.statusCode}');
+      print('GeminiVision: Apps Script status = ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
 
         if (data is Map && data['error'] != null) {
-          print('Apps Script error: ${data['error']}');
+          print('GeminiVision: Apps Script error = ${data['error']}');
           return _offlineFallback(bytes, reason: data['error'].toString());
         }
 
         if (data is Map && data['hazards'] != null) {
-          print('AI SUCCESS! Risk: ${data['overallRisk']}, '
-              'Hazards: ${(data['hazards'] as List).length}');
+          print('GeminiVision: AI SUCCESS — risk=${data['overallRisk']}, '
+              'hazards=${(data['hazards'] as List).length}, '
+              'people=${data['people'] ?? 0}');
           data['_source'] = 'openrouter_direct';
           return Map<String, dynamic>.from(data);
         }
 
-        print('Unexpected: ${response.body}');
-        return _offlineFallback(bytes, reason: 'Unexpected response');
+        print('GeminiVision: Unexpected response = ${response.body.substring(0, 200)}');
+        return _offlineFallback(bytes, reason: 'Unexpected response format');
       }
 
       return _offlineFallback(bytes, reason: 'HTTP ${response.statusCode}');
     } catch (e) {
-      print('GeminiVision error: $e');
+      print('GeminiVision exception: $e');
       return _offlineFallback(bytes, reason: e.toString());
     }
   }
 
-  // ── Upload to Cloudinary (unchanged) ─────────────────────────────────────
+  // ── Upload to Cloudinary ───────────────────────────────────────────────────
   static Future<String?> _uploadToCloudinary(Uint8List bytes) async {
     try {
-      print('Uploading ${bytes.length} bytes to Cloudinary...');
-
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse(_cloudinaryUrl),
-      );
-
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          bytes,
-          filename: 'safety_scan.jpg',
-        ),
-      );
+      print('GeminiVision: uploading ${bytes.length} bytes to Cloudinary…');
+      final request = http.MultipartRequest('POST', Uri.parse(_cloudinaryUrl));
+      request.files.add(http.MultipartFile.fromBytes(
+        'file', bytes, filename: 'safety_scan.jpg'));
       request.fields['upload_preset'] = _cloudinaryPreset;
 
-      final streamed =
-          await request.send().timeout(const Duration(seconds: 60));
-      final response = await http.Response.fromStream(streamed);
-
-      print('Cloudinary response: ${response.statusCode}');
+      final streamed  = await request.send().timeout(const Duration(seconds: 60));
+      final response  = await http.Response.fromStream(streamed);
+      print('GeminiVision: Cloudinary response = ${response.statusCode}');
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        final url = data['secure_url']?.toString();
-        print('Cloudinary URL: $url');
-        return url;
+        return data['secure_url']?.toString();
       }
-
       return null;
     } catch (e) {
-      print('Cloudinary exception: $e');
+      print('GeminiVision: Cloudinary exception = $e');
       return null;
     }
   }
 
-  // ── Offline fallback ──────────────────────────────────────────────────────
+  // ── Offline fallback ────────────────────────────────────────────────────────
   static Map<String, dynamic> _offlineFallback(Uint8List bytes,
       {String reason = ''}) {
     final result = _knowledgeBasedAnalysis(bytes);
     result['_source'] = 'offline_fallback';
-    result['summary'] = 'Offline analysis (AI unavailable: $reason). '
-        'Knowledge-based hazards shown below based on common steel plant scenarios.';
+    result['summary'] =
+        'Offline analysis (AI unavailable: $reason). '
+        'Knowledge-based hazards shown below based on common steel plant scenarios. '
+        'Connect to internet for full AI-powered analysis.';
     return result;
   }
 
-  // ── Offline hazard library ────────────────────────────────────────────────
+  // ── OFFLINE HAZARD LIBRARY ────────────────────────────────────────────────
+  // ✅ FIX: FA S36 → S32(c) for all working-at-height entries
+  // ✅ NEW: SMPV Rules 2016 cylinder/pressure vessel entries added
   static const List<Map<String, dynamic>> _hazardLibrary = [
-    {'name': 'Missing hard hat', 'description': 'Worker without ISI-marked hard hat.', 'severity': 'CRITICAL', 'type': 'Unsafe act', 'regulation': 'Factories Act S35, IS 2925:1984', 'correctiveAction': 'Issue hard hat immediately.', 'wsaCause': '3. Improper PPE use'},
-    {'name': 'Safety shoes not worn', 'description': 'Worker without steel-toe safety shoes.', 'severity': 'HIGH', 'type': 'Unsafe act', 'regulation': 'Factories Act S35, IS 5852:1996', 'correctiveAction': 'Provide safety shoes.', 'wsaCause': '3. Improper PPE use'},
-    {'name': 'No fall arrest at height', 'description': 'Worker at elevation without harness.', 'severity': 'CRITICAL', 'type': 'Unsafe act', 'regulation': 'Factories Act S36, IS 3521 anchor min 15kN', 'correctiveAction': 'Evacuate. Issue IS 3521 harness.', 'wsaCause': '1. Failure to follow procedure'},
-    {'name': 'Exposed electrical cable', 'description': 'Loose cable across walkway.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'CEA Regulations 2023, IS 732', 'correctiveAction': 'De-energize via LOTO. Route in conduit.', 'wsaCause': '8. Poor housekeeping'},
-    {'name': 'Oil spillage on walkway', 'description': 'Oil on access walkway creating slip hazard.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S33, SAIL SOP-HK-02', 'correctiveAction': 'Deploy absorbent material. Wet floor sign.', 'wsaCause': '8. Poor housekeeping'},
-    {'name': 'Exposed moving machinery', 'description': 'Rotating shaft or gear without guarding.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act S21, IS 14489:2018 S6.2', 'correctiveAction': 'Stop machine immediately. Install guard.', 'wsaCause': '5. Equipment failure'},
-    {'name': 'Hot work without PTW', 'description': 'Welding or cutting without hot work permit.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S38, IS 7969:1976', 'correctiveAction': 'Stop. Issue Hot Work PTW. Deploy fire watch.', 'wsaCause': '1. Failure to follow procedure'},
-    {'name': 'Missing hazard signage', 'description': 'Safety signage absent in hazardous area.', 'severity': 'LOW', 'type': 'Unsafe condition', 'regulation': 'Factories Act S65, IS 9457', 'correctiveAction': 'Install photoluminescent safety signage.', 'wsaCause': '6. Communication failure'},
-    {'name': 'No gas detection', 'description': 'Work in potential gas area without CO detector.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act S41, IS 14489:2018 S8.4', 'correctiveAction': 'Issue personal CO detector. Atmospheric test mandatory.', 'wsaCause': '13. Environmental conditions'},
-    {'name': 'Scaffolding not tagged', 'description': 'Scaffolding without valid inspection tag.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S36, IS 2750:1982', 'correctiveAction': 'Stop work. Inspect and tag before use.', 'wsaCause': '5. Equipment failure'},
-    {'name': 'Eye protection missing', 'description': 'Worker grinding or welding without goggles.', 'severity': 'HIGH', 'type': 'Unsafe act', 'regulation': 'Factories Act S34 and S35, IS 5983:1980', 'correctiveAction': 'Issue IS 5983 eye protectors immediately.', 'wsaCause': '3. Improper PPE use'},
-    {'name': 'Exit pathway blocked', 'description': 'Materials blocking emergency exit route.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S38, NBC 2016 Part 4 min 1.0m clear', 'correctiveAction': 'Remove obstructions. Maintain 1.0m clear width.', 'wsaCause': '8. Poor housekeeping'},
-    {'name': 'No ear protection', 'description': 'Worker in high-noise area without ear muffs.', 'severity': 'MEDIUM', 'type': 'Unsafe act', 'regulation': 'Factories Act S35, IS 9167:1979 above 85dB', 'correctiveAction': 'Issue IS 9167 ear protectors immediately.', 'wsaCause': '3. Improper PPE use'},
-    {'name': 'Crane SWL not displayed', 'description': 'Crane without safe working load marking.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S29, IS 13367:1992', 'correctiveAction': 'Stop lifting ops. Mark SWL conspicuously.', 'wsaCause': '6. Communication failure'},
-    {'name': 'No fire extinguisher', 'description': 'Work area without fire extinguisher within 15m.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S38, NBC 2016 Part 4 every 15m', 'correctiveAction': 'Place 9kg DCP extinguisher. Check last service date.', 'wsaCause': '2. Lack of hazard awareness'},
-    {'name': 'Electrical panel open', 'description': 'Electrical panel door open with live parts exposed.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'CEA Regulations 2023, IS 732', 'correctiveAction': 'Close panel. Apply LOTO. Display danger notice.', 'wsaCause': '12. Inadequate isolation'},
-    {'name': 'Floor opening unguarded', 'description': 'Open pit or floor hole without guardrail or cover.', 'severity': 'CRITICAL', 'type': 'Unsafe condition', 'regulation': 'Factories Act S32, IS 4912:1978 guardrail min 1.0m', 'correctiveAction': 'Install guardrail min 1.0m high or rigid cover.', 'wsaCause': '8. Poor housekeeping'},
-    {'name': 'Pressure vessel uncertified', 'description': 'Pressure vessel without visible test certification.', 'severity': 'HIGH', 'type': 'Unsafe condition', 'regulation': 'Factories Act S30, IS 1710:1989', 'correctiveAction': 'Verify certification. Take out of service if lapsed.', 'wsaCause': '5. Equipment failure'},
+    {
+      'name': 'No fall arrest at height',
+      'description': 'Worker at elevation ≥1.8m without full-body harness or guardrail.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Act',
+      // ✅ FIXED: was S36 (wrong — that's confined space). Correct = S32(c)
+      'regulation': 'FA 1948 S32(c), IS 3521:1999, IS 4912:1978',
+      'correctiveAction': 'Immediately stop work at height. Issue IS 3521 full-body harness with anchor min 15kN. Install guardrail min 1.0m per IS 4912.',
+      'wsaCause': '1. Failure to follow procedure'
+    },
+    {
+      'name': 'Missing safety helmet',
+      'description': 'Worker observed without ISI-marked safety helmet in hazardous area.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Act',
+      'regulation': 'FA 1948 S35, IS 2925:1984',
+      'correctiveAction': 'Stop work. Issue correct IS 2925 helmet (colour per role: White=Officer, Yellow=Supervisor, Blue=Workman).',
+      'wsaCause': '3. Improper PPE use'
+    },
+    {
+      'name': 'Safety footwear absent',
+      'description': 'Worker not wearing steel-toe safety shoes in designated area.',
+      'severity': 'HIGH', 'type': 'Unsafe Act',
+      'regulation': 'FA 1948 S35, IS 5852:1993',
+      'correctiveAction': 'Provide IS 5852 steel-toe safety footwear before resuming work.',
+      'wsaCause': '3. Improper PPE use'
+    },
+    {
+      'name': 'Gas cylinder not chained',
+      'description': 'Compressed gas cylinder(s) stored without being chained upright — toppling risk causing valve fracture and explosion.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Condition',
+      // ✅ NEW: SMPV Rule reference
+      'regulation': 'SMPV Rules 2016 Rule 10(1), IS 15222, IS 8198',
+      'correctiveAction': 'Immediately chain all cylinders upright to wall or post. Keep valve protection caps in place. Segregate O2 from flammable cylinders by min 6m per SMPV Rule 14.',
+      'wsaCause': '8. Poor housekeeping'
+    },
+    {
+      'name': 'O2 and flammable cylinder proximity',
+      'description': 'Oxygen and flammable gas (acetylene/LPG) cylinders stored less than 6 metres apart — fire and explosion hazard.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Condition',
+      // ✅ NEW: SMPV Rule 14 Table-3
+      'regulation': 'SMPV Rules 2016 Rule 14 Table-3, FA 1948 S37',
+      'correctiveAction': 'Physically separate O2 and flammable gas cylinders by minimum 6 metres, or erect a fire-rated wall between them. No ignition sources within 3m.',
+      'wsaCause': '2. Lack of hazard awareness'
+    },
+    {
+      'name': 'Cylinder valve cap missing',
+      'description': 'Compressed gas cylinder valve exposed without protection cap — valve breakage could cause uncontrolled gas release.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'SMPV Rules 2016 Rule 10(2), IS 8198',
+      'correctiveAction': 'Fit valve protection cap immediately. Inspect all cylinders in area for caps.',
+      'wsaCause': '8. Poor housekeeping'
+    },
+    {
+      'name': 'ISI mark not visible on cylinder',
+      'description': 'Gas cylinder without visible ISI mark or last hydraulic test date — certification status unknown.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'SMPV Rules 2016 Rule 19, IS 15222',
+      'correctiveAction': 'Remove cylinder from service. Verify ISI certification and hydraulic test date (valid within 10 years). Replace if expired.',
+      'wsaCause': '5. Equipment failure'
+    },
+    {
+      'name': 'Pressure vessel no relief valve',
+      'description': 'Pressure vessel operating without visible safety relief valve or relief valve appears blocked.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Condition',
+      'regulation': 'SMPV Rules 2016 Rule 16, FA 1948 S31',
+      'correctiveAction': 'Shut down vessel immediately. Install approved safety relief valve per SMPV Rule 16. Do not restart until relief valve operational.',
+      'wsaCause': '5. Equipment failure'
+    },
+    {
+      'name': 'Exposed electrical cable walkway',
+      'description': 'Loose or unprotected electrical cable running across pedestrian walkway — electrocution and trip hazard.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'CEA Regulations 2023 Reg 21, IS 732',
+      'correctiveAction': 'De-energize via LOTO. Route cable in protective conduit or cable tray above head height. Display DANGER notice per CEA Reg 20.',
+      'wsaCause': '8. Poor housekeeping'
+    },
+    {
+      'name': 'Electrical panel open live',
+      'description': 'Electrical panel door open exposing live busbars or terminals — electrocution hazard.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Condition',
+      'regulation': 'CEA Regulations 2023 Reg 20, Reg 21',
+      'correctiveAction': 'Close panel door immediately. Apply LOTO before any maintenance. Place insulating mat front and rear. Affix DANGER notice with skull-and-crossbones.',
+      'wsaCause': '12. Inadequate isolation'
+    },
+    {
+      'name': 'Oil spillage on walkway',
+      'description': 'Oil or liquid spillage on access walkway creating slip and fall hazard.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'FA 1948 S32(a), IS 14489:2018 Clause 9',
+      'correctiveAction': 'Barricade area immediately. Deploy oil absorbent material. Clean and dry surface. Place WET FLOOR sign. Investigate source and repair leak.',
+      'wsaCause': '8. Poor housekeeping'
+    },
+    {
+      'name': 'Unguarded rotating machinery',
+      'description': 'Rotating shaft, gear, or belt drive without proper enclosure guarding.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Condition',
+      'regulation': 'FA 1948 S21, IS 14489:2018 Clause 6.2',
+      'correctiveAction': 'Stop machine immediately via LOTO. Install interlocked fixed guard. Machine must not restart until guarding is certified fit by supervisor.',
+      'wsaCause': '5. Equipment failure'
+    },
+    {
+      'name': 'Hot work without PTW',
+      'description': 'Welding, grinding or cutting operations without visible hot work permit or fire watch.',
+      'severity': 'HIGH', 'type': 'Unsafe Act',
+      'regulation': 'FA 1948 S38, SMPV Rules 2016 Rule 22, IS 7969:1976',
+      'correctiveAction': 'Stop hot work immediately. Obtain Hot Work PTW. Deploy trained fire watch with charged extinguisher. Clear flammable materials within 3m radius.',
+      'wsaCause': '1. Failure to follow procedure'
+    },
+    {
+      'name': 'Scaffolding no inspection tag',
+      'description': 'Scaffolding structure without current inspection tag — structural integrity unknown.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      // ✅ FIXED: was S36 — correct regulation is S32(c)
+      'regulation': 'FA 1948 S32(c), IS 2750:1982, IS 3696',
+      'correctiveAction': 'Stop work on scaffolding immediately. Competent person to inspect per IS 3696. Affix green SAFE TO USE tag before resuming. Toe boards and mid-rail must be in place.',
+      'wsaCause': '5. Equipment failure'
+    },
+    {
+      'name': 'Eye protection absent',
+      'description': 'Worker performing grinding or welding without IS-marked eye protection.',
+      'severity': 'HIGH', 'type': 'Unsafe Act',
+      'regulation': 'FA 1948 S35, IS 5983:1980',
+      'correctiveAction': 'Stop work. Issue IS 5983 goggles or face shield appropriate to the task. Grinder: anti-UV shade. Welder: shade 9-12 filter.',
+      'wsaCause': '3. Improper PPE use'
+    },
+    {
+      'name': 'Emergency exit blocked',
+      'description': 'Materials or equipment blocking emergency exit route reducing clear width below 1.0m.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'FA 1948 S38, NBC 2016 Part 4 min 1.0m clear',
+      'correctiveAction': 'Remove all obstructions immediately. Maintain minimum 1.0m clear width. Mark exit route with photoluminescent signs per IS 9457.',
+      'wsaCause': '8. Poor housekeeping'
+    },
+    {
+      'name': 'No ear protection high noise',
+      'description': 'Worker in high-noise area (>85dB) without ear muffs or plugs.',
+      'severity': 'MEDIUM', 'type': 'Unsafe Act',
+      'regulation': 'FA 1948 S35, IS 9167:1979',
+      'correctiveAction': 'Issue IS 9167 ear muffs or Class 3 plugs immediately. Noise level above 85dB requires mandatory ear protection.',
+      'wsaCause': '3. Improper PPE use'
+    },
+    {
+      'name': 'Crane SWL not displayed',
+      'description': 'Overhead crane or lifting equipment without Safe Working Load clearly marked.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'FA 1948 S29, IS 13367:1992, IS 14489:2018 Clause 8',
+      'correctiveAction': 'Stop lifting operations. Mark SWL conspicuously on crane structure. 6-monthly inspection certificate must be current.',
+      'wsaCause': '6. Communication failure'
+    },
+    {
+      'name': 'Floor opening unguarded',
+      'description': 'Open pit, manhole or floor opening without guardrail or rigid cover.',
+      'severity': 'CRITICAL', 'type': 'Unsafe Condition',
+      'regulation': 'FA 1948 S33, IS 4912:1978 guardrail min 1.0m',
+      'correctiveAction': 'Install 3-rail guardrail (top 1.0m, mid 0.5m, toe board 150mm) or rigid cover rated for foot traffic. Display DANGER notice.',
+      'wsaCause': '8. Poor housekeeping'
+    },
+    {
+      'name': 'No fire extinguisher nearby',
+      'description': 'Work area without fire extinguisher within 15 metres.',
+      'severity': 'HIGH', 'type': 'Unsafe Condition',
+      'regulation': 'FA 1948 S38, NBC 2016 Part 4 one per 15m',
+      'correctiveAction': 'Place 9kg DCP or CO2 extinguisher as appropriate for fire class. Verify last service within 12 months. Train nearby workers in use.',
+      'wsaCause': '2. Lack of hazard awareness'
+    },
   ];
 
-  // ── Knowledge-based offline analysis ─────────────────────────────────────
+  // ── Knowledge-based offline analysis ──────────────────────────────────────
   static int _deriveSeed(Uint8List bytes) {
     int seed = 0;
     final n = bytes.length < 512 ? bytes.length : 512;
@@ -158,10 +300,10 @@ class GeminiVision {
   }
 
   static Map<String, dynamic> _knowledgeBasedAnalysis(Uint8List bytes) {
-    final seed = _deriveSeed(bytes);
-    final count = 3 + (seed % 3);
+    final seed  = _deriveSeed(bytes);
+    final count = 3 + (seed % 3); // 3, 4, or 5 hazards
     final selected = <Map<String, dynamic>>[];
-    final used = <int>{};
+    final used     = <int>{};
     var s = seed;
     while (selected.length < count && selected.length < _hazardLibrary.length) {
       final idx = s % _hazardLibrary.length;
@@ -171,33 +313,48 @@ class GeminiVision {
         used.add(idx);
       }
     }
+
     String risk = 'LOW';
-    int score = 30;
+    int score   = 30;
     for (final h in selected) {
       switch (h['severity']) {
-        case 'CRITICAL': score += 18; risk = 'CRITICAL'; break;
-        case 'HIGH': score += 12; if (risk != 'CRITICAL') risk = 'HIGH'; break;
-        case 'MEDIUM': score += 7; if (risk == 'LOW') risk = 'MEDIUM'; break;
-        default: score += 3;
+        case 'CRITICAL':
+          score += 18; risk = 'CRITICAL';
+          break;
+        case 'HIGH':
+          score += 12;
+          if (risk != 'CRITICAL') risk = 'HIGH';
+          break;
+        case 'MEDIUM':
+          score += 7;
+          if (risk == 'LOW') risk = 'MEDIUM';
+          break;
+        default:
+          score += 3;
       }
     }
+
     return {
       'overallRisk': risk,
-      'riskScore': score.clamp(0, 100),
-      'confidence': 75 + (seed % 15),
-      'summary': 'Knowledge-based analysis: ${selected.length} common steel plant hazards identified.',
+      'riskScore':   score.clamp(0, 100),
+      'confidence':  75 + (seed % 15),
+      'people':      0, // offline mode cannot count people
+      'summary':
+          'Knowledge-based analysis: ${selected.length} common steel plant hazards identified. '
+          'Standards: SMPV Rules 2016, FA 1948, IS 14489:2018, CEA Regulations 2023.',
       'hazards': selected,
       'wsa': selected.map((h) => h['wsaCause']?.toString() ?? '').toSet().toList(),
       'preventive': [
         'Daily toolbox talk with PPE compliance check per IS 14489:2018',
-        'Monthly housekeeping audit per 5S and NBC 2016 Part 4',
-        'Working at height refresher every 6 months with IS 3521 harness check',
-        'LOTO training every 4 months per CEA Regulations 2023',
-        'Fire exit inspection weekly per NBC 2016 Part 4',
-        'Monthly crane inspection per IS 13367:1992',
+        'Monthly gas cylinder audit — chains, caps, colour codes per SMPV Rules 2016',
+        'Working at height refresher every 6 months with IS 3521 harness inspection',
+        'Quarterly LOTO training per CEA Regulations 2023',
+        'Weekly fire exit inspection per NBC 2016 Part 4',
+        '6-monthly crane inspection per FA 1948 S29 and IS 13367:1992',
+        'Annual SMPV pressure vessel hydraulic test per Rule 19',
       ],
       'ptw_required': 'Verify Hot Work, WAH, Confined Space PTW as applicable',
-      'nearest_standard': 'IS 14489:2018 OHS Audit Code of Practice',
+      'nearest_standard': 'IS 14489:2018 OHS Code of Practice for Steel Plants',
       'imageSeed': seed,
     };
   }
