@@ -1021,7 +1021,7 @@ class _NearMissTabState extends State<NearMissTab> {
               borderRadius: const BorderRadius.only(
                 topLeft:    Radius.circular(10),
                 bottomLeft: Radius.circular(10)),
-              borderSide: BorderSide.none))),
+              borderSide: BorderSide.none)))),
         GestureDetector(
           onTap: () => _toggleVoice(c),
           child: Tooltip(
