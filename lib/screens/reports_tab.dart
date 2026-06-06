@@ -152,83 +152,15 @@ class _ReportsTabState extends State<ReportsTab>
   Widget build(BuildContext context) {
     final sl = SL.of(context);
 
-    return SafeArea(child: Column(children: [
+    // Neutral background — not pure black
+    // Override scaffold bg inline:
+    return Container(
+      color: sl.isDark
+          ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+      child: SafeArea(child: Column(children: [
 
-      // ── TOP BAR ──────────────────────────────────────────────
-      Container(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-        decoration: BoxDecoration(
-          color: sl.bg2,
-          border: Border(bottom: BorderSide(
-              color: sl.border.withOpacity(0.4)))),
-        child: Row(children: [
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Reports', style: TextStyle(color: sl.text1,
-                  fontSize: 18, fontWeight: FontWeight.w800)),
-              Text('${_all.length} incidents · $_open open · $_closed closed',
-                style: TextStyle(color: sl.text4, fontSize: 11)),
-            ])),
-          // Refresh
-          IconButton(
-            onPressed: _load,
-            icon: Icon(Icons.refresh_rounded,
-                color: sl.text3, size: 20),
-            tooltip: 'Refresh'),
-          // Sort
-          PopupMenuButton<String>(
-            initialValue: _sortBy,
-            color: sl.card2,
-            onSelected: (v) => setState(() {
-              _sortBy = v; _applyFilter();
-            }),
-            itemBuilder: (_) => [
-              PopupMenuItem(value: 'date',
-                child: Text('Newest first',
-                    style: TextStyle(color: sl.text1, fontSize: 12))),
-              PopupMenuItem(value: 'severity',
-                child: Text('By severity',
-                    style: TextStyle(color: sl.text1, fontSize: 12))),
-              PopupMenuItem(value: 'score',
-                child: Text('By risk score',
-                    style: TextStyle(color: sl.text1, fontSize: 12))),
-            ],
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: sl.card2,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color: sl.border.withOpacity(0.5))),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.sort_rounded, size: 14, color: sl.text3),
-                const SizedBox(width: 4),
-                Text('Sort', style: TextStyle(
-                    color: sl.text3, fontSize: 11)),
-              ]))),
-          const SizedBox(width: 8),
-          // Export PDF
-          GestureDetector(
-            onTap: _generatePDF,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                    colors: [AppColors.accent, AppColors.cyan]),
-                borderRadius: BorderRadius.circular(8)),
-              child: const Row(
-                  mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.picture_as_pdf,
-                    size: 14, color: Colors.white),
-                SizedBox(width: 4),
-                Text('PDF', style: TextStyle(
-                    color: Colors.white, fontSize: 11,
-                    fontWeight: FontWeight.w700)),
-              ]))),
-        ])),
+      // ── INFOGRAPHIC HEADER ───────────────────────────────────
+      _buildInfoHeader(sl),
 
       // ── STATUS PILLS ─────────────────────────────────────────
       Container(
@@ -289,6 +221,148 @@ class _ReportsTabState extends State<ReportsTab>
             ])),
     ]));
   }
+
+
+  // ── INFOGRAPHIC HEADER ────────────────────────────────────────
+  Widget _buildInfoHeader(SL sl) {
+    final isDark = sl.isDark;
+    final cardBg = isDark ? const Color(0xFF252840) : Colors.white;
+    final bgPage = isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+      decoration: BoxDecoration(
+        color: cardBg,
+        border: Border(bottom: BorderSide(
+            color: sl.border.withOpacity(0.35)))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.bar_chart_rounded,
+                  color: AppColors.accent, size: 20)),
+            const SizedBox(width: 10),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Reports', style: TextStyle(
+                    color: sl.text1, fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+                Text('${_all.length} total · $_open open · $_closed closed',
+                  style: TextStyle(color: sl.text4, fontSize: 10)),
+              ])),
+            // Refresh
+            GestureDetector(
+              onTap: _load,
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: sl.isDark
+                      ? const Color(0xFF2A2D42)
+                      : const Color(0xFFF0F1F5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: sl.border.withOpacity(0.4))),
+                child: Icon(Icons.refresh_rounded,
+                    color: sl.text3, size: 16))),
+            const SizedBox(width: 6),
+            // Sort
+            PopupMenuButton<String>(
+              initialValue: _sortBy,
+              color: sl.isDark
+                  ? const Color(0xFF2A2D42) : Colors.white,
+              onSelected: (v) => setState(() {
+                _sortBy = v; _applyFilter();
+              }),
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'date',
+                  child: Text('Newest first',
+                      style: TextStyle(color: sl.text1, fontSize: 12))),
+                PopupMenuItem(value: 'severity',
+                  child: Text('By severity',
+                      style: TextStyle(color: sl.text1, fontSize: 12))),
+                PopupMenuItem(value: 'score',
+                  child: Text('By risk score',
+                      style: TextStyle(color: sl.text1, fontSize: 12))),
+              ],
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 8, vertical: 7),
+                decoration: BoxDecoration(
+                  color: sl.isDark
+                      ? const Color(0xFF2A2D42)
+                      : const Color(0xFFF0F1F5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                      color: sl.border.withOpacity(0.4))),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.sort_rounded,
+                      size: 14, color: sl.text3),
+                  const SizedBox(width: 3),
+                  Text('Sort', style: TextStyle(
+                      color: sl.text3, fontSize: 11)),
+                ]))),
+            const SizedBox(width: 6),
+            // PDF
+            GestureDetector(
+              onTap: _generatePDF,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 9, vertical: 7),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.accent, AppColors.cyan]),
+                  borderRadius: BorderRadius.circular(8)),
+                child: const Row(
+                    mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.picture_as_pdf,
+                      size: 13, color: Colors.white),
+                  SizedBox(width: 3),
+                  Text('PDF', style: TextStyle(
+                      color: Colors.white, fontSize: 11,
+                      fontWeight: FontWeight.w700)),
+                ]))),
+          ]),
+          const SizedBox(height: 10),
+          // Mini stat bar
+          Row(children: [
+            _miniStat('📊', 'Total', '${_all.length}',
+                sl.text2, sl),
+            const SizedBox(width: 6),
+            _miniStat('🔴', 'Critical', '$_crit',
+                AppColors.crit, sl),
+            const SizedBox(width: 6),
+            _miniStat('🟠', 'High', '$_high',
+                AppColors.red, sl),
+            const SizedBox(width: 6),
+            _miniStat('🟡', 'Open', '$_open',
+                AppColors.amber, sl),
+            const SizedBox(width: 6),
+            _miniStat('✅', 'Closed', '$_closed',
+                const Color(0xFF16A34A), sl),
+          ]),
+        ]));
+  }
+
+  Widget _miniStat(String emoji, String lbl,
+      String val, Color color, SL sl) =>
+    Expanded(child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.2))),
+      child: Column(children: [
+        Text(val, style: TextStyle(color: color,
+            fontSize: 15, fontWeight: FontWeight.w800)),
+        Text('$emoji $lbl', style: TextStyle(
+            color: color.withOpacity(0.8),
+            fontSize: 7.5, fontWeight: FontWeight.w600)),
+      ])));
 
   // ── STATUS PILL ──────────────────────────────────────────────
   Widget _statusPill(SL sl, String label, int count,
