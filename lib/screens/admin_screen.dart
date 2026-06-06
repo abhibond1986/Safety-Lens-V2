@@ -96,9 +96,12 @@ class _AdminScreenState extends State<AdminScreen>
       final users = await SyncService.fetchUsers();
       final incs  = await LocalDB.getIncidents();
       final kb    = await LocalDB.getKnowledgeDocs();
+      // Fallback to local cache if backend returned nothing — must be awaited
+      // outside setState because setState callback must be synchronous.
+      final resolvedUsers = users.isNotEmpty ? users : await _localUsers();
       if (!mounted) return;
       setState(() {
-        _users     = users.isNotEmpty ? users : await _localUsers();
+        _users     = resolvedUsers;
         _incidents = incs;
         _kbDocs    = kb;
         _loading   = false;
@@ -584,7 +587,8 @@ class _AdminScreenState extends State<AdminScreen>
     final sev     = inc['severity']?.toString().toUpperCase() ?? '—';
     final status  = inc['status']?.toString().toUpperCase() ?? '—';
     final plant   = inc['plant']?.toString() ?? '—';
-    final date    = (inc['date']?.toString() ?? '').take(10);
+    final _rawDate = inc['date']?.toString() ?? '';
+    final date    = _rawDate.length > 10 ? _rawDate.substring(0, 10) : _rawDate;
     final isClosed = status == 'CLOSED';
 
     final sevColor = switch (sev) {
@@ -632,7 +636,6 @@ class _AdminScreenState extends State<AdminScreen>
       ]));
   }
 
-  String take(String s, int n) => s.length > n ? s.substring(0, n) : s;
 
   // ══════════════════════════════════════════════════════════════
   //  TAB — KNOWLEDGE BASE
