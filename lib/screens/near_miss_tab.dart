@@ -1054,7 +1054,7 @@ class _NearMissTabState extends State<NearMissTab> {
                         fontWeight: FontWeight.w700)),
                   ],
                 ])))]),
-    );
+    ));
   }
 
   Widget _micButton(TextEditingController c, SL sl) {
