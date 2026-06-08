@@ -630,18 +630,32 @@ class _AdminScreenState extends State<AdminScreen>
             fontSize: 12, fontWeight: FontWeight.w700,
             decoration: isClosed ? TextDecoration.lineThrough : null),
             maxLines: 2, overflow: TextOverflow.ellipsis)),
-          if (!isClosed)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            if (!isClosed)
+              GestureDetector(
+                onTap: () => _closeIncident(inc),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.green.withOpacity(0.3))),
+                  child: const Text('Close', style: TextStyle(
+                      color: AppColors.green, fontSize: 9,
+                      fontWeight: FontWeight.w700)))),
             GestureDetector(
-              onTap: () => _closeIncident(inc),
+              onTap: () => _deleteIncident(inc),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: AppColors.green.withOpacity(0.1),
+                  color: AppColors.red.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: AppColors.green.withOpacity(0.3))),
-                child: const Text('Close', style: TextStyle(
-                    color: AppColors.green, fontSize: 9,
+                  border: Border.all(color: AppColors.red.withOpacity(0.3))),
+                child: const Text('Delete', style: TextStyle(
+                    color: AppColors.red, fontSize: 9,
                     fontWeight: FontWeight.w700)))),
+          ]),
         ]),
         const SizedBox(height: 5),
         Text('$plant · $date', style: TextStyle(color: sl.text4, fontSize: 10)),
@@ -991,6 +1005,38 @@ class _AdminScreenState extends State<AdminScreen>
     SyncService.pushIncident(inc).catchError((_) => false);
     await _loadAll();
     _showSnack('Incident closed ✓', AppColors.green);
+  }
+
+  Future<void> _deleteIncident(Map<String, dynamic> inc) async {
+    final sl = SL.of(context);
+    final id = inc['id']?.toString() ?? '';
+    final ok = await showDialog<bool>(context: context, builder: (_) =>
+      AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: const Row(children: [
+          Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 18),
+          SizedBox(width: 8),
+          Text('Delete Incident', style: TextStyle(
+              color: AppColors.text1, fontSize: 14, fontWeight: FontWeight.w700)),
+        ]),
+        content: Text(
+          'Permanently delete "${inc['title'] ?? id}"?\n\nThis will remove it from local storage and Google Sheets.',
+          style: TextStyle(color: sl.text2, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Delete', style: TextStyle(color: Colors.white))),
+        ]));
+    if (ok != true) return;
+    await LocalDB.deleteIncident(id);
+    SyncService.deleteIncident(id).catchError((_) => false);
+    await _loadAll();
+    _showSnack('Incident deleted', AppColors.red);
   }
 
   Future<void> _deleteKbDoc(Map<String, dynamic> doc) async {
