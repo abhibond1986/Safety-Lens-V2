@@ -1,9 +1,11 @@
 // lib/screens/login_screen.dart
 //
-// Changes from original:
-// 1. Plant field replaced with dropdown (14 SAIL plants + "Others")
-// 2. When "Others" selected, a free-text field appears for custom plant name
-// 3. All other logic unchanged
+// CHANGES (this version):
+// • Plant dropdown updated to 14 user-specified SAIL units + "Others"
+// • All other logic preserved exactly as before
+//
+// Full list: BSP, DSP, RSP, BSL, ISP, ASP, SSP, CFP, CMO,
+//            JGOM, OGOM, BSP(M), Collieries, SRU Kulti, Others
 
 import 'package:flutter/material.dart';
 import '../main.dart';
@@ -38,21 +40,22 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _selectedPlant;
   bool _isOtherPlant = false;
 
+  // ── UPDATED: 14 SAIL plants/units + Others ──────────────────────────
   static const List<String> _sailPlants = [
-    'BSL - Bokaro Steel Plant',
-    'RSP - Rourkela Steel Plant',
-    'DSP - Durgapur Steel Plant',
-    'BSP - Bhilai Steel Plant',
-    'ISP - IISCO Steel Plant, Burnpur',
-    'VISL - Visvesvaraya Iron & Steel Plant',
-    'SSP - Salem Steel Plant',
-    'ASP - Alloy Steels Plant, Durgapur',
-    'CFP - Chandrapur Ferro Alloy Plant',
-    'SAIL Corporate Office, New Delhi',
-    'R&D Centre for Iron & Steel (RDCIS)',
-    'Centre for Engineering & Technology (CET)',
-    'Management Training Institute (MTI)',
-    'SAIL Safety Organisation (SSO)',
+    'BSP — Bhilai Steel Plant',
+    'DSP — Durgapur Steel Plant',
+    'RSP — Rourkela Steel Plant',
+    'BSL — Bokaro Steel Plant',
+    'ISP — IISCO Steel Plant, Burnpur',
+    'ASP — Alloy Steels Plant, Durgapur',
+    'SSP — Salem Steel Plant',
+    'CFP — Chandrapur Ferro Alloy Plant',
+    'CMO — Central Marketing Organisation',
+    'JGOM — Jharkhand Group of Mines',
+    'OGOM — Odisha Group of Mines',
+    'BSP(M) — BSP Mines',
+    'Collieries — SAIL Collieries',
+    'SRU Kulti — Steel Refractory Unit, Kulti',
     'Others',
   ];
 
