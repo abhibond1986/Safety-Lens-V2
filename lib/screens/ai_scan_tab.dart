@@ -813,6 +813,10 @@ class _AIScanTabState extends State<AIScanTab> {
     await LocalDB.saveIncident(dbInc);
     SyncService.pushIncident(dbInc).catchError((_) => false);
 
+    // Best-effort: generate PDF + upload to Drive + attach URL to Sheets
+    // This runs in the background so the UI doesn't wait
+    _uploadPdfBackground(dbInc, user);
+
     setState(() {
       _isSaved         = true;
       _savedIncidentId = dbInc['id']?.toString();
@@ -1316,6 +1320,35 @@ class _AIScanTabState extends State<AIScanTab> {
       'imageBase64':     _imageBytes != null
                          ? base64Encode(_imageBytes!) : null,
     };
+  }
+
+  /// Background-upload the saved incident's PDF to Drive.
+  /// Updates the Sheets row with pdfUrl when done.
+  /// Fire-and-forget — does not block the UI.
+  Future<void> _uploadPdfBackground(
+      Map<String, dynamic> incident, Map<String, dynamic> user) async {
+    try {
+      final pdfBytes = await PdfExport.generateIncidentReportBytes(
+        incident:     incident,
+        reporterName: user['name']?.toString() ?? 'SAIL Safety Officer',
+        reporterPno:  user['pno']?.toString()  ?? '',
+        imageBytes:   _imageBytes,
+      );
+      if (pdfBytes.isEmpty) return;
+      final url = await SyncService.uploadPdfToDrive(
+        incidentId: incident['id']?.toString() ?? '',
+        pdfBytes:   pdfBytes,
+        fileName:   'SafetyLens_${incident['id']}.pdf',
+      );
+      if (url != null && url.isNotEmpty) {
+        // Update Sheets row with pdfUrl (best-effort)
+        await SyncService.pushIncident({
+          ...incident, 'pdfUrl': url,
+        }).catchError((_) => false);
+      }
+    } catch (_) {
+      // Silent fail — PDF still saved locally
+    }
   }
 
   Future<void> _exportPdf() async {
