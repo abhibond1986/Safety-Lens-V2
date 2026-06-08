@@ -505,4 +505,11 @@ class LocalDB {
         (a, b) => (b['score'] as int).compareTo(a['score'] as int));
     return results.take(3).toList();
   }
+
+  // ── DELETE INCIDENT ───────────────────────────────────────────
+  static Future<void> deleteIncident(String id) async {
+    final incidents = await getIncidents();
+    incidents.removeWhere((i) => i['id']?.toString() == id);
+    await _prefs.setString(_kIncidents, jsonEncode(incidents));
+  }
 }
