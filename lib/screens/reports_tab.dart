@@ -17,6 +17,11 @@ import '../widgets/universal_app_bar.dart';
 import 'incident_detail_screen.dart';
 
 class ReportsTab extends StatefulWidget {
+  // Static pending filters — set by HomeTab before navigating to tab 4
+  // These are consumed once by _ReportsTabState.initState() then cleared.
+  static String? pendingSeverityFilter;
+  static String? pendingStatusFilter;
+
   final String? initialFilter;
   final Map<String, dynamic>? user;
   final VoidCallback? toggleTheme;
@@ -45,11 +50,16 @@ class _ReportsTabState extends State<ReportsTab>
   String  _sortBy       = 'date';
   late TabController _tabCtrl;
 
-  @override
+    @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
-    _sevFilter = widget.initialFilter;
+    // Apply pending filters set by home tab (one-shot)
+    _sevFilter = ReportsTab.pendingSeverityFilter
+        ?? widget.initialFilter;
+    _statusFilter = ReportsTab.pendingStatusFilter;
+    ReportsTab.pendingSeverityFilter = null;
+    ReportsTab.pendingStatusFilter = null;
+    _tabCtrl = TabController(length: 4, vsync: this);
     _load();
   }
 
