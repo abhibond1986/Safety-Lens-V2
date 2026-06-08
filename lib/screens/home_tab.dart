@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
 import '../services/local_db.dart';
 import '../services/i18n.dart';
+import 'reports_tab.dart';
 import '../widgets/universal_app_bar.dart';
 
 class HomeTab extends StatefulWidget {
@@ -113,6 +114,28 @@ class _HomeTabState extends State<HomeTab> {
         DateTime(DateTime.now().year, 1, 1)).inDays;
     return _safetyQuotes[dayOfYear % _safetyQuotes.length];
   }
+
+  /// Helper — match incidents to the current user via name or pno
+  bool _isMyIncident(Map<String, dynamic> i) {
+    final myName = (widget.user?['name']?.toString() ?? '').trim().toLowerCase();
+    final myPno  = (widget.user?['pno']?.toString()  ?? '').trim().toLowerCase();
+    final reportedBy = (i['reportedBy']?.toString()    ?? '').trim().toLowerCase();
+    final reportedPno = (i['reportedByPno']?.toString() ?? '').trim().toLowerCase();
+    if (myName.isEmpty && myPno.isEmpty) return false;
+    if (myPno.isNotEmpty && reportedPno == myPno) return true;
+    if (myName.isNotEmpty && reportedBy == myName) return true;
+    return false;
+  }
+
+  /// My own AI scans count
+  int get _myAiScans => _incidents.where((i) =>
+      _isMyIncident(i) &&
+      (i['type']?.toString().toUpperCase() ?? '') == 'AI_SCAN').length;
+
+  /// My own Near Miss reports count
+  int get _myNearMiss => _incidents.where((i) =>
+      _isMyIncident(i) &&
+      (i['type']?.toString().toUpperCase() ?? '') == 'NEAR_MISS').length;
 
   /// Hazard counts per plant (top 5)
   List<MapEntry<String, int>> get _byPlant {
@@ -274,7 +297,7 @@ class _HomeTabState extends State<HomeTab> {
           ),
           const SizedBox(height: 14),
 
-          // Glass card — days since LTI
+          // Glass card — MY AI Scans + Near Miss breakdown
           ClipRRect(
             borderRadius: BorderRadius.circular(16),
             child: BackdropFilter(
@@ -287,26 +310,70 @@ class _HomeTabState extends State<HomeTab> {
                   border: Border.all(
                       color: Colors.white.withOpacity(0.25), width: 1)),
                 child: Row(children: [
-                  // Big number
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('$_daysSinceLTI',
-                      style: const TextStyle(color: Colors.white, fontSize: 36,
-                          fontWeight: FontWeight.w800, height: 1)),
-                    const SizedBox(height: 2),
-                    Text(I18n.t('home.daysSinceLti'),
-                      style: const TextStyle(color: Colors.white70,
-                          fontSize: 10, fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5)),
-                  ]),
-                  const Spacer(),
-                  // Icon
-                  Container(
-                    width: 50, height: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(14)),
-                    child: const Icon(Icons.shield_rounded,
-                        color: Colors.white, size: 28)),
+                  // My AI Scans
+                  Expanded(child: GestureDetector(
+                    onTap: () {
+                      ReportsTab.pendingStatusFilter = null;
+                      ReportsTab.pendingSeverityFilter = null;
+                      widget.onTabChange(4); // go to Reports
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.camera_alt_rounded,
+                              color: Colors.white, size: 14),
+                          const SizedBox(width: 5),
+                          Text('My AI Scans',
+                              style: TextStyle(color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3)),
+                        ]),
+                        const SizedBox(height: 4),
+                        Text('$_myAiScans',
+                            style: const TextStyle(color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800, height: 1)),
+                        Text('hazard scans',
+                            style: TextStyle(color: Colors.white.withOpacity(0.7),
+                                fontSize: 9)),
+                      ]),
+                  )),
+                  // Vertical divider
+                  Container(width: 1, height: 60,
+                      color: Colors.white.withOpacity(0.25),
+                      margin: const EdgeInsets.symmetric(horizontal: 10)),
+                  // My Near Miss
+                  Expanded(child: GestureDetector(
+                    onTap: () {
+                      ReportsTab.pendingStatusFilter = null;
+                      ReportsTab.pendingSeverityFilter = null;
+                      widget.onTabChange(4);
+                    },
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.warning_amber_rounded,
+                              color: Colors.white, size: 14),
+                          const SizedBox(width: 5),
+                          Text('My Near Miss',
+                              style: TextStyle(color: Colors.white70,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.3)),
+                        ]),
+                        const SizedBox(height: 4),
+                        Text('$_myNearMiss',
+                            style: const TextStyle(color: Colors.white,
+                                fontSize: 32,
+                                fontWeight: FontWeight.w800, height: 1)),
+                        Text('reported',
+                            style: TextStyle(color: Colors.white.withOpacity(0.7),
+                                fontSize: 9)),
+                      ]),
+                  )),
                 ]),
               ))),
         ]),
@@ -326,30 +393,46 @@ class _HomeTabState extends State<HomeTab> {
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(children: [
         Row(children: [
+          // Total Cases → Reports (no filter)
           Expanded(child: _statTile(
               sl, I18n.t('home.totalCases'), '$_total',
-              Icons.assessment_rounded, const Color(0xFF6366F1))),
+              Icons.assessment_rounded, const Color(0xFF6366F1),
+              onTap: () => _goReports(null, null))),
           const SizedBox(width: 8),
+          // Open → Reports filtered by OPEN status
           Expanded(child: _statTile(
               sl, I18n.t('home.openCases'), '$_open',
-              Icons.lock_open_rounded, const Color(0xFFF59E0B))),
+              Icons.lock_open_rounded, const Color(0xFFF59E0B),
+              onTap: () => _goReports(null, 'OPEN'))),
         ]),
         const SizedBox(height: 8),
         Row(children: [
+          // Critical → Reports filtered by CRITICAL severity
           Expanded(child: _statTile(
               sl, I18n.t('home.criticalCases'), '$_critical',
-              Icons.warning_rounded, const Color(0xFFEF4444))),
+              Icons.warning_rounded, const Color(0xFFEF4444),
+              onTap: () => _goReports('CRITICAL', null))),
           const SizedBox(width: 8),
+          // Closed → Reports filtered by CLOSED status
           Expanded(child: _statTile(
               sl, I18n.t('home.closedCases'), '$_closed',
-              Icons.check_circle_rounded, const Color(0xFF10B981))),
+              Icons.check_circle_rounded, const Color(0xFF10B981),
+              onTap: () => _goReports(null, 'CLOSED'))),
         ]),
       ]),
     );
   }
 
-  Widget _statTile(SL sl, String label, String value, IconData icon, Color color) {
-    return ClipRRect(
+  /// Navigate to Reports tab with given filters applied
+  void _goReports(String? severityFilter, String? statusFilter) {
+    ReportsTab.pendingSeverityFilter = severityFilter;
+    ReportsTab.pendingStatusFilter   = statusFilter;
+    widget.onTabChange(4);
+  }
+
+  Widget _statTile(SL sl, String label, String value, IconData icon, Color color,
+      {VoidCallback? onTap}) {
+    final tile = ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
@@ -387,6 +470,15 @@ class _HomeTabState extends State<HomeTab> {
                     fontWeight: FontWeight.w600)),
           ]),
         )),
+    );
+    if (onTap == null) return tile;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: tile,
+      ),
     );
   }
 
