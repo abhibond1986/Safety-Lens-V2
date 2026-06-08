@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
@@ -520,6 +521,58 @@ class SyncService {
           final flat = Map<String, dynamic>.from(data);
           flat.remove('success');
           if (flat['username'] != null) return flat;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  UPLOAD PDF TO DRIVE — returns shareable URL, updates incident
+  // ═══════════════════════════════════════════════════════════════
+  static Future<String?> uploadPdfToDrive({
+    required String incidentId,
+    required Uint8List pdfBytes,
+    String? fileName,
+  }) async {
+    if (!await isConfigured) return null;
+    try {
+      final url = await getBackendUrl();
+      final name = fileName ?? 'SafetyLens_${incidentId}.pdf';
+      final body = jsonEncode({
+        'action':     'uploadPdfToDrive',
+        'incidentId': incidentId,
+        'fileName':   name,
+        'pdfBase64':  base64Encode(pdfBytes),
+      });
+
+      // Apps Script redirects POST — follow redirect manually
+      final client = http.Client();
+      http.Response resp;
+      try {
+        resp = await client.post(
+          Uri.parse(url),
+          body: body,
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        ).timeout(const Duration(seconds: 60));
+        if (resp.statusCode == 302 || resp.statusCode == 301) {
+          final loc = resp.headers['location'] ?? '';
+          if (loc.isNotEmpty) {
+            resp = await client.post(
+              Uri.parse(loc),
+              body: body,
+              headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            ).timeout(const Duration(seconds: 60));
+          }
+        }
+      } finally { client.close(); }
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        if (data['success'] == true) {
+          return data['pdfUrl']?.toString();
         }
       }
       return null;
