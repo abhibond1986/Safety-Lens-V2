@@ -12,11 +12,24 @@ import 'package:intl/intl.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/pdf_export.dart';
+import '../services/i18n.dart';
+import '../widgets/universal_app_bar.dart';
 import 'incident_detail_screen.dart';
 
 class ReportsTab extends StatefulWidget {
   final String? initialFilter;
-  const ReportsTab({super.key, this.initialFilter});
+  final Map<String, dynamic>? user;
+  final VoidCallback? toggleTheme;
+  final VoidCallback? onSignOut;
+  final bool isDark;
+  const ReportsTab({
+    super.key,
+    this.initialFilter,
+    this.user,
+    this.toggleTheme,
+    this.onSignOut,
+    this.isDark = true,
+  });
   @override
   State<ReportsTab> createState() => _ReportsTabState();
 }
@@ -183,8 +196,14 @@ class _ReportsTabState extends State<ReportsTab>
           ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
       child: SafeArea(child: Column(children: [
 
-      // ── INFOGRAPHIC HEADER ───────────────────────────────────
-      _buildInfoHeader(sl),
+      // ── UNIVERSAL APP BAR ───────────────────────────────────
+      UniversalAppBar(
+        title: I18n.t('reports.title'),
+        user: widget.user,
+        toggleTheme: widget.toggleTheme,
+        onSignOut: widget.onSignOut,
+        isDark: widget.isDark,
+      ),
 
       // ── STATUS PILLS ─────────────────────────────────────────
       Container(
