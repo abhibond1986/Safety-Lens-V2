@@ -94,6 +94,26 @@ class _HomeTabState extends State<HomeTab> {
     return (100 - critPenalty - openPenalty).clamp(0, 100).round();
   }
 
+  /// 5 motivational safety quotes — rotate by day of year
+  static const List<String> _safetyQuotes = [
+    'Safety isn\'t expensive, it\'s priceless.',
+    'सुरक्षा सबकी ज़िम्मेदारी, लापरवाही सबकी हानि।',
+    'A safe worker is a smart worker. Take a moment, save a life.',
+    'जो जागे, सो सुरक्षित। चूके, तो दुर्घटना।',
+    'Zero harm is not a goal — it is the only acceptable result.',
+    'Stop. Think. Act. Every shift, every task, every time.',
+    'सुरक्षा पहले — कार्य बाद में।',
+    'The best safety device is a careful worker who follows the procedure.',
+    'सावधानी हटी, दुर्घटना घटी।',
+    'Your family is waiting at home. Come back safe.',
+  ];
+
+  String get _todaysQuote {
+    final dayOfYear = DateTime.now().difference(
+        DateTime(DateTime.now().year, 1, 1)).inDays;
+    return _safetyQuotes[dayOfYear % _safetyQuotes.length];
+  }
+
   /// Hazard counts per plant (top 5)
   List<MapEntry<String, int>> get _byPlant {
     final m = <String, int>{};
@@ -205,10 +225,54 @@ class _HomeTabState extends State<HomeTab> {
                     fontWeight: FontWeight.w500)),
           ]),
           const SizedBox(height: 4),
-          Text(firstName,
-              style: const TextStyle(color: Colors.white, fontSize: 26,
+          // Full name (use first name from name field)
+          Text(widget.user?['name']?.toString() ?? firstName,
+              style: const TextStyle(color: Colors.white, fontSize: 24,
                   fontWeight: FontWeight.w800, height: 1.1)),
-          const SizedBox(height: 18),
+          const SizedBox(height: 4),
+          // Designation + Plant
+          Row(children: [
+            if ((widget.user?['designation']?.toString() ?? '').isNotEmpty) ...[
+              Icon(Icons.work_outline_rounded,
+                  color: Colors.white.withOpacity(0.85), size: 12),
+              const SizedBox(width: 4),
+              Text(widget.user!['designation'].toString(),
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 12, fontWeight: FontWeight.w600)),
+              const SizedBox(width: 10),
+            ],
+            if ((widget.user?['plant']?.toString() ?? '').isNotEmpty) ...[
+              Icon(Icons.factory_outlined,
+                  color: Colors.white.withOpacity(0.85), size: 12),
+              const SizedBox(width: 4),
+              Flexible(child: Text(widget.user!['plant'].toString(),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 12, fontWeight: FontWeight.w600))),
+            ],
+          ]),
+          const SizedBox(height: 12),
+          // Safety motivational quote — italic
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.13),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.white.withOpacity(0.22))),
+            child: Row(children: [
+              const Icon(Icons.format_quote_rounded,
+                  color: Colors.white, size: 14),
+              const SizedBox(width: 6),
+              Expanded(child: Text(_todaysQuote,
+                  style: const TextStyle(
+                      color: Colors.white, fontSize: 11.5,
+                      fontStyle: FontStyle.italic, height: 1.3,
+                      fontWeight: FontWeight.w500))),
+            ]),
+          ),
+          const SizedBox(height: 14),
 
           // Glass card — days since LTI
           ClipRRect(
