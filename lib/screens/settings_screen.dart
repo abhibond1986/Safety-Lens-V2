@@ -533,6 +533,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(8)),
               ),
             ),
+            const SizedBox(height: 8),
+
+            // Test Save to Sheets — writes a real test row
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _testSaveToSheets,
+              icon: const Icon(Icons.science_outlined,
+                  color: AppColors.amber, size: 16),
+              label: const Text('Test Save to Sheets',
+                  style: TextStyle(
+                      color: AppColors.amber, fontWeight: FontWeight.w600,
+                      fontSize: 12)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: AppColors.amber, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                minimumSize: const Size(double.infinity, 0),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
 
             // Status message
             if (_status.isNotEmpty) ...[
