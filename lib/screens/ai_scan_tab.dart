@@ -824,30 +824,119 @@ class _AIScanTabState extends State<AIScanTab> {
     });
 
     if (mounted) {
-      // Show save confirmation + Sheets link
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Row(children: [
-          const Icon(Icons.check_circle_outline,
-              color: Colors.white, size: 16),
-          const SizedBox(width: 8),
-          const Expanded(child: Text(
-              '✅ Saved & syncing to Google Sheets',
-              style: TextStyle(fontSize: 12))),
-          TextButton(
-            onPressed: _openSheetsLink,
-            child: const Text('View Sheet',
-              style: TextStyle(color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  decoration: TextDecoration.underline))),
-        ]),
-        backgroundColor: AppColors.green,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(12),
-        duration: const Duration(seconds: 5),
-      ));
+      // Show prominent save confirmation dialog
+      _showSaveSuccessDialog(dbInc);
     }
+  }
+
+  /// Show a prominent "Report Saved" confirmation dialog
+  void _showSaveSuccessDialog(Map<String, dynamic> incident) {
+    final sl = SL.of(context);
+    final id = incident['id']?.toString() ?? '';
+    final shortId = id.length > 8 ? id.substring(id.length - 8) : id;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            // Big success icon
+            Container(
+              width: 70, height: 70,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                  colors: [Color(0xFF10B981), Color(0xFF059669)]),
+                boxShadow: [BoxShadow(
+                  color: AppColors.green.withOpacity(0.3),
+                  blurRadius: 16, spreadRadius: 2)]),
+              child: const Icon(Icons.check_rounded,
+                  color: Colors.white, size: 40)),
+            const SizedBox(height: 14),
+            Text('Report Saved Successfully',
+                style: TextStyle(color: sl.text1, fontSize: 17,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Text('Report ID: #$shortId',
+                style: TextStyle(color: sl.text3, fontSize: 11,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 16),
+            // Status rows
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: sl.card2,
+                borderRadius: BorderRadius.circular(12)),
+              child: Column(children: [
+                _saveRow(Icons.save_outlined, 'Saved locally',
+                    'Available offline', AppColors.green, sl),
+                const SizedBox(height: 8),
+                _saveRow(Icons.cloud_upload_outlined, 'Synced to Google Sheets',
+                    'Visible to admin', AppColors.cyan, sl),
+                const SizedBox(height: 8),
+                _saveRow(Icons.picture_as_pdf_outlined, 'PDF report',
+                    'Uploading in background', AppColors.amber, sl),
+              ])),
+            const SizedBox(height: 16),
+            // Action buttons
+            Row(children: [
+              Expanded(child: OutlinedButton.icon(
+                onPressed: () { Navigator.pop(ctx); _openSheetsLink(); },
+                icon: const Icon(Icons.open_in_new_rounded,
+                    size: 14, color: AppColors.accent),
+                label: const Text('View Sheet',
+                    style: TextStyle(color: AppColors.accent,
+                        fontSize: 12, fontWeight: FontWeight.w700)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.accent, width: 1.5),
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10))),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: ElevatedButton.icon(
+                onPressed: () => Navigator.pop(ctx),
+                icon: const Icon(Icons.check_rounded,
+                    size: 14, color: Colors.white),
+                label: const Text('Done',
+                    style: TextStyle(color: Colors.white,
+                        fontSize: 12, fontWeight: FontWeight.w700)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.green,
+                  padding: const EdgeInsets.symmetric(vertical: 11),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10))),
+              )),
+            ]),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _saveRow(IconData icon, String title, String sub, Color color, SL sl) {
+    return Row(children: [
+      Container(
+        width: 28, height: 28,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.15),
+          borderRadius: BorderRadius.circular(8)),
+        child: Icon(icon, color: color, size: 15)),
+      const SizedBox(width: 10),
+      Expanded(child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: TextStyle(
+            color: sl.text1, fontSize: 12,
+            fontWeight: FontWeight.w700)),
+        Text(sub, style: TextStyle(color: sl.text4, fontSize: 10)),
+      ])),
+      Icon(Icons.check_circle, color: color, size: 16),
+    ]);
   }
 
   // ─── STEP 5: MITIGATE ────────────────────────────────────────
