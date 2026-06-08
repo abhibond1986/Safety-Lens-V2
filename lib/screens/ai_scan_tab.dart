@@ -19,9 +19,21 @@ import '../services/local_db.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_export.dart';
 import '../widgets/hazard_annotated_image.dart';
+import '../widgets/universal_app_bar.dart';
+import '../services/i18n.dart';
 
 class AIScanTab extends StatefulWidget {
-  const AIScanTab({super.key});
+  final Map<String, dynamic>? user;
+  final VoidCallback? toggleTheme;
+  final VoidCallback? onSignOut;
+  final bool isDark;
+  const AIScanTab({
+    super.key,
+    this.user,
+    this.toggleTheme,
+    this.onSignOut,
+    this.isDark = true,
+  });
   @override
   State<AIScanTab> createState() => _AIScanTabState();
 }
@@ -1362,7 +1374,14 @@ class _AIScanTabState extends State<AIScanTab> {
           ? const Color(0xFF1C1F2E)
           : const Color(0xFFF5F6FA),
       child: SafeArea(child: Column(children: [
-        _topBar(sl),
+        UniversalAppBar(
+          title: I18n.t('aiScan.title'),
+          subtitle: I18n.t('aiScan.subtitle'),
+          user: widget.user,
+          toggleTheme: widget.toggleTheme,
+          onSignOut: widget.onSignOut,
+          isDark: widget.isDark,
+        ),
         Expanded(child: SingleChildScrollView(
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),
