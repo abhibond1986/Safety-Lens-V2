@@ -28,6 +28,7 @@ class _ReportsTabState extends State<ReportsTab>
   bool    _loading      = true;
   String? _sevFilter;    // null = all severities
   String? _statusFilter; // null = all statuses
+  String? _plantFilter;  // null = all plants/units
   String  _sortBy       = 'date';
   late TabController _tabCtrl;
 
@@ -72,6 +73,13 @@ class _ReportsTabState extends State<ReportsTab>
       }).toList();
     }
 
+    // Plant/Unit filter
+    if (_plantFilter != null) {
+      list = list.where((i) =>
+          (i['plant']?.toString() ?? '').toUpperCase() ==
+          _plantFilter!.toUpperCase()).toList();
+    }
+
     // Sort
     list.sort((a, b) {
       if (_sortBy == 'score') {
@@ -99,6 +107,22 @@ class _ReportsTabState extends State<ReportsTab>
     _statusFilter = _statusFilter == f ? null : f;
     _applyFilter();
   });
+
+  void _setPlantFilter(String? f) => setState(() {
+    _plantFilter = _plantFilter == f ? null : f;
+    _applyFilter();
+  });
+
+  // Get unique sorted plant names from all incidents
+  List<String> get _uniquePlants {
+    final plants = _all
+        .map((i) => i['plant']?.toString() ?? '')
+        .where((p) => p.isNotEmpty)
+        .toSet()
+        .toList();
+    plants.sort();
+    return plants;
+  }
 
   // ── Computed counts ──────────────────────────────────────────
   int get _crit    => _all.where((i) => i['severity'] == 'CRITICAL').length;
@@ -197,6 +221,69 @@ class _ReportsTabState extends State<ReportsTab>
           _sevPill(sl, 'LOW',  _low,    'LOW',
               AppColors.green, _sevFilter == 'LOW'),
         ])),
+
+      // ── PLANT / UNIT FILTER ──────────────────────────────────
+      if (_uniquePlants.isNotEmpty)
+        Container(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          color: sl.bg,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                const Icon(Icons.factory_outlined, size: 11,
+                    color: AppColors.text3),
+                const SizedBox(width: 4),
+                Text('PLANT / UNIT',
+                  style: TextStyle(color: sl.text4, fontSize: 9,
+                      fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+                if (_plantFilter != null) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _setPlantFilter(null),
+                    child: const Text('× Clear',
+                      style: TextStyle(color: AppColors.accent, fontSize: 9))),
+                ],
+              ]),
+              const SizedBox(height: 5),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: _uniquePlants.map((plant) {
+                    final active = _plantFilter == plant;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: GestureDetector(
+                        onTap: () => _setPlantFilter(plant),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: active
+                                ? AppColors.cyan.withOpacity(0.15)
+                                : sl.card,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: active ? AppColors.cyan : sl.border,
+                              width: active ? 1.5 : 0.8)),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            if (active) ...[
+                              const Icon(Icons.check_circle_rounded,
+                                  color: AppColors.cyan, size: 10),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(plant,
+                              style: TextStyle(
+                                color: active ? AppColors.cyan : sl.text2,
+                                fontSize: 10,
+                                fontWeight: active
+                                    ? FontWeight.w700 : FontWeight.w400)),
+                          ]),
+                        ),
+                      ));
+                  }).toList())),
+            ])),
 
       // ── TABLE ────────────────────────────────────────────────
       Expanded(child: _loading
