@@ -18,9 +18,21 @@ import '../services/gemini_vision.dart';
 import '../services/local_db.dart';
 import '../services/pdf_export.dart';
 import '../services/sync_service.dart';
+import '../widgets/universal_app_bar.dart';
+import '../services/i18n.dart';
 
 class NearMissTab extends StatefulWidget {
-  const NearMissTab({super.key});
+  final Map<String, dynamic>? user;
+  final VoidCallback? toggleTheme;
+  final VoidCallback? onSignOut;
+  final bool isDark;
+  const NearMissTab({
+    super.key,
+    this.user,
+    this.toggleTheme,
+    this.onSignOut,
+    this.isDark = true,
+  });
   @override
   State<NearMissTab> createState() => _NearMissTabState();
 }
@@ -115,8 +127,8 @@ class _NearMissTabState extends State<NearMissTab> {
           });
         },
         localeId:     _voiceLocaleId,
-        listenFor:    const Duration(seconds: 30),
-        pauseFor:     const Duration(seconds: 5),
+        listenFor:    const Duration(minutes: 5),
+        pauseFor:     const Duration(seconds: 30),
         partialResults: true,
         cancelOnError:  false,
         listenMode:   stt.ListenMode.dictation,
@@ -174,8 +186,8 @@ class _NearMissTabState extends State<NearMissTab> {
           });
         },
         localeId:      _voiceLocaleId,
-        listenFor:     const Duration(seconds: 30),
-        pauseFor:      const Duration(seconds: 5),
+        listenFor:     const Duration(minutes: 5),
+        pauseFor:      const Duration(seconds: 30),
         partialResults: true,
         cancelOnError:  false,
         listenMode:    stt.ListenMode.dictation,
@@ -488,7 +500,13 @@ class _NearMissTabState extends State<NearMissTab> {
           : const Color(0xFFF5F6FA),
       child: SafeArea(
         child: Column(children: [
-          _buildTopBar(sl),
+          UniversalAppBar(
+            title: I18n.t('nearMiss.title'),
+            user: widget.user,
+            toggleTheme: widget.toggleTheme,
+            onSignOut: widget.onSignOut,
+            isDark: widget.isDark,
+          ),
           Expanded(child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),
             child: Column(
