@@ -4,7 +4,9 @@
 // 4 tabs: Overview · Users · Incidents · Knowledge Base
 // + Settings tab for password change & app config
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
@@ -48,6 +50,12 @@ class _AdminScreenState extends State<AdminScreen>
       (i['status']?.toString().toUpperCase() ?? '') == 'CLOSED').length;
   int get _criticalInc => _incidents.where((i) =>
       (i['severity']?.toString().toUpperCase() ?? '') == 'CRITICAL').length;
+  int get _aiScanCount => _incidents.where((i) =>
+      (i['type']?.toString().toUpperCase() ?? '') == 'AI_SCAN').length;
+  int get _nearMissCount => _incidents.where((i) =>
+      (i['type']?.toString().toUpperCase() ?? '') == 'NEAR_MISS').length;
+  int get _activeUsersCount => _users.where((u) =>
+      (u['status']?.toString().toLowerCase() ?? 'active') == 'active').length;
 
   // ── Settings controllers ──────────────────────────────────────
   final _cfgNameCtrl = TextEditingController(text: 'SAIL Safety Lens V2');
@@ -353,20 +361,50 @@ class _AdminScreenState extends State<AdminScreen>
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _sectionHead('Dashboard', sl),
       const SizedBox(height: 12),
+      // Primary stats grid — 6 tiles
       GridView.count(
         crossAxisCount: 2, shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
         crossAxisSpacing: 10, mainAxisSpacing: 10, childAspectRatio: 1.7,
         children: [
-          _statTile('Users', '$_totalUsers', const Color(0xFF185FA5),
+          _statTile('Total Users', '$_totalUsers', const Color(0xFF185FA5),
               Icons.people_rounded, sl),
-          _statTile('Open Incidents', '$_openInc', AppColors.amber,
-              Icons.lock_open_rounded, sl),
+          _statTile('Active Users', '$_activeUsersCount', AppColors.green,
+              Icons.person_pin_rounded, sl),
+          _statTile('AI Scans', '$_aiScanCount', AppColors.accent,
+              Icons.camera_alt_rounded, sl),
+          _statTile('Near Miss', '$_nearMissCount', AppColors.amber,
+              Icons.warning_amber_rounded, sl),
           _statTile('Critical', '$_criticalInc', AppColors.crit,
-              Icons.warning_rounded, sl),
-          _statTile('Closed', '$_closedInc', AppColors.green,
+              Icons.error_rounded, sl),
+          _statTile('Closed', '$_closedInc', const Color(0xFF0F6E56),
               Icons.check_circle_rounded, sl),
         ]),
+      const SizedBox(height: 14),
+      // Status summary bar
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: sl.card, borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: sl.border)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.pie_chart_rounded, color: AppColors.accent, size: 14),
+            const SizedBox(width: 6),
+            Text('Status Summary', style: TextStyle(
+                color: sl.text2, fontSize: 11,
+                fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text('${_incidents.length} total',
+                style: TextStyle(color: sl.text4, fontSize: 10)),
+          ]),
+          const SizedBox(height: 10),
+          _statusBar('Open',          _openInc,     AppColors.amber, sl),
+          const SizedBox(height: 6),
+          _statusBar('Critical',      _criticalInc, AppColors.crit,  sl),
+          const SizedBox(height: 6),
+          _statusBar('Closed',        _closedInc,   AppColors.green, sl),
+        ])),
       const SizedBox(height: 24),
       _sectionHead('Quick Actions', sl),
       const SizedBox(height: 12),
@@ -409,6 +447,32 @@ class _AdminScreenState extends State<AdminScreen>
         ])),
     ]),
   );
+
+  /// Horizontal progress bar showing status distribution
+  Widget _statusBar(String label, int count, Color color, SL sl) {
+    final pct = _incidents.isEmpty ? 0.0 : count / _incidents.length;
+    return Row(children: [
+      SizedBox(width: 70, child: Text(label,
+          style: TextStyle(color: sl.text3, fontSize: 10))),
+      Expanded(child: Stack(children: [
+        Container(height: 10,
+          decoration: BoxDecoration(
+            color: sl.border.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(5))),
+        FractionallySizedBox(widthFactor: pct.clamp(0, 1),
+          child: Container(height: 10,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.6)]),
+              borderRadius: BorderRadius.circular(5)))),
+      ])),
+      const SizedBox(width: 8),
+      SizedBox(width: 36, child: Text('$count (${(pct*100).round()}%)',
+          textAlign: TextAlign.right,
+          style: TextStyle(color: color, fontSize: 10,
+              fontWeight: FontWeight.w700))),
+    ]);
+  }
 
   Widget _statTile(String label, String value, Color color, IconData icon, SL sl) =>
     Container(
@@ -524,6 +588,7 @@ class _AdminScreenState extends State<AdminScreen>
         Padding(
           padding: const EdgeInsets.only(left: 48),
           child: Wrap(spacing: 6, children: [
+            _actionChip('Edit', AppColors.accent, sl, () => _editUser(u)),
             _actionChip(
                 isAdmin ? 'Revoke Admin' : 'Make Admin', AppColors.amber, sl,
                 () => _toggleAdmin(u)),
@@ -615,7 +680,9 @@ class _AdminScreenState extends State<AdminScreen>
       _          => AppColors.green,
     };
 
-    return Container(
+    return GestureDetector(
+      onTap: () => _showIncidentDetails(inc),
+      child: Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isClosed ? AppColors.green.withOpacity(0.04) : sl.card,
@@ -663,8 +730,9 @@ class _AdminScreenState extends State<AdminScreen>
         Wrap(spacing: 5, children: [
           _pill(sev, sevColor),
           _pill(status, isClosed ? AppColors.green : AppColors.amber),
+          _pill('Tap for details', sl.text3),
         ]),
-      ]));
+      ])));
   }
 
 
@@ -675,6 +743,23 @@ class _AdminScreenState extends State<AdminScreen>
     _listHeader('${_kbDocs.length} documents', sl,
         action: _showAddKbDialog, actionLabel: 'Add Entry',
         actionColor: const Color(0xFF0F6E56)),
+    // Upload PDF button
+    Padding(
+      padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+      child: SizedBox(width: double.infinity, child: OutlinedButton.icon(
+        onPressed: _uploadKbPdf,
+        icon: const Icon(Icons.picture_as_pdf_outlined,
+            size: 16, color: AppColors.amber),
+        label: const Text('Upload PDF document',
+            style: TextStyle(color: AppColors.amber, fontSize: 12,
+                fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: AppColors.amber, width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10))),
+      )),
+    ),
     Expanded(child: _kbDocs.isEmpty
       ? _empty(
           'No knowledge documents yet.\nAdd safety guidelines, SOPs,\nor regulatory references.',
@@ -1037,6 +1122,440 @@ class _AdminScreenState extends State<AdminScreen>
     SyncService.deleteIncident(id).catchError((_) => false);
     await _loadAll();
     _showSnack('Incident deleted', AppColors.red);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  EDIT USER PROFILE
+  // ──────────────────────────────────────────────────────────────
+  Future<void> _editUser(Map<String, dynamic> u) async {
+    final sl = SL.of(context);
+    final nameCtrl  = TextEditingController(text: u['name']?.toString()        ?? '');
+    final desigCtrl = TextEditingController(text: u['designation']?.toString() ?? '');
+    final plantCtrl = TextEditingController(text: u['plant']?.toString()       ?? '');
+    final pnoCtrl   = TextEditingController(text: u['pno']?.toString()         ?? '');
+    final emailCtrl = TextEditingController(text: u['email']?.toString()       ?? '');
+    final mobCtrl   = TextEditingController(text: u['mobile']?.toString()      ?? '');
+
+    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(
+      backgroundColor: sl.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Row(children: [
+        const Icon(Icons.edit_rounded, color: AppColors.accent, size: 18),
+        const SizedBox(width: 8),
+        Text('Edit @${u['username']}',
+            style: TextStyle(color: sl.text1, fontSize: 14,
+                fontWeight: FontWeight.w700)),
+      ]),
+      content: SizedBox(width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _dlgField('Full name',   nameCtrl,  sl),
+            const SizedBox(height: 8),
+            _dlgField('Designation', desigCtrl, sl,
+                hint: 'e.g. AGM Safety'),
+            const SizedBox(height: 8),
+            _dlgField('Plant / Unit', plantCtrl, sl,
+                hint: 'e.g. BSP, DSP, RSP…'),
+            const SizedBox(height: 8),
+            _dlgField('P. No.',  pnoCtrl,  sl),
+            const SizedBox(height: 8),
+            _dlgField('Mobile',  mobCtrl,  sl),
+            const SizedBox(height: 8),
+            _dlgField('Email',   emailCtrl, sl),
+          ])),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+        ElevatedButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8))),
+          child: const Text('Save', style: TextStyle(color: Colors.white))),
+      ]));
+    if (ok != true) return;
+
+    // Update LocalDB
+    final updated = Map<String, dynamic>.from(u);
+    updated['name']        = nameCtrl.text.trim();
+    updated['designation'] = desigCtrl.text.trim();
+    updated['plant']       = plantCtrl.text.trim();
+    updated['pno']         = pnoCtrl.text.trim();
+    updated['mobile']      = mobCtrl.text.trim();
+    updated['email']       = emailCtrl.text.trim();
+
+    // Update each field via SyncService (mirrors updates to Sheets)
+    final username = u['username']?.toString() ?? '';
+    if (username.isNotEmpty) {
+      final fields = {
+        'name': nameCtrl.text.trim(),
+        'designation': desigCtrl.text.trim(),
+        'plant': plantCtrl.text.trim(),
+        'pno': pnoCtrl.text.trim(),
+        'mobile': mobCtrl.text.trim(),
+        'email': emailCtrl.text.trim(),
+      };
+      for (final entry in fields.entries) {
+        await SyncService.updateUserField(username, entry.key, entry.value)
+            .catchError((_) => false);
+      }
+    }
+    await _loadAll();
+    _showSnack('User profile updated ✓', AppColors.accent);
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  SHOW FULL INCIDENT DETAILS — admin can see everything
+  // ──────────────────────────────────────────────────────────────
+  void _showIncidentDetails(Map<String, dynamic> inc) {
+    final sl     = SL.of(context);
+    final title  = inc['title']?.toString()    ?? 'Untitled';
+    final sev    = inc['severity']?.toString() ?? '—';
+    final status = inc['status']?.toString()   ?? '—';
+    final type   = inc['type']?.toString()     ?? '—';
+    final plant  = inc['plant']?.toString()    ?? '—';
+    final dept   = inc['dept']?.toString()     ?? '—';
+    final loc    = inc['location']?.toString() ?? '—';
+    final desc   = inc['desc']?.toString()     ?? '';
+    final summary= inc['summary']?.toString()  ?? '';
+    final imm    = inc['immediateAction']?.toString() ?? '';
+    final wsa    = inc['wsaCategory']?.toString() ?? '—';
+    final repBy  = inc['reportedBy']?.toString() ?? '—';
+    final pno    = inc['reportedByPno']?.toString() ?? '—';
+    final risk   = inc['riskScore']?.toString() ?? '—';
+    final conf   = inc['confidence']?.toString() ?? '—';
+    final pdfUrl = inc['pdfUrl']?.toString() ?? '';
+    final date   = inc['date']?.toString() ?? '';
+    final dateStr = date.length > 19 ? date.substring(0, 19).replaceAll('T', ' ') : date;
+
+    // Parse hazards (JSON string or list)
+    List<Map<String, dynamic>> hazards = [];
+    final hz = inc['hazards'];
+    if (hz is List) {
+      hazards = hz.whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e)).toList();
+    } else if (hz is String && hz.isNotEmpty) {
+      try {
+        final parsed = jsonDecode(hz);
+        if (parsed is List) {
+          hazards = parsed.whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e)).toList();
+        }
+      } catch (_) {}
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.85, minChildSize: 0.5, maxChildSize: 0.95,
+        builder: (_, scrollCtrl) => Container(
+          decoration: BoxDecoration(
+            color: sl.bg2,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
+          child: Column(children: [
+            // Drag handle
+            Container(width: 40, height: 4,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              decoration: BoxDecoration(
+                  color: sl.border, borderRadius: BorderRadius.circular(2))),
+
+            // Header bar
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Row(children: [
+                Container(
+                  width: 38, height: 38,
+                  decoration: BoxDecoration(
+                    color: AppColors.amber.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.assignment_outlined,
+                      color: AppColors.amber, size: 20)),
+                const SizedBox(width: 10),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Incident Details',
+                        style: TextStyle(color: sl.text1, fontSize: 14,
+                            fontWeight: FontWeight.w700)),
+                    Text(type, style: TextStyle(color: sl.text4, fontSize: 10)),
+                  ])),
+                IconButton(onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.close, color: sl.text3, size: 20)),
+              ]),
+            ),
+            Divider(height: 1, color: sl.border),
+
+            // Body — scrollable
+            Expanded(child: ListView(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.all(16),
+              children: [
+                // Title + badges
+                Text(title, style: TextStyle(
+                    color: sl.text1, fontSize: 15,
+                    fontWeight: FontWeight.w800, height: 1.3)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 6, runSpacing: 4, children: [
+                  _pill(sev, _sevColor(sev)),
+                  _pill(status, status.toUpperCase() == 'CLOSED'
+                      ? AppColors.green : AppColors.amber),
+                  if (risk != '—') _pill('Risk: $risk', AppColors.red),
+                  if (conf != '—') _pill('Conf: $conf%', AppColors.cyan),
+                ]),
+
+                const SizedBox(height: 16),
+
+                // Reporter info
+                _detailSection(sl, 'Reporter', Icons.person_outline_rounded, [
+                  _detailRow('Reported by', repBy, sl),
+                  _detailRow('P. No.',      pno,   sl),
+                  _detailRow('Date',        dateStr, sl),
+                ]),
+
+                const SizedBox(height: 14),
+
+                // Location
+                _detailSection(sl, 'Location', Icons.location_on_outlined, [
+                  _detailRow('Plant',       plant, sl),
+                  _detailRow('Department',  dept,  sl),
+                  _detailRow('Site',        loc,   sl),
+                  _detailRow('WSA cause',   wsa,   sl),
+                ]),
+
+                if (summary.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _detailSection(sl, 'AI Summary',
+                      Icons.auto_awesome_outlined, [
+                    _detailParagraph(summary, sl),
+                  ]),
+                ],
+
+                if (desc.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _detailSection(sl, 'Description',
+                      Icons.notes_rounded, [
+                    _detailParagraph(desc, sl),
+                  ]),
+                ],
+
+                if (imm.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _detailSection(sl, 'Immediate Action',
+                      Icons.flash_on_outlined, [
+                    _detailParagraph(imm, sl),
+                  ]),
+                ],
+
+                if (hazards.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  _detailSection(sl,
+                      'Hazards Found (${hazards.length})',
+                      Icons.warning_amber_rounded,
+                      hazards.asMap().entries.map((e) =>
+                          _hazardItem(e.key + 1, e.value, sl)).toList()),
+                ],
+
+                if (pdfUrl.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.amber.withOpacity(0.08),
+                      border: Border.all(color: AppColors.amber.withOpacity(0.4)),
+                      borderRadius: BorderRadius.circular(10)),
+                    child: Row(children: [
+                      const Icon(Icons.picture_as_pdf_outlined,
+                          color: AppColors.amber, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text('PDF report uploaded to Drive',
+                          style: TextStyle(color: sl.text2, fontSize: 11))),
+                    ])),
+                ],
+
+                const SizedBox(height: 18),
+
+                // Bottom action — delete from admin
+                SizedBox(width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () { Navigator.pop(context); _deleteIncident(inc); },
+                    icon: const Icon(Icons.delete_outline,
+                        color: AppColors.red, size: 16),
+                    label: const Text('Delete this incident',
+                        style: TextStyle(color: AppColors.red, fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppColors.red.withOpacity(0.5)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10))),
+                  )),
+                const SizedBox(height: 20),
+              ],
+            )),
+          ]),
+        )));
+  }
+
+  Color _sevColor(String s) {
+    switch (s.toUpperCase()) {
+      case 'CRITICAL': return AppColors.crit;
+      case 'HIGH':     return AppColors.red;
+      case 'MEDIUM':   return AppColors.amber;
+      default:         return AppColors.green;
+    }
+  }
+
+  Widget _detailSection(SL sl, String title, IconData icon, List<Widget> children) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: sl.card, borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: sl.border.withOpacity(0.5))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(icon, color: AppColors.amber, size: 14),
+          const SizedBox(width: 6),
+          Text(title, style: TextStyle(color: sl.text2, fontSize: 11,
+              fontWeight: FontWeight.w700, letterSpacing: 0.3)),
+        ]),
+        const SizedBox(height: 10),
+        ...children,
+      ]));
+  }
+
+  Widget _detailRow(String label, String value, SL sl) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 90, child: Text(label,
+            style: TextStyle(color: sl.text4, fontSize: 10))),
+        Expanded(child: Text(value,
+            style: TextStyle(color: sl.text1, fontSize: 11,
+                fontWeight: FontWeight.w600))),
+      ]));
+  }
+
+  Widget _detailParagraph(String text, SL sl) =>
+    Text(text, style: TextStyle(
+        color: sl.text2, fontSize: 11, height: 1.5));
+
+  Widget _hazardItem(int n, Map<String, dynamic> h, SL sl) {
+    final name   = h['name']?.toString()        ?? '—';
+    final sev    = h['severity']?.toString()    ?? 'MEDIUM';
+    final desc   = h['description']?.toString() ?? '';
+    final reg    = h['regulation']?.toString()  ?? '';
+    final action = h['correctiveAction']?.toString() ?? '';
+    final color  = _sevColor(sev);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: color, width: 3))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 18, height: 18,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+            child: Center(child: Text('$n', style: const TextStyle(
+                color: Colors.white, fontSize: 10,
+                fontWeight: FontWeight.w800)))),
+          const SizedBox(width: 8),
+          Expanded(child: Text(name, style: TextStyle(
+              color: sl.text1, fontSize: 11.5,
+              fontWeight: FontWeight.w700))),
+          _pill(sev, color),
+        ]),
+        if (desc.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(desc, style: TextStyle(color: sl.text3, fontSize: 10.5, height: 1.4)),
+        ],
+        if (reg.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('📋 $reg', style: TextStyle(color: sl.text4, fontSize: 9.5,
+              fontWeight: FontWeight.w600)),
+        ],
+        if (action.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text('✅ $action', style: TextStyle(
+              color: AppColors.green, fontSize: 10, height: 1.4)),
+        ],
+      ]));
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  //  UPLOAD PDF TO KNOWLEDGE BASE
+  // ──────────────────────────────────────────────────────────────
+  Future<void> _uploadKbPdf() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'txt', 'doc', 'docx'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        _showSnack('Cannot read file.', AppColors.red);
+        return;
+      }
+
+      final filename = file.name;
+      final ext = filename.split('.').last.toLowerCase();
+      String extractedText;
+
+      if (ext == 'txt') {
+        try {
+          extractedText = utf8.decode(bytes, allowMalformed: false);
+        } catch (_) {
+          extractedText = String.fromCharCodes(
+              bytes.where((b) => b >= 32 && b <= 126).toList());
+        }
+      } else {
+        // PDF text extraction — basic
+        final raw = String.fromCharCodes(
+            bytes.where((b) => b >= 32 && b <= 126).toList());
+        final extracted = StringBuffer();
+        final btEt = RegExp(r'BT\s([\s\S]*?)ET', multiLine: true);
+        final tj   = RegExp(r'\(([^)]{1,200})\)\s*(?:Tj|TJ|")');
+        for (final block in btEt.allMatches(raw)) {
+          final content = block.group(1) ?? '';
+          for (final m in tj.allMatches(content)) {
+            final word = m.group(1)?.trim() ?? '';
+            if (word.length >= 2) extracted.write('$word ');
+          }
+        }
+        extractedText = extracted.toString()
+            .replaceAll(RegExp(r'\s+'), ' ').trim();
+      }
+
+      if (extractedText.trim().length < 50) {
+        _showSnack('Could not extract readable text. '
+            'Try a .txt file or use "Add Entry" instead.', AppColors.amber);
+        return;
+      }
+
+      final title = filename
+          .replaceAll(RegExp(r'\.(pdf|txt|doc|docx)$', caseSensitive: false), '')
+          .replaceAll('_', ' ').trim();
+
+      await LocalDB.addKnowledgeDoc(
+        title:   title,
+        content: extractedText,
+        source:  'PDF: $filename (admin upload)',
+      );
+      await _loadAll();
+      _showSnack('Added "$title" to knowledge base ✓',
+          const Color(0xFF0F6E56));
+    } catch (e) {
+      _showSnack('Upload failed: $e', AppColors.red);
+    }
   }
 
   Future<void> _deleteKbDoc(Map<String, dynamic> doc) async {
