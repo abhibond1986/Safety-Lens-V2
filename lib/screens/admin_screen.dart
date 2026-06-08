@@ -76,15 +76,32 @@ class _AdminScreenState extends State<AdminScreen>
   // ── LOGIN ─────────────────────────────────────────────────────
   Future<void> _doLogin() async {
     setState(() { _loginLoading = true; _loginError = ''; });
-    await Future.delayed(const Duration(milliseconds: 400)); // feel of auth
-    final u = _unameCtrl.text.trim();
+    await Future.delayed(const Duration(milliseconds: 300));
+    final u = _unameCtrl.text.trim().toLowerCase();
     final p = _pwCtrl.text;
-    if (u == 'admin' && p == _adminPassword) {
+
+    // Accept admin/admin hardcoded (always works offline)
+    // OR any user in LocalDB with isAdmin=true and matching password
+    bool ok = (u == 'admin' && p == _adminPassword);
+
+    if (!ok) {
+      // Try local DB — allow any admin-flagged user
+      try {
+        final localUser = await LocalDB.signIn(u, p);
+        if (localUser != null) {
+          final isAdm = localUser['isAdmin'] == true ||
+              localUser['isAdmin']?.toString().toLowerCase() == 'true';
+          if (isAdm) ok = true;
+        }
+      } catch (_) {}
+    }
+
+    if (ok) {
       _loadAll();
       setState(() { _loggedIn = true; _loginLoading = false; });
     } else {
       setState(() {
-        _loginError  = 'Incorrect username or password.';
+        _loginError  = 'Incorrect credentials or insufficient privileges.';
         _loginLoading = false;
       });
     }
