@@ -9,7 +9,8 @@ import 'local_db.dart';
 /// Pros: completely free, admin can open sheet in browser.
 /// Cons: ~60 req/min rate limit, eventual consistency.
 class SyncService {
-  static const String _defaultBackendUrl = 'YOUR_APPS_SCRIPT_URL_HERE';
+  static const String _defaultBackendUrl =
+      'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
   static const String _kBackendUrl   = 'sync_backend_url';
   static const String _kPendingQueue = 'sync_pending_queue';
   static const String _kLastSyncTime = 'sync_last_time';
@@ -34,9 +35,7 @@ class SyncService {
 
   static Future<bool> get isConfigured async {
     final url = await getBackendUrl();
-    return url.isNotEmpty &&
-        url != 'YOUR_APPS_SCRIPT_URL_HERE' &&
-        url.startsWith('https://');
+    return url.isNotEmpty && url.startsWith('https://');
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -130,7 +129,7 @@ class SyncService {
           .post(
             Uri.parse(url),
             body: jsonEncode(body),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'text/plain;charset=utf-8'},
           )
           .timeout(const Duration(seconds: 30));
 
@@ -187,7 +186,7 @@ class SyncService {
           .post(
             Uri.parse(url),
             body: jsonEncode(body),
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'text/plain;charset=utf-8'},
           )
           .timeout(const Duration(seconds: 30));
       return response.statusCode == 200;
@@ -401,6 +400,66 @@ class SyncService {
       List<Map<String, dynamic>> incidents) async {
     for (final inc in incidents) {
       await pushIncident(inc);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ONLINE LOGIN — tries Apps Script; returns user map or null
+  // ═══════════════════════════════════════════════════════════════
+  static Future<Map<String, dynamic>?> loginOnline(
+      String username, String passwordHash) async {
+    if (!await isConfigured) return null;
+    try {
+      final url = await getBackendUrl();
+      final resp = await http.post(
+        Uri.parse(url),
+        body: jsonEncode({
+          'action': 'login',
+          'username': username,
+          'passwordHash': passwordHash,
+        }),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 20));
+
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body) as Map<String, dynamic>;
+        // Apps Script v9 returns { success: true, user: {...} }
+        // or { success: true, uid, name, username, isAdmin, ... }
+        if (data['success'] == true) {
+          if (data['user'] is Map) {
+            return Map<String, dynamic>.from(data['user'] as Map);
+          }
+          // Flat format (admin hardcode path)
+          final flat = Map<String, dynamic>.from(data);
+          flat.remove('success');
+          if (flat['username'] != null) return flat;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  DELETE INCIDENT from Sheets (admin action)
+  // ═══════════════════════════════════════════════════════════════
+  static Future<bool> deleteIncident(String id) async {
+    if (!await isConfigured) return false;
+    try {
+      final url = await getBackendUrl();
+      final resp = await http.post(
+        Uri.parse(url),
+        body: jsonEncode({'action': 'deleteIncident', 'id': id}),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 20));
+      if (resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return data['ok'] == true || data['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 
