@@ -7,6 +7,7 @@
 //   ✅ Online mode: Suraksha Saathi uses Gemini with SAIL knowledge prompt
 //   ✅ Offline mode: LocalAI.chat() with full KB (SG/01–SG/41)
 //   ✅ All original UI, upload, admin, KB manager preserved exactly
+//   ✅ NEW: ANSWER STYLE rewritten — crisp, structured, max 8 lines
 
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
@@ -67,14 +68,34 @@ class _ChatTabState extends State<ChatTab> {
     '9. Safety helmet colours: White=Officer, Yellow=Supervisor, Blue=Worker, Green=Visitor\n'
     '10. Harness mandatory above 1.8m; anchor min 15kN (IS 3521)\n\n'
 
-    'ANSWER STYLE:\n'
-    '• Give specific IS standard numbers, FA section numbers, SG guideline numbers\n'
-    '• For procedure questions: give numbered step-by-step\n'
-    '• For hazard questions: give the regulation, risk, and corrective action\n'
-    '• Be concise but complete; use bullet points for lists\n'
-    '• If you are not sure about a specific value, say so\n'
-    '• Respond in the same language the user uses (Hindi or English)\n'
-    '• Address the user respectfully — they are safety professionals\n\n'
+    // ─────────────────────────────────────────────────────────────
+    // ✅ NEW: STRUCTURED ANSWER STYLE — MAX 8 LINES, NO RAMBLING
+    // ─────────────────────────────────────────────────────────────
+    'ANSWER STYLE — STRICTLY STRUCTURED, CRISP, NO RAMBLING:\n'
+    '⚠️ MAX 8 lines total. Never write paragraphs. Never repeat the question.\n'
+    'Use this EXACT structure for every answer:\n\n'
+
+    '【TOPIC NAME】 (one line, bracketed)\n\n'
+
+    '📋 Regulation:\n'
+    '• Specific IS / FA / SG / SMPV reference — single line each, max 3 lines\n\n'
+
+    '⚡ Key Points:\n'
+    '• Crisp 1-line bullet — max 4 bullets\n'
+    '• Use exact numbers, never vague terms\n\n'
+
+    '✅ Action:\n'
+    '• 1-2 line corrective action with action verb '
+    '(Stop / Provide / Install / Check)\n\n'
+
+    'STRICT RULES:\n'
+    '• NEVER write more than 8 total lines\n'
+    '• NEVER include disclaimers, preambles, or "Namaste/Hello" greetings\n'
+    '• NEVER repeat the user question back\n'
+    '• NEVER write "It is important to note that..." or similar fluff\n'
+    '• NEVER cite the same regulation twice in one answer\n'
+    '• If language is Hindi, respond fully in Hindi (देवनागरी)\n'
+    '• If unsure of a specific value, omit it — do NOT speculate\n\n'
 
     'TOPICS YOU CAN ANSWER:\n'
     'Gas cylinder storage and colour codes, working at height, confined space entry, '
@@ -219,7 +240,8 @@ class _ChatTabState extends State<ChatTab> {
 
       final fullPrompt = '$_systemPrompt\n\n'
           'QUESTION: $question$kbContext\n\n'
-          'Give a clear, specific answer with regulation references.';
+          'Answer using the EXACT structured format above. '
+          'Max 8 lines. No greetings, no fluff.';
 
       final body = jsonEncode({
         'action': 'gemini',
@@ -743,7 +765,7 @@ class _ChatTabState extends State<ChatTab> {
 
   Widget _suggestionChips() {
     final sl = SL.of(context);
-    // ✅ EXPANDED suggestion chips covering full knowledge base
+    // Expanded suggestion chips covering full knowledge base
     final suggestions = [
       'Gas cylinder colour codes',
       'Working at height — what regulation?',
