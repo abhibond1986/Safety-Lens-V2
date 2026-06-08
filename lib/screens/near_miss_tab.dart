@@ -198,6 +198,30 @@ class _NearMissTabState extends State<NearMissTab> {
     }
   }
 
+  /// Background-upload PDF to Drive after submit. Fire-and-forget.
+  Future<void> _uploadPdfBackground(
+      Map<String, dynamic> incident, Map<String, dynamic>? user) async {
+    try {
+      final pdfBytes = await PdfExport.generateIncidentReportBytes(
+        incident:     incident,
+        reporterName: user?['name']?.toString() ?? 'SAIL Safety Officer',
+        reporterPno:  user?['pno']?.toString()  ?? '',
+        imageBytes:   _imageBytes,
+      );
+      if (pdfBytes.isEmpty) return;
+      final url = await SyncService.uploadPdfToDrive(
+        incidentId: incident['id']?.toString() ?? '',
+        pdfBytes:   pdfBytes,
+        fileName:   'SafetyLens_${incident['id']}.pdf',
+      );
+      if (url != null && url.isNotEmpty) {
+        await SyncService.pushIncident({
+          ...incident, 'pdfUrl': url,
+        }).catchError((_) => false);
+      }
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _speech.cancel();
@@ -208,8 +232,20 @@ class _NearMissTabState extends State<NearMissTab> {
 
   // ─── DATA ─────────────────────────────────────────────────────
   final _plants = const [
-    'BSP Bhilai', 'DSP Durgapur', 'RSP Rourkela',
-    'BSL Bokaro', 'ISP Burnpur', 'SAIL Safety Organisation',
+    'BSP',
+    'DSP',
+    'RSP',
+    'BSL',
+    'ISP',
+    'ASP',
+    'SSP',
+    'CFP',
+    'CMO',
+    'JGOM',
+    'OGOM',
+    'BSP(M)',
+    'Collieries',
+    'SRU Kulti',
   ];
   final _wsaCauses = const [
     'Burn / Fire', 'Chemical', 'Electrical', 'Fall from Height',
@@ -436,6 +472,9 @@ class _NearMissTabState extends State<NearMissTab> {
     // Push to Google Sheets — fire and forget with error catch
     final synced = await SyncService.pushIncident(incident)
         .catchError((_) => false);
+
+    // Background: generate PDF, upload to Drive, attach URL to Sheets
+    _uploadPdfBackground(incident, user);
 
     // Remember submission key to detect session-level duplicates
     _lastSubmissionKey = _buildSubmissionKey();
