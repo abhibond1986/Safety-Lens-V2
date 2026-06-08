@@ -120,29 +120,69 @@ class SyncService {
     }
     try {
       final url = await getBackendUrl();
+
+      // Build body — strip imageBase64 (too large) and convert all values to strings
       final body = <String, dynamic>{'action': 'addIncident'};
       incident.forEach((k, v) {
-        body[k] = v == null ? '' : v.toString();
+        if (k == 'imageBase64') {
+          body[k] = '[image]'; // never send raw base64 to Sheets
+          return;
+        }
+        if (v == null) { body[k] = ''; return; }
+        if (v is List || v is Map) {
+          body[k] = jsonEncode(v); // serialize nested objects
+          return;
+        }
+        final str = v.toString();
+        // Truncate any single field > 2000 chars
+        body[k] = str.length > 2000 ? str.substring(0, 2000) : str;
       });
 
-      final response = await http
-          .post(
-            Uri.parse(url),
-            body: jsonEncode(body),
-            headers: {'Content-Type': 'text/plain;charset=utf-8'},
-          )
-          .timeout(const Duration(seconds: 30));
+      // Apps Script POSTs redirect to googleusercontent.com
+      // Flutter's default http.post does NOT follow redirects — must handle manually
+      final client   = http.Client();
+      http.Response response;
+      try {
+        response = await client
+            .post(
+              Uri.parse(url),
+              body: jsonEncode(body),
+              headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            )
+            .timeout(const Duration(seconds: 30));
+
+        // Follow redirect if 302/301 (Apps Script always redirects)
+        if (response.statusCode == 302 || response.statusCode == 301) {
+          final redirectUrl = response.headers['location'] ?? '';
+          if (redirectUrl.isNotEmpty) {
+            response = await client
+                .post(
+                  Uri.parse(redirectUrl),
+                  body: jsonEncode(body),
+                  headers: {'Content-Type': 'text/plain;charset=utf-8'},
+                )
+                .timeout(const Duration(seconds: 30));
+          }
+        }
+      } finally {
+        client.close();
+      }
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['ok'] == true) {
-          await _markSyncTime();
-          return true;
+        try {
+          final data = jsonDecode(response.body);
+          if (data['ok'] == true) {
+            await _markSyncTime();
+            return true;
+          }
+          // Apps Script returned error — still got through, log it
+        } catch (_) {
+          // Non-JSON response — Apps Script HTML error page
         }
       }
       await _addToPendingQueue('addIncident', incident);
       return false;
-    } catch (e) {
+    } catch (_) {
       await _addToPendingQueue('addIncident', incident);
       return false;
     }
@@ -400,6 +440,53 @@ class SyncService {
       List<Map<String, dynamic>> incidents) async {
     for (final inc in incidents) {
       await pushIncident(inc);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  DEBUG — returns full response for diagnosing Sheets issues
+  // ═══════════════════════════════════════════════════════════════
+  static Future<Map<String, dynamic>> testPush() async {
+    final url = await getBackendUrl();
+    final testBody = jsonEncode({
+      'action':  'addIncident',
+      'id':      'TEST_${DateTime.now().millisecondsSinceEpoch}',
+      'title':   'Test from Flutter app',
+      'plant':   'Test Plant',
+      'dept':    'Safety',
+      'severity':'HIGH',
+      'status':  'OPEN',
+      'type':    'AI_SCAN',
+      'date':    DateTime.now().toIso8601String(),
+      'reportedBy': 'System Test',
+    });
+    try {
+      final client = http.Client();
+      http.Response resp;
+      try {
+        resp = await client.post(Uri.parse(url),
+          body: testBody,
+          headers: {'Content-Type': 'text/plain;charset=utf-8'})
+          .timeout(const Duration(seconds: 30));
+        if (resp.statusCode == 302 || resp.statusCode == 301) {
+          final loc = resp.headers['location'] ?? '';
+          if (loc.isNotEmpty) {
+            resp = await client.post(Uri.parse(loc),
+              body: testBody,
+              headers: {'Content-Type': 'text/plain;charset=utf-8'})
+              .timeout(const Duration(seconds: 30));
+          }
+        }
+      } finally { client.close(); }
+      return {
+        'statusCode': resp.statusCode,
+        'body': resp.body.length > 500
+            ? resp.body.substring(0, 500) : resp.body,
+        'headers': resp.headers,
+        'url': url,
+      };
+    } catch (e) {
+      return {'error': e.toString(), 'url': url};
     }
   }
 
