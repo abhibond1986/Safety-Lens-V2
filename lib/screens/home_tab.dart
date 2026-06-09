@@ -1,6 +1,9 @@
 // lib/screens/home_tab.dart
 // Glass-morphism Home screen with infographics, charts, quick actions, and
 // safety statistics. Uses I18n for full Hindi/English support.
+//
+// ✅ Daily safety-quote bar is an opaque amber → orange → red sunset gradient
+//    (SAIL theme) with a soft red glow + subtle text shadow for legibility.
 
 import 'dart:math' as math;
 import 'dart:ui';
@@ -95,7 +98,7 @@ class _HomeTabState extends State<HomeTab> {
     return (100 - critPenalty - openPenalty).clamp(0, 100).round();
   }
 
-  /// 5 motivational safety quotes — rotate by day of year
+  /// 10 motivational safety quotes — rotate by day of year
   static const List<String> _safetyQuotes = [
     'Safety isn\'t expensive, it\'s priceless.',
     'सुरक्षा सबकी ज़िम्मेदारी, लापरवाही सबकी हानि।',
@@ -277,22 +280,48 @@ class _HomeTabState extends State<HomeTab> {
             ],
           ]),
           const SizedBox(height: 12),
-          // Safety motivational quote — italic
+          // ── DAILY SAFETY QUOTE — amber → orange → red sunset (SAIL theme)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.13),
+              gradient: const LinearGradient(
+                begin: Alignment.centerLeft,
+                end:   Alignment.centerRight,
+                colors: [
+                  Color(0xFFF59E0B),   // amber-500
+                  Color(0xFFEA580C),   // orange-600
+                  Color(0xFFDC2626),   // red-600
+                ],
+                stops: [0.0, 0.55, 1.0],
+              ),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.white.withOpacity(0.22))),
+              border: Border.all(
+                  color: Colors.white.withOpacity(0.25), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFDC2626).withOpacity(0.35),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
             child: Row(children: [
               const Icon(Icons.format_quote_rounded,
-                  color: Colors.white, size: 14),
+                  color: Colors.white, size: 15),
               const SizedBox(width: 6),
               Expanded(child: Text(_todaysQuote,
                   style: const TextStyle(
                       color: Colors.white, fontSize: 11.5,
                       fontStyle: FontStyle.italic, height: 1.3,
-                      fontWeight: FontWeight.w500))),
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.15,
+                      shadows: [
+                        Shadow(
+                          color: Color(0x66000000),
+                          offset: Offset(0, 1),
+                          blurRadius: 2,
+                        ),
+                      ]))),
             ]),
           ),
           const SizedBox(height: 14),
