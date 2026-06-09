@@ -100,9 +100,14 @@ class _AIScanTabState extends State<AIScanTab> {
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
+    // ✅ FIX: 1600×1600 @ q=85 gives the AI enough visual detail to actually
+    // read equipment tags, spot corrosion, identify hazards reliably.
+    // Previously 500×500 @ q=20 produced WhatsApp-thumbnail-quality images
+    // that no AI model could analyse meaningfully (~30 KB upload size).
+    // New settings → ~300–500 KB per image (still fast over mobile data).
     final picked = await picker.pickImage(
-        source: source, imageQuality: 20,
-        maxWidth: 500, maxHeight: 500);
+        source: source, imageQuality: 85,
+        maxWidth: 1600, maxHeight: 1600);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     setState(() {
@@ -1505,17 +1510,35 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
 
       if (_imageBytes != null) ...[
-        if (hasBbox)
-          HazardAnnotatedImage(
-            imageBytes: _imageBytes!,
-            hazards: hazards,
-            onHazardTap: _onBboxTap)
-        else
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.memory(_imageBytes!,
-                height: 200, width: double.infinity,
-                fit: BoxFit.cover)),
+        // ✅ FIX: cap display height + add pinch-to-zoom.
+        // Previously the image filled entire desktop viewport with no max
+        // height, and BoxFit.cover cropped off bounding boxes near edges.
+        // Now: capped at 45% of screen height, fits without cropping,
+        // pinch/scroll to zoom (max 4×) to inspect bounding-box details.
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.45,
+            ),
+            child: hasBbox
+              ? InteractiveViewer(
+                  maxScale: 4.0,
+                  minScale: 0.8,
+                  boundaryMargin: const EdgeInsets.all(20),
+                  child: HazardAnnotatedImage(
+                    imageBytes: _imageBytes!,
+                    hazards: hazards,
+                    onHazardTap: _onBboxTap),
+                )
+              : InteractiveViewer(
+                  maxScale: 4.0,
+                  child: Image.memory(_imageBytes!,
+                      width: double.infinity,
+                      fit: BoxFit.contain),
+                ),
+          ),
+        ),
         const SizedBox(height: 10),
       ],
 
