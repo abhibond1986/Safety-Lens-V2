@@ -1,10 +1,10 @@
 // lib/screens/ai_scan_tab.dart
-// ✅ Step chips 1-5 are fully interactive:
-//    1=Capture (pick image), 2=AI Scan (re-analyze), 3=Review (bottom sheet all hazards)
-//    4=Save (save + sync sheets), 5=Mitigate (comment per hazard + close case)
+// ✅ Step chips 1-5 are fully interactive
 // ✅ Duplicate image detection
 // ✅ Google Sheets link shown after save
-// ✅ Neutral background
+// ✅ Save success dialog
+// ✅ NEW: "Review & Edit AI Findings" hint banner at top of review sheet
+// ✅ Inline edit per hazard preserved
 
 import 'dart:io' show File;
 import 'dart:convert';
@@ -45,25 +45,15 @@ class _AIScanTabState extends State<AIScanTab> {
   Map<String, dynamic>? _result;
   String     _step = '';
   String?    _savedImageHash;
-
-  // Step state: which step is active/completed
-  // 1=Capture, 2=Scan, 3=Review, 4=Save, 5=Mitigate
-  int _currentStep = 0; // 0=none, 1-5=step number
-
-  // Saved incident id — needed for step 5 mitigation
+  int _currentStep = 0;
   String? _savedIncidentId;
   bool    _isSaved = false;
-
-  // Per-hazard mitigation comments (step 5)
-  // key = hazard index, value = comment
   final Map<int, TextEditingController> _mitigationControllers = {};
   final Map<int, bool> _hazardClosed = {};
-
   final ScrollController _scrollController = ScrollController();
   final List<GlobalKey>  _hazardRowKeys    = [];
   int? _highlightedRow;
 
-  // Google Sheets URL
   static const String _sheetUrl =
       'https://docs.google.com/spreadsheets/d/1gkN0Kxy5tulHN9oCbvliI5bota7S1UpK6gusftWUZgI/edit';
 
@@ -74,7 +64,6 @@ class _AIScanTabState extends State<AIScanTab> {
     super.dispose();
   }
 
-  // ─── HASH ────────────────────────────────────────────────────
   String _computeHash(Uint8List bytes) {
     int h = 0;
     final step = bytes.length > 1000 ? bytes.length ~/ 500 : 1;
@@ -85,7 +74,6 @@ class _AIScanTabState extends State<AIScanTab> {
     return h.toRadixString(16).padLeft(8, '0');
   }
 
-  // ─── BBOX ────────────────────────────────────────────────────
   void _buildHazardKeys(int count) {
     _hazardRowKeys.clear();
     _mitigationControllers.forEach((_, c) => c.dispose());
@@ -110,7 +98,6 @@ class _AIScanTabState extends State<AIScanTab> {
     }
   }
 
-  // ─── STEP 1: CAPTURE ─────────────────────────────────────────
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(
@@ -127,12 +114,11 @@ class _AIScanTabState extends State<AIScanTab> {
       _savedIncidentId = null;
       _hazardRowKeys.clear();
       _highlightedRow = null;
-      _currentStep    = 2; // move to AI Scan step
+      _currentStep    = 2;
     });
     await _analyze();
   }
 
-  // ─── STEP 2: AI SCAN ─────────────────────────────────────────
   Future<void> _analyze() async {
     final steps = ['Image uploaded', 'Sending to AI…',
                    'Analyzing hazards…', 'Mapping IS 14489…',
@@ -159,7 +145,7 @@ class _AIScanTabState extends State<AIScanTab> {
         setState(() {
           _result      = result;
           _analyzing   = false;
-          _currentStep = 3; // move to Review step
+          _currentStep = 3;
         });
       }
     } catch (e) {
@@ -179,17 +165,14 @@ class _AIScanTabState extends State<AIScanTab> {
     final riskColor = _sevColor(
         _result!['overallRisk']?.toString() ?? 'MEDIUM');
 
-    // Build a mutable working copy of hazards for editing
     final List<Map<String, dynamic>> editableHazards =
         ((_result!['hazards'] as List?) ?? [])
             .map((h) => Map<String, dynamic>.from(h as Map))
             .toList();
 
-    // Per-hazard edit controllers — only created when user taps Edit
     final Map<int, Map<String, TextEditingController>> editControllers = {};
     final Map<int, bool> editingIndex = {};
 
-    // Summary controller
     final summaryCtrl = TextEditingController(
         text: _result!['summary']?.toString() ?? '');
     bool editingSummary = false;
@@ -200,7 +183,6 @@ class _AIScanTabState extends State<AIScanTab> {
       backgroundColor: Colors.transparent,
       builder: (_) => StatefulBuilder(
         builder: (ctx, setLocal) {
-          // Helper: get or create controllers for hazard i
           Map<String, TextEditingController> ctrlsFor(int i) {
             if (!editControllers.containsKey(i)) {
               final h = editableHazards[i];
@@ -216,7 +198,6 @@ class _AIScanTabState extends State<AIScanTab> {
             return editControllers[i]!;
           }
 
-          // Save edits from controllers back to editableHazards
           void applyEdits(int i) {
             final ctrls = ctrlsFor(i);
             editableHazards[i]['name']             = ctrls['name']!.text.trim();
@@ -230,6 +211,44 @@ class _AIScanTabState extends State<AIScanTab> {
           final fieldBg = sl.isDark
               ? const Color(0xFF1C1F2E)
               : const Color(0xFFF0F1F5);
+
+          // ✅ NEW: Prominent hint banner — first thing user sees in review
+          final hintBanner = Container(
+            margin: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.accent.withOpacity(0.12),
+                  AppColors.cyan.withOpacity(0.08),
+                ]),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: AppColors.accent.withOpacity(0.4), width: 1)),
+            child: Row(children: [
+              Container(
+                width: 32, height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8)),
+                child: const Icon(Icons.edit_note_rounded,
+                    color: AppColors.accent, size: 20)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Review & Edit AI Findings',
+                      style: TextStyle(color: sl.text1, fontSize: 12.5,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(
+                      'Tap ✏️ Edit on any hazard to modify name, '
+                      'severity, description, regulation, or '
+                      'corrective action. Then tap Save with edits.',
+                      style: TextStyle(color: sl.text3, fontSize: 10,
+                          height: 1.35)),
+                ])),
+            ]));
 
           Widget editField(TextEditingController c,
               {String hint = '', int lines = 1}) =>
@@ -281,19 +300,15 @@ class _AIScanTabState extends State<AIScanTab> {
                 borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20))),
               child: Column(children: [
-                // Handle
                 Center(child: Container(
-                  margin: const EdgeInsets.only(
-                      top: 10, bottom: 4),
+                  margin: const EdgeInsets.only(top: 10, bottom: 4),
                   width: 40, height: 4,
                   decoration: BoxDecoration(
                     color: sl.border,
                     borderRadius: BorderRadius.circular(99)))),
 
-                // Header
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                      16, 6, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
                   child: Row(children: [
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -313,7 +328,6 @@ class _AIScanTabState extends State<AIScanTab> {
                       style: TextStyle(color: sl.text1,
                           fontSize: 14,
                           fontWeight: FontWeight.w700))),
-                    // Edit mode hint
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 7, vertical: 3),
@@ -321,8 +335,7 @@ class _AIScanTabState extends State<AIScanTab> {
                         color: AppColors.accent.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(7),
                         border: Border.all(
-                            color: AppColors.accent
-                                .withOpacity(0.3))),
+                            color: AppColors.accent.withOpacity(0.3))),
                       child: const Text('✏️ Tap Edit',
                         style: TextStyle(
                             color: AppColors.accent,
@@ -332,8 +345,7 @@ class _AIScanTabState extends State<AIScanTab> {
                     IconButton(
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
-                      icon: Icon(Icons.close,
-                          color: sl.text4, size: 20),
+                      icon: Icon(Icons.close, color: sl.text4, size: 20),
                       onPressed: () {
                         for (final m in editControllers.values) {
                           for (final c in m.values) { c.dispose(); }
@@ -344,12 +356,12 @@ class _AIScanTabState extends State<AIScanTab> {
                   ])),
                 Divider(height: 1, color: sl.border),
 
-                // Content list
                 Expanded(child: ListView(
                   controller: ctrl,
-                  padding: const EdgeInsets.fromLTRB(
-                      16, 10, 16, 120),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 120),
                   children: [
+                    // ✅ NEW: hint banner is the first item
+                    hintBanner,
 
                     // ── Editable summary ──────────────────
                     Container(
@@ -362,8 +374,7 @@ class _AIScanTabState extends State<AIScanTab> {
                         border: Border.all(
                             color: sl.border.withOpacity(0.5))),
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                         Row(children: [
                           Text('SUMMARY', style: TextStyle(
@@ -380,8 +391,7 @@ class _AIScanTabState extends State<AIScanTab> {
                               decoration: BoxDecoration(
                                 color: editingSummary
                                     ? AppColors.accent
-                                    : AppColors.accent
-                                        .withOpacity(0.1),
+                                    : AppColors.accent.withOpacity(0.1),
                                 borderRadius:
                                     BorderRadius.circular(6)),
                               child: Text(
@@ -396,16 +406,13 @@ class _AIScanTabState extends State<AIScanTab> {
                         const SizedBox(height: 6),
                         editingSummary
                           ? editField(summaryCtrl,
-                              hint: 'Overall summary…',
-                              lines: 3)
+                              hint: 'Overall summary…', lines: 3)
                           : Text(summaryCtrl.text.isNotEmpty
                                 ? summaryCtrl.text
-                                : _result!['summary']
-                                    ?.toString() ?? '',
+                                : _result!['summary']?.toString() ?? '',
                               style: TextStyle(
                                   color: sl.text2,
-                                  fontSize: 11,
-                                  height: 1.5)),
+                                  fontSize: 11, height: 1.5)),
                       ])),
                     const SizedBox(height: 10),
 
@@ -426,93 +433,69 @@ class _AIScanTabState extends State<AIScanTab> {
                             color: sl.isDark
                                 ? const Color(0xFF252840)
                                 : Colors.white,
-                            borderRadius:
-                                BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(12),
                             border: Border.all(
                               color: isEditing
-                                  ? AppColors.accent
-                                      .withOpacity(0.5)
+                                  ? AppColors.accent.withOpacity(0.5)
                                   : sc.withOpacity(0.35),
                               width: isEditing ? 1.5 : 1)),
                           child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-
-                            // ── Hazard header row ────────
                             Row(children: [
                               Container(
                                 width: 22, height: 22,
                                 decoration: BoxDecoration(
-                                    color: sc,
-                                    shape: BoxShape.circle),
-                                child: Center(child: Text(
-                                  '${i+1}',
+                                    color: sc, shape: BoxShape.circle),
+                                child: Center(child: Text('${i+1}',
                                   style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight:
-                                        FontWeight.w800)))),
+                                    color: Colors.white, fontSize: 9,
+                                    fontWeight: FontWeight.w800)))),
                               const SizedBox(width: 8),
                               Expanded(child: isEditing
                                 ? editField(ctrls!['name']!,
                                     hint: 'Hazard name')
                                 : Text(h['name']?.toString() ?? '—',
                                     style: TextStyle(
-                                        color: sl.text1,
-                                        fontSize: 13,
-                                        fontWeight:
-                                            FontWeight.w700))),
+                                        color: sl.text1, fontSize: 13,
+                                        fontWeight: FontWeight.w700))),
                               const SizedBox(width: 8),
-                              // Severity selector
                               isEditing
                                 ? _severityDropdown(
-                                    h['severity']?.toString()
-                                        ?? 'MEDIUM',
+                                    h['severity']?.toString() ?? 'MEDIUM',
                                     sl,
                                     (val) => setLocal(() =>
-                                        editableHazards[i]
-                                            ['severity'] = val))
+                                        editableHazards[i]['severity'] = val))
                                 : Container(
-                                    padding:
-                                        const EdgeInsets.symmetric(
-                                            horizontal: 6,
-                                            vertical: 2),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: sc.withOpacity(0.12),
-                                      borderRadius:
-                                          BorderRadius.circular(6),
-                                      border: Border.all(
-                                          color: sc)),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: sc)),
                                     child: Text(
-                                      h['severity']?.toString()
-                                          ?? '—',
+                                      h['severity']?.toString() ?? '—',
                                       style: TextStyle(
                                           color: sc, fontSize: 8,
-                                          fontWeight:
-                                              FontWeight.w800))),
+                                          fontWeight: FontWeight.w800))),
                               const SizedBox(width: 8),
-                              // Edit / Save toggle
                               GestureDetector(
                                 onTap: () => setLocal(() {
                                   if (isEditing) {
                                     applyEdits(i);
                                     editingIndex[i] = false;
                                   } else {
-                                    ctrlsFor(i); // initialise
+                                    ctrlsFor(i);
                                     editingIndex[i] = true;
                                   }
                                 }),
                                 child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
                                   decoration: BoxDecoration(
                                     color: isEditing
                                         ? AppColors.green
-                                        : AppColors.accent
-                                            .withOpacity(0.1),
+                                        : AppColors.accent.withOpacity(0.1),
                                     borderRadius:
                                         BorderRadius.circular(7)),
                                   child: Text(
@@ -522,12 +505,10 @@ class _AIScanTabState extends State<AIScanTab> {
                                           ? Colors.white
                                           : AppColors.accent,
                                       fontSize: 9,
-                                      fontWeight:
-                                          FontWeight.w700)))),
+                                      fontWeight: FontWeight.w700)))),
                             ]),
                             const SizedBox(height: 8),
 
-                            // ── Description ──────────────
                             if (!isEditing) ...[
                               Text(
                                 h['description']?.toString() ?? '',
@@ -536,35 +517,26 @@ class _AIScanTabState extends State<AIScanTab> {
                                     fontSize: 11, height: 1.4)),
                               const SizedBox(height: 5),
                               _reviewRow('⚖️ Regulation',
-                                  h['regulation']?.toString() ?? '',
-                                  sl),
+                                  h['regulation']?.toString() ?? '', sl),
                               _reviewRow('🔧 Action',
-                                  h['correctiveAction']
-                                      ?.toString() ?? '',
-                                  sl),
-                              if ((h['wsaCause']?.toString() ?? '')
-                                  .isNotEmpty)
+                                  h['correctiveAction']?.toString() ?? '', sl),
+                              if ((h['wsaCause']?.toString() ?? '').isNotEmpty)
                                 _reviewRow('📋 WSA Cause',
-                                    h['wsaCause']?.toString() ?? '',
-                                    sl),
-                              if ((h['type']?.toString() ?? '')
-                                  .isNotEmpty)
+                                    h['wsaCause']?.toString() ?? '', sl),
+                              if ((h['type']?.toString() ?? '').isNotEmpty)
                                 _reviewRow('🔍 Type',
                                     h['type']?.toString() ?? '', sl),
                             ] else ...[
-                              // Editable fields
                               editableRow('Description',
                                   ctrls!['description']!, lines: 3),
                               editableRow('⚖️ Regulation',
                                   ctrls['regulation']!, lines: 2),
                               editableRow('🔧 Action',
-                                  ctrls['correctiveAction']!,
-                                  lines: 2),
+                                  ctrls['correctiveAction']!, lines: 2),
                               editableRow('📋 WSA Cause',
                                   ctrls['wsaCause']!),
                               editableRow('🔍 Type', ctrls['type']!),
                               const SizedBox(height: 4),
-                              // Discard button
                               GestureDetector(
                                 onTap: () => setLocal(() {
                                   editControllers.remove(i);
@@ -576,18 +548,15 @@ class _AIScanTabState extends State<AIScanTab> {
                                   const SizedBox(width: 4),
                                   Text('Discard changes',
                                     style: TextStyle(
-                                        color: sl.text4,
-                                        fontSize: 10)),
+                                        color: sl.text4, fontSize: 10)),
                                 ])),
                             ],
                           ])));
                     }).toList(),
                   ])),
 
-                // ── Bottom actions ────────────────────────
                 Container(
-                  padding: const EdgeInsets.fromLTRB(
-                      16, 10, 16, 28),
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
                   decoration: BoxDecoration(
                     color: sl.isDark
                         ? const Color(0xFF252840) : Colors.white,
@@ -596,7 +565,6 @@ class _AIScanTabState extends State<AIScanTab> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                    // Edited indicator
                     if (editingIndex.values.any((v) => v))
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
@@ -606,8 +574,7 @@ class _AIScanTabState extends State<AIScanTab> {
                             color: AppColors.amber.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                                color: AppColors.amber
-                                    .withOpacity(0.35))),
+                                color: AppColors.amber.withOpacity(0.35))),
                           child: const Row(children: [
                             Icon(Icons.edit_note_rounded,
                                 color: AppColors.amber, size: 14),
@@ -619,32 +586,21 @@ class _AIScanTabState extends State<AIScanTab> {
                                   fontSize: 10, height: 1.4))),
                           ]))),
                     Row(children: [
-                      // Save with edits
                       Expanded(
                         flex: 2,
                         child: ElevatedButton.icon(
                           onPressed: () {
-                            // Apply any still-open edits
-                            for (final i
-                                in editingIndex.keys) {
+                            for (final i in editingIndex.keys) {
                               if (editingIndex[i] == true) {
                                 applyEdits(i);
                               }
                             }
-                            // Apply summary edit
                             if (editingSummary) {
-                              _result!['summary'] =
-                                  summaryCtrl.text.trim();
+                              _result!['summary'] = summaryCtrl.text.trim();
                             }
-                            // Push edited hazards back to result
-                            _result!['hazards'] =
-                                editableHazards;
-                            // Dispose controllers
-                            for (final m
-                                in editControllers.values) {
-                              for (final c in m.values) {
-                                c.dispose();
-                              }
+                            _result!['hazards'] = editableHazards;
+                            for (final m in editControllers.values) {
+                              for (final c in m.values) { c.dispose(); }
                             }
                             summaryCtrl.dispose();
                             Navigator.pop(ctx);
@@ -661,30 +617,23 @@ class _AIScanTabState extends State<AIScanTab> {
                                 fontSize: 13)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppColors.green,
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 13),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(10))),
+                                borderRadius: BorderRadius.circular(10))),
                         )),
                       const SizedBox(width: 8),
-                      // Save as-is
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () {
-                            for (final m
-                                in editControllers.values) {
-                              for (final c in m.values) {
-                                c.dispose();
-                              }
+                            for (final m in editControllers.values) {
+                              for (final c in m.values) { c.dispose(); }
                             }
                             summaryCtrl.dispose();
                             Navigator.pop(ctx);
                             setState(() => _currentStep = 4);
                             _save();
                           },
-                          icon: const Icon(
-                              Icons.check_circle_outline,
+                          icon: const Icon(Icons.check_circle_outline,
                               size: 13, color: AppColors.accent),
                           label: const Text('Save as-is',
                             style: TextStyle(
@@ -693,21 +642,17 @@ class _AIScanTabState extends State<AIScanTab> {
                                 fontSize: 12)),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(
-                                color: AppColors.accent,
-                                width: 1.5),
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 13),
+                                color: AppColors.accent, width: 1.5),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
                             shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(10))),
+                                borderRadius: BorderRadius.circular(10))),
                         )),
                     ]),
                   ])),
-              ]))); 
+              ])));
         }));
   }
 
-  // Severity dropdown for edit mode
   Widget _severityDropdown(
       String current, SL sl, ValueChanged<String> onChanged) {
     const sevs = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
@@ -721,8 +666,7 @@ class _AIScanTabState extends State<AIScanTab> {
         child: DropdownButton<String>(
           value: sevs.contains(current) ? current : 'MEDIUM',
           isDense: true,
-          dropdownColor: sl.isDark
-              ? const Color(0xFF252840) : Colors.white,
+          dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
           style: TextStyle(
               color: _sevColor(current), fontSize: 9,
               fontWeight: FontWeight.w800),
@@ -740,8 +684,7 @@ class _AIScanTabState extends State<AIScanTab> {
     Padding(padding: const EdgeInsets.only(top: 3),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(width: 90, child: Text(label, style: TextStyle(
-            color: sl.text4, fontSize: 9,
-            fontWeight: FontWeight.w600))),
+            color: sl.text4, fontSize: 9, fontWeight: FontWeight.w600))),
         Expanded(child: Text(value, style: TextStyle(
             color: sl.text1, fontSize: 10, height: 1.4))),
       ]));
@@ -750,7 +693,6 @@ class _AIScanTabState extends State<AIScanTab> {
   Future<void> _save() async {
     if (_result == null) return;
 
-    // Duplicate check
     if (_imageBytes != null) {
       final hash = _computeHash(_imageBytes!);
       if (_savedImageHash == hash) {
@@ -766,8 +708,7 @@ class _AIScanTabState extends State<AIScanTab> {
         final confirm = await showDialog<bool>(
           context: context,
           builder: (_) => AlertDialog(
-            backgroundColor:
-                Theme.of(context).colorScheme.surface,
+            backgroundColor: Theme.of(context).colorScheme.surface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14)),
             title: const Row(children: [
@@ -812,24 +753,19 @@ class _AIScanTabState extends State<AIScanTab> {
 
     await LocalDB.saveIncident(dbInc);
     SyncService.pushIncident(dbInc).catchError((_) => false);
-
-    // Best-effort: generate PDF + upload to Drive + attach URL to Sheets
-    // This runs in the background so the UI doesn't wait
     _uploadPdfBackground(dbInc, user);
 
     setState(() {
       _isSaved         = true;
       _savedIncidentId = dbInc['id']?.toString();
-      _currentStep     = 5; // advance to Mitigate
+      _currentStep     = 5;
     });
 
     if (mounted) {
-      // Show prominent save confirmation dialog
       _showSaveSuccessDialog(dbInc);
     }
   }
 
-  /// Show a prominent "Report Saved" confirmation dialog
   void _showSaveSuccessDialog(Map<String, dynamic> incident) {
     final sl = SL.of(context);
     final id = incident['id']?.toString() ?? '';
@@ -844,7 +780,6 @@ class _AIScanTabState extends State<AIScanTab> {
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Big success icon
             Container(
               width: 70, height: 70,
               decoration: BoxDecoration(
@@ -866,7 +801,6 @@ class _AIScanTabState extends State<AIScanTab> {
                 style: TextStyle(color: sl.text3, fontSize: 11,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 16),
-            // Status rows
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -883,7 +817,6 @@ class _AIScanTabState extends State<AIScanTab> {
                     'Uploading in background', AppColors.amber, sl),
               ])),
             const SizedBox(height: 16),
-            // Action buttons
             Row(children: [
               Expanded(child: OutlinedButton.icon(
                 onPressed: () { Navigator.pop(ctx); _openSheetsLink(); },
@@ -962,8 +895,7 @@ class _AIScanTabState extends State<AIScanTab> {
           minChildSize: 0.5,
           builder: (_, ctrl) => Container(
             decoration: BoxDecoration(
-              color: sl.isDark
-                  ? const Color(0xFF1C1F2E) : Colors.white,
+              color: sl.isDark ? const Color(0xFF1C1F2E) : Colors.white,
               borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(20))),
             child: Column(children: [
@@ -981,8 +913,7 @@ class _AIScanTabState extends State<AIScanTab> {
                     decoration: BoxDecoration(
                       color: AppColors.purple.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(8)),
-                    child: const Icon(
-                        Icons.engineering_rounded,
+                    child: const Icon(Icons.engineering_rounded,
                         color: AppColors.purple, size: 16)),
                   const SizedBox(width: 10),
                   Expanded(child: Column(
@@ -993,8 +924,7 @@ class _AIScanTabState extends State<AIScanTab> {
                           fontSize: 15,
                           fontWeight: FontWeight.w700)),
                     Text('Add corrective action per hazard & close',
-                      style: TextStyle(color: sl.text4,
-                          fontSize: 10)),
+                      style: TextStyle(color: sl.text4, fontSize: 10)),
                   ])),
                   IconButton(
                     padding: EdgeInsets.zero,
@@ -1003,42 +933,32 @@ class _AIScanTabState extends State<AIScanTab> {
                     onPressed: () => Navigator.pop(ctx)),
                 ])),
               Divider(height: 1, color: sl.border),
-              // Progress
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(children: [
                   Text(
                     '${_hazardClosed.values.where((v) => v).length}'
                     ' / ${hazards.length} closed',
-                    style: TextStyle(color: sl.text4,
-                        fontSize: 11)),
+                    style: TextStyle(color: sl.text4, fontSize: 11)),
                   const SizedBox(width: 10),
                   Expanded(child: ClipRRect(
                     borderRadius: BorderRadius.circular(99),
                     child: LinearProgressIndicator(
                       value: hazards.isEmpty ? 0
-                          : _hazardClosed.values
-                              .where((v) => v).length
+                          : _hazardClosed.values.where((v) => v).length
                               / hazards.length,
                       minHeight: 6,
-                      backgroundColor:
-                          sl.border.withOpacity(0.3),
-                      valueColor:
-                          const AlwaysStoppedAnimation<Color>(
+                      backgroundColor: sl.border.withOpacity(0.3),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
                               AppColors.green)))),
                 ])),
-              // Hazard mitigation list
               Expanded(child: ListView.separated(
                 controller: ctrl,
-                padding: const EdgeInsets.fromLTRB(
-                    16, 0, 16, 100),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                 itemCount: hazards.length,
-                separatorBuilder: (_, __) =>
-                    const SizedBox(height: 10),
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
                 itemBuilder: (_, i) {
-                  final h      = Map<String, dynamic>.from(
-                      hazards[i] as Map);
+                  final h      = Map<String, dynamic>.from(hazards[i] as Map);
                   final sc     = _sevColor(
                       h['severity']?.toString() ?? 'MEDIUM');
                   final closed = _hazardClosed[i] ?? false;
@@ -1050,8 +970,7 @@ class _AIScanTabState extends State<AIScanTab> {
                       color: closed
                           ? AppColors.green.withOpacity(0.05)
                           : (sl.isDark
-                              ? const Color(0xFF252840)
-                              : Colors.white),
+                              ? const Color(0xFF252840) : Colors.white),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: closed
@@ -1059,135 +978,99 @@ class _AIScanTabState extends State<AIScanTab> {
                             : sc.withOpacity(0.35),
                         width: closed ? 1.5 : 1)),
                     child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                      // Hazard name row
                       Row(children: [
                         Container(
                           width: 20, height: 20,
                           decoration: BoxDecoration(
-                            color: closed
-                                ? AppColors.green : sc,
+                            color: closed ? AppColors.green : sc,
                             shape: BoxShape.circle),
                           child: Center(child: closed
                             ? const Icon(Icons.check,
                                 color: Colors.white, size: 11)
                             : Text('${i+1}',
                                 style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight:
-                                        FontWeight.w800)))),
+                                    color: Colors.white, fontSize: 9,
+                                    fontWeight: FontWeight.w800)))),
                         const SizedBox(width: 8),
                         Expanded(child: Text(
                           h['name']?.toString() ?? '—',
                           style: TextStyle(
-                            color: closed
-                                ? sl.text3 : sl.text1,
+                            color: closed ? sl.text3 : sl.text1,
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
                             decoration: closed
-                                ? TextDecoration.lineThrough
-                                : null))),
+                                ? TextDecoration.lineThrough : null))),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 5, vertical: 1),
                           decoration: BoxDecoration(
                             color: sc.withOpacity(0.1),
-                            borderRadius:
-                                BorderRadius.circular(5),
+                            borderRadius: BorderRadius.circular(5),
                             border: Border.all(color: sc)),
                           child: Text(
-                            (h['severity']?.toString() ?? '—')
-                                .substring(0,
-                                  (h['severity']?.toString()
-                                      .length ?? 4)
+                            (h['severity']?.toString() ?? '—').substring(0,
+                                  (h['severity']?.toString().length ?? 4)
                                   .clamp(0, 4)),
                             style: TextStyle(color: sc,
-                                fontSize: 7,
-                                fontWeight: FontWeight.w800))),
+                                fontSize: 7, fontWeight: FontWeight.w800))),
                       ]),
                       if (!closed) ...[
                         const SizedBox(height: 6),
-                        // Original corrective action chip
-                        if ((h['correctiveAction']
-                                ?.toString() ?? '')
-                            .isNotEmpty)
+                        if ((h['correctiveAction']?.toString() ?? '').isNotEmpty)
                           Container(
                             padding: const EdgeInsets.all(7),
-                            margin: const EdgeInsets.only(
-                                bottom: 6),
+                            margin: const EdgeInsets.only(bottom: 6),
                             decoration: BoxDecoration(
-                              color: AppColors.accent
-                                  .withOpacity(0.06),
-                              borderRadius:
-                                  BorderRadius.circular(7),
+                              color: AppColors.accent.withOpacity(0.06),
+                              borderRadius: BorderRadius.circular(7),
                               border: Border.all(
-                                  color: AppColors.accent
-                                      .withOpacity(0.25))),
+                                  color: AppColors.accent.withOpacity(0.25))),
                             child: Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                              const Text('🔧 ',
-                                  style: TextStyle(
-                                      fontSize: 10)),
+                              const Text('🔧 ', style: TextStyle(fontSize: 10)),
                               Expanded(child: Text(
                                 'AI suggests: ${h['correctiveAction']}',
                                 style: const TextStyle(
                                     color: AppColors.accent,
-                                    fontSize: 9,
-                                    height: 1.4))),
+                                    fontSize: 9, height: 1.4))),
                             ])),
-                        // Comment text field
                         Text('Your corrective action / comment:',
-                          style: TextStyle(color: sl.text3,
-                              fontSize: 10,
+                          style: TextStyle(color: sl.text3, fontSize: 10,
                               fontWeight: FontWeight.w600)),
                         const SizedBox(height: 4),
                         TextField(
                           controller: ctrl2,
                           maxLines: 2,
-                          style: TextStyle(color: sl.text1,
-                              fontSize: 12),
+                          style: TextStyle(color: sl.text1, fontSize: 12),
                           decoration: InputDecoration(
-                            hintText:
-                                'Describe what was done…',
-                            hintStyle: TextStyle(
-                                color: sl.text4,
-                                fontSize: 11),
+                            hintText: 'Describe what was done…',
+                            hintStyle: TextStyle(color: sl.text4, fontSize: 11),
                             filled: true,
                             fillColor: sl.isDark
                                 ? const Color(0xFF1C1F2E)
                                 : const Color(0xFFF5F6FA),
-                            contentPadding:
-                                const EdgeInsets.all(10),
+                            contentPadding: const EdgeInsets.all(10),
                             border: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(9),
+                              borderRadius: BorderRadius.circular(9),
                               borderSide: BorderSide(
-                                  color: sl.border
-                                      .withOpacity(0.4))),
+                                  color: sl.border.withOpacity(0.4))),
                             focusedBorder: OutlineInputBorder(
-                              borderRadius:
-                                  BorderRadius.circular(9),
+                              borderRadius: BorderRadius.circular(9),
                               borderSide: const BorderSide(
-                                  color: AppColors.green,
-                                  width: 2)))),
+                                  color: AppColors.green, width: 2)))),
                         const SizedBox(height: 8),
-                        // Close hazard button
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             onPressed: () {
                               if (ctrl2.text.trim().isEmpty) {
-                                ScaffoldMessenger.of(ctx)
-                                    .showSnackBar(const SnackBar(
-                                  content: Text(
-                                      'Add a comment first'),
-                                  backgroundColor:
-                                      Color(0xFFD97706)));
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  const SnackBar(
+                                  content: Text('Add a comment first'),
+                                  backgroundColor: Color(0xFFD97706)));
                                 return;
                               }
                               setLocal(() {
@@ -1196,8 +1079,7 @@ class _AIScanTabState extends State<AIScanTab> {
                               setState(() {
                                 _hazardClosed[i] = true;
                               });
-                              _saveHazardMitigation(i, h,
-                                  ctrl2.text.trim());
+                              _saveHazardMitigation(i, h, ctrl2.text.trim());
                             },
                             icon: const Icon(Icons.lock_rounded,
                                 size: 14, color: Colors.white),
@@ -1208,73 +1090,52 @@ class _AIScanTabState extends State<AIScanTab> {
                                   fontWeight: FontWeight.w700)),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.green,
-                              padding:
-                                  const EdgeInsets.symmetric(
-                                      vertical: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
                               shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(
-                                          9))))),
+                                  borderRadius: BorderRadius.circular(9))))),
                       ] else ...[
                         const SizedBox(height: 6),
-                        // Show the comment that was saved
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: AppColors.green
-                                .withOpacity(0.08),
-                            borderRadius:
-                                BorderRadius.circular(8),
+                            color: AppColors.green.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
                             border: Border.all(
-                                color: AppColors.green
-                                    .withOpacity(0.3))),
+                                color: AppColors.green.withOpacity(0.3))),
                           child: Row(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                            const Icon(
-                                Icons.check_circle_outline,
-                                color: AppColors.green,
-                                size: 14),
+                            const Icon(Icons.check_circle_outline,
+                                color: AppColors.green, size: 14),
                             const SizedBox(width: 6),
                             Expanded(child: Text(
                               ctrl2.text.isNotEmpty
-                                  ? ctrl2.text
-                                  : 'Hazard closed',
+                                  ? ctrl2.text : 'Hazard closed',
                               style: const TextStyle(
                                   color: AppColors.green,
-                                  fontSize: 11,
-                                  height: 1.4))),
+                                  fontSize: 11, height: 1.4))),
                           ])),
                       ],
                     ]));
                 })),
-              // Bottom: close all + view in Sheets
               Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    16, 8, 16, 28),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
                 child: Column(children: [
-                  if (_hazardClosed.values
-                      .every((v) => v) && hazards.isNotEmpty)
+                  if (_hazardClosed.values.every((v) => v) && hazards.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AppColors.green
-                              .withOpacity(0.08),
-                          borderRadius:
-                              BorderRadius.circular(10),
+                          color: AppColors.green.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
                           border: Border.all(
-                              color: AppColors.green
-                                  .withOpacity(0.4))),
+                              color: AppColors.green.withOpacity(0.4))),
                         child: const Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                           Icon(Icons.celebration_rounded,
-                              color: AppColors.green,
-                              size: 18),
+                              color: AppColors.green, size: 18),
                           SizedBox(width: 8),
                           Text('All hazards mitigated!',
                             style: TextStyle(
@@ -1290,16 +1151,13 @@ class _AIScanTabState extends State<AIScanTab> {
                       label: const Text('View in Sheets',
                         style: TextStyle(
                             color: AppColors.accent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
+                            fontSize: 12, fontWeight: FontWeight.w700)),
                       style: OutlinedButton.styleFrom(
                         side: const BorderSide(
                             color: AppColors.accent, width: 1.5),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
+                            borderRadius: BorderRadius.circular(10))),
                     )),
                     const SizedBox(width: 10),
                     Expanded(child: ElevatedButton.icon(
@@ -1309,22 +1167,18 @@ class _AIScanTabState extends State<AIScanTab> {
                       label: const Text('Done',
                         style: TextStyle(
                             color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700)),
+                            fontSize: 12, fontWeight: FontWeight.w700)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.purple,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 12),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10))),
+                            borderRadius: BorderRadius.circular(10))),
                     )),
                   ]),
                 ])),
             ])))));
   }
 
-  // Save hazard mitigation comment to the incident
   Future<void> _saveHazardMitigation(
       int idx, Map<String, dynamic> hazard, String comment) async {
     if (_savedIncidentId == null) return;
@@ -1333,7 +1187,6 @@ class _AIScanTabState extends State<AIScanTab> {
         (i) => i['id']?.toString() == _savedIncidentId);
     if (incIdx < 0) return;
 
-    // Parse hazards, update the comment for this index
     dynamic rawHazards = all[incIdx]['hazards'];
     List hazards = [];
     if (rawHazards is String) {
@@ -1351,7 +1204,6 @@ class _AIScanTabState extends State<AIScanTab> {
     }
 
     all[incIdx]['hazards'] = jsonEncode(hazards);
-    // If all hazards closed, mark incident as closed
     final allClosed = _hazardClosed.values.every((v) => v);
     if (allClosed) {
       all[incIdx]['status']   = 'CLOSED';
@@ -1362,7 +1214,6 @@ class _AIScanTabState extends State<AIScanTab> {
     SyncService.pushIncident(all[incIdx]).catchError((_) => false);
   }
 
-  // ─── SHEETS LINK ─────────────────────────────────────────────
   Future<void> _openSheetsLink() async {
     final uri = Uri.parse(_sheetUrl);
     try {
@@ -1376,7 +1227,6 @@ class _AIScanTabState extends State<AIScanTab> {
     }
   }
 
-  // ─── BUILD INCIDENT ───────────────────────────────────────────
   Map<String, dynamic> _buildIncident(Map<String, dynamic> user) {
     final hazards        = (_result!['hazards'] as List?) ?? [];
     final firstHazard    = hazards.isNotEmpty
@@ -1411,9 +1261,6 @@ class _AIScanTabState extends State<AIScanTab> {
     };
   }
 
-  /// Background-upload the saved incident's PDF to Drive.
-  /// Updates the Sheets row with pdfUrl when done.
-  /// Fire-and-forget — does not block the UI.
   Future<void> _uploadPdfBackground(
       Map<String, dynamic> incident, Map<String, dynamic> user) async {
     try {
@@ -1430,14 +1277,11 @@ class _AIScanTabState extends State<AIScanTab> {
         fileName:   'SafetyLens_${incident['id']}.pdf',
       );
       if (url != null && url.isNotEmpty) {
-        // Update Sheets row with pdfUrl (best-effort)
         await SyncService.pushIncident({
           ...incident, 'pdfUrl': url,
         }).catchError((_) => false);
       }
-    } catch (_) {
-      // Silent fail — PDF still saved locally
-    }
+    } catch (_) {}
   }
 
   Future<void> _exportPdf() async {
@@ -1479,8 +1323,7 @@ class _AIScanTabState extends State<AIScanTab> {
       content: Text(msg, style: const TextStyle(fontSize: 12)),
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       margin: const EdgeInsets.all(12),
     ));
   }
@@ -1492,9 +1335,7 @@ class _AIScanTabState extends State<AIScanTab> {
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Container(
-      color: sl.isDark
-          ? const Color(0xFF1C1F2E)
-          : const Color(0xFFF5F6FA),
+      color: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
       child: SafeArea(child: Column(children: [
         UniversalAppBar(
           title: I18n.t('aiScan.title'),
@@ -1516,125 +1357,6 @@ class _AIScanTabState extends State<AIScanTab> {
       ])));
   }
 
-  // ─── TOP BAR WITH INTERACTIVE STEP CHIPS ─────────────────────
-  Widget _topBar(SL sl) => Container(
-    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-    decoration: BoxDecoration(
-      color: sl.isDark ? const Color(0xFF252840) : Colors.white,
-      border: Border(bottom: BorderSide(
-          color: sl.border.withOpacity(0.35)))),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-      Row(children: [
-        Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(
-            color: AppColors.accent.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10)),
-          child: const Icon(Icons.document_scanner_rounded,
-              color: AppColors.accent, size: 20)),
-        const SizedBox(width: 10),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-          Text('AI Hazard Scan', style: TextStyle(
-              color: sl.text1, fontSize: 16,
-              fontWeight: FontWeight.w800)),
-          Text('Gemini Vision · IS 14489 · WSA 13 · Factories Act',
-            style: TextStyle(color: sl.text4, fontSize: 9)),
-        ])),
-        // Sheets link button
-        GestureDetector(
-          onTap: _openSheetsLink,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xFF16A34A).withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: const Color(0xFF16A34A).withOpacity(0.35))),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.table_chart_rounded,
-                  size: 11, color: Color(0xFF16A34A)),
-              SizedBox(width: 4),
-              Text('Sheets', style: TextStyle(
-                  color: Color(0xFF16A34A), fontSize: 9,
-                  fontWeight: FontWeight.w700)),
-            ]))),
-      ]),
-      const SizedBox(height: 10),
-      // Interactive step chips
-      Row(children: [
-        _iStepChip(1, 'Capture',  AppColors.accent,  sl,
-          onTap: () => _pickImage(ImageSource.camera)),
-        _iArrow(sl),
-        _iStepChip(2, 'AI Scan',  AppColors.cyan,    sl,
-          onTap: _imageBytes != null && !_analyzing
-              ? _analyze : null),
-        _iArrow(sl),
-        _iStepChip(3, 'Review',   AppColors.amber,   sl,
-          onTap: _result != null
-              ? _openReviewSheet : null),
-        _iArrow(sl),
-        _iStepChip(4, 'Save',     AppColors.green,   sl,
-          onTap: _result != null && !_isSaved
-              ? _save : null),
-        _iArrow(sl),
-        _iStepChip(5, 'Mitigate', AppColors.purple,  sl,
-          onTap: _isSaved ? _openMitigateSheet : null),
-      ]),
-    ]));
-
-  Widget _iStepChip(int num, String label, Color color, SL sl,
-      {VoidCallback? onTap}) {
-    final isActive    = _currentStep == num;
-    final isCompleted = _currentStep > num;
-    final isEnabled   = onTap != null;
-    final chipColor   = isEnabled ? color : sl.text4;
-
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          width: isActive ? 26 : 22,
-          height: isActive ? 26 : 22,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isCompleted
-                ? color.withOpacity(0.2)
-                : isActive
-                    ? color.withOpacity(0.15)
-                    : Colors.transparent,
-            border: Border.all(
-              color: isEnabled ? color : sl.border.withOpacity(0.4),
-              width: isActive ? 2.5 : 1.5),
-            boxShadow: isActive ? [BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 6)] : null),
-          child: Center(child: isCompleted
-            ? Icon(Icons.check_rounded,
-                color: color, size: isActive ? 14 : 12)
-            : Text('$num', style: TextStyle(
-                color: isEnabled ? color : sl.text4,
-                fontSize: isActive ? 11 : 9,
-                fontWeight: FontWeight.w800)))),
-        const SizedBox(height: 2),
-        Text(label, style: TextStyle(
-            color: isEnabled ? chipColor : sl.text4,
-            fontSize: isActive ? 8.5 : 7.5,
-            fontWeight: isActive
-                ? FontWeight.w800 : FontWeight.w500)),
-      ]));
-  }
-
-  Widget _iArrow(SL sl) => Expanded(child: Container(
-    height: 1.5,
-    margin: const EdgeInsets.only(bottom: 16),
-    color: sl.border.withOpacity(0.4)));
-
-  // ─── EMPTY VIEW ───────────────────────────────────────────────
   Widget _emptyView(SL sl) {
     final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Column(children: [
@@ -1648,8 +1370,7 @@ class _AIScanTabState extends State<AIScanTab> {
                 color: AppColors.accent.withOpacity(0.3), width: 2),
             borderRadius: BorderRadius.circular(14),
             boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(
-                  sl.isDark ? 0.2 : 0.04),
+              color: Colors.black.withOpacity(sl.isDark ? 0.2 : 0.04),
               blurRadius: 8, offset: const Offset(0, 2))]),
           child: Column(children: [
             Container(
@@ -1680,18 +1401,15 @@ class _AIScanTabState extends State<AIScanTab> {
       Row(children: [
         Expanded(child: ElevatedButton.icon(
           onPressed: () => _pickImage(ImageSource.camera),
-          icon: const Icon(Icons.camera_alt,
-              size: 14, color: Colors.white),
+          icon: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
           label: const Text('Camera', style: TextStyle(
-              color: Colors.white, fontSize: 12,
-              fontWeight: FontWeight.w600)),
+              color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.accent,
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
-              side: const BorderSide(
-                  color: AppColors.accentDark, width: 2))),
+              side: const BorderSide(color: AppColors.accentDark, width: 2))),
         )),
         const SizedBox(width: 8),
         Expanded(child: OutlinedButton.icon(
@@ -1702,8 +1420,7 @@ class _AIScanTabState extends State<AIScanTab> {
               color: AppColors.accent, fontSize: 12,
               fontWeight: FontWeight.w600)),
           style: OutlinedButton.styleFrom(
-            side: const BorderSide(
-                color: AppColors.accent, width: 2),
+            side: const BorderSide(color: AppColors.accent, width: 2),
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
@@ -1719,13 +1436,11 @@ class _AIScanTabState extends State<AIScanTab> {
     decoration: BoxDecoration(
       color: AppColors.accent.withOpacity(0.07),
       borderRadius: BorderRadius.circular(99),
-      border: Border.all(
-          color: AppColors.accent.withOpacity(0.2))),
+      border: Border.all(color: AppColors.accent.withOpacity(0.2))),
     child: Text(label, style: const TextStyle(
         color: AppColors.accent, fontSize: 9,
         fontWeight: FontWeight.w600)));
 
-  // ─── ANALYZING VIEW ───────────────────────────────────────────
   Widget _analyzingView() => Container(
     height: 160,
     decoration: BoxDecoration(
@@ -1742,15 +1457,13 @@ class _AIScanTabState extends State<AIScanTab> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
         const CircularProgressIndicator(strokeWidth: 3,
-          valueColor: AlwaysStoppedAnimation<Color>(
-              AppColors.accent)),
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent)),
         const SizedBox(height: 10),
         Text(_step, style: const TextStyle(
           color: Colors.white, fontSize: 12,
           fontWeight: FontWeight.w600)),
       ]))));
 
-  // ─── RESULT VIEW ──────────────────────────────────────────────
   Widget _resultView(SL sl) {
     final overallRisk = _result!['overallRisk']?.toString() ?? 'MEDIUM';
     final score       = _result!['riskScore']    ?? 50;
@@ -1759,23 +1472,19 @@ class _AIScanTabState extends State<AIScanTab> {
     final hazards     = (_result!['hazards'] as List?) ?? [];
     final riskColor   = _sevColor(overallRisk);
     final hasBbox     = hazards.any((h) => (h as Map)['bbox'] != null);
-    final cardBg      = sl.isDark
-        ? const Color(0xFF252840) : Colors.white;
+    final cardBg      = sl.isDark ? const Color(0xFF252840) : Colors.white;
 
     return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
 
-      // Saved banner
       if (_isSaved) Container(
         margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(
-            horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.green.withOpacity(0.08),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-              color: AppColors.green.withOpacity(0.4))),
+          border: Border.all(color: AppColors.green.withOpacity(0.4))),
         child: Row(children: [
           const Icon(Icons.check_circle_outline,
               color: AppColors.green, size: 16),
@@ -1786,8 +1495,7 @@ class _AIScanTabState extends State<AIScanTab> {
           GestureDetector(
             onTap: _openSheetsLink,
             child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: AppColors.green,
                 borderRadius: BorderRadius.circular(6)),
@@ -1796,7 +1504,6 @@ class _AIScanTabState extends State<AIScanTab> {
                     fontSize: 10, fontWeight: FontWeight.w700)))),
         ])),
 
-      // Annotated image
       if (_imageBytes != null) ...[
         if (hasBbox)
           HazardAnnotatedImage(
@@ -1812,7 +1519,6 @@ class _AIScanTabState extends State<AIScanTab> {
         const SizedBox(height: 10),
       ],
 
-      // Risk summary
       Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -1857,7 +1563,6 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
       const SizedBox(height: 10),
 
-      // Summary card
       Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -1865,8 +1570,7 @@ class _AIScanTabState extends State<AIScanTab> {
           border: Border.all(color: sl.border.withOpacity(0.4)),
           borderRadius: BorderRadius.circular(12),
           boxShadow: [BoxShadow(
-            color: Colors.black.withOpacity(
-                sl.isDark ? 0.15 : 0.04),
+            color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04),
             blurRadius: 6, offset: const Offset(0, 2))]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1880,24 +1584,34 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
       const SizedBox(height: 10),
 
-      // Hazard table
       _hazardTable(hazards, sl),
       const SizedBox(height: 12),
 
-      // Action buttons
       Row(children: [
         Expanded(child: ElevatedButton.icon(
+          onPressed: _result != null
+              ? (_isSaved ? null : _openReviewSheet) : null,
+          icon: const Icon(Icons.fact_check_outlined,
+              size: 14, color: Colors.white),
+          label: const Text('Review',
+              style: TextStyle(color: Colors.white,
+                  fontSize: 12, fontWeight: FontWeight.w700)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.amber,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10))),
+        )),
+        const SizedBox(width: 8),
+        Expanded(child: ElevatedButton.icon(
           onPressed: _isSaved ? null : _save,
-          icon: Icon(_isSaved
-              ? Icons.check_rounded
-              : Icons.save_outlined,
+          icon: Icon(_isSaved ? Icons.check_rounded : Icons.save_outlined,
               size: 14, color: Colors.white),
           label: Text(_isSaved ? 'Saved ✓' : 'Save',
               style: const TextStyle(color: Colors.white,
                   fontSize: 12, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: _isSaved
-                ? Colors.grey : AppColors.green,
+            backgroundColor: _isSaved ? Colors.grey : AppColors.green,
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
@@ -1919,34 +1633,46 @@ class _AIScanTabState extends State<AIScanTab> {
         const SizedBox(width: 8),
         Expanded(child: OutlinedButton.icon(
           onPressed: _reset,
-          icon: const Icon(Icons.refresh,
-              size: 14, color: AppColors.accent),
+          icon: const Icon(Icons.refresh, size: 14, color: AppColors.accent),
           label: const Text('New',
               style: TextStyle(color: AppColors.accent,
                   fontSize: 12, fontWeight: FontWeight.w700)),
           style: OutlinedButton.styleFrom(
-            side: const BorderSide(
-                color: AppColors.accent, width: 2),
+            side: const BorderSide(color: AppColors.accent, width: 2),
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
         )),
       ]),
+
+      if (_isSaved) ...[
+        const SizedBox(height: 8),
+        SizedBox(width: double.infinity, child: ElevatedButton.icon(
+          onPressed: _openMitigateSheet,
+          icon: const Icon(Icons.engineering_rounded,
+              size: 14, color: Colors.white),
+          label: const Text('Mitigate Hazards',
+              style: TextStyle(color: Colors.white,
+                  fontSize: 12, fontWeight: FontWeight.w700)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.purple,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10))),
+        )),
+      ],
     ]);
   }
 
-  // ─── HAZARD TABLE ─────────────────────────────────────────────
   Widget _hazardTable(List hazards, SL sl) {
-    final cardBg = sl.isDark
-        ? const Color(0xFF252840) : Colors.white;
+    final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Container(
       decoration: BoxDecoration(
         color: cardBg,
         border: Border.all(color: sl.border.withOpacity(0.4)),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(
-          color: Colors.black.withOpacity(
-              sl.isDark ? 0.15 : 0.04),
+          color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04),
           blurRadius: 6, offset: const Offset(0, 2))]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1962,13 +1688,11 @@ class _AIScanTabState extends State<AIScanTab> {
               fontWeight: FontWeight.w700, letterSpacing: 0.9)),
             const Spacer(),
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 7, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
                 color: AppColors.red.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(99),
-                border: Border.all(
-                    color: AppColors.red.withOpacity(0.3))),
+                border: Border.all(color: AppColors.red.withOpacity(0.3))),
               child: Text('${hazards.length} hazards',
                 style: const TextStyle(color: AppColors.red,
                     fontSize: 9, fontWeight: FontWeight.w700))),
@@ -2005,21 +1729,18 @@ class _AIScanTabState extends State<AIScanTab> {
             final color = _sevColor(sev);
             return TableRow(
               decoration: BoxDecoration(
-                color: isH ? color.withOpacity(0.1)
-                    : Colors.transparent),
+                color: isH ? color.withOpacity(0.1) : Colors.transparent),
               children: [
                 Padding(
                   key: i < _hazardRowKeys.length
                       ? _hazardRowKeys[i] : null,
                   padding: const EdgeInsets.all(7),
                   child: Row(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                     Container(
                       width: 16, height: 16,
-                      margin: const EdgeInsets.only(
-                          right: 5, top: 1),
+                      margin: const EdgeInsets.only(right: 5, top: 1),
                       decoration: BoxDecoration(
                           color: color, shape: BoxShape.circle),
                       child: Center(child: Text('${i+1}',
@@ -2027,8 +1748,7 @@ class _AIScanTabState extends State<AIScanTab> {
                           color: Colors.white, fontSize: 8,
                           fontWeight: FontWeight.w900)))),
                     Expanded(child: Column(
-                      crossAxisAlignment:
-                          CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                       Text(hm['name']?.toString() ?? '',
                         style: TextStyle(color: sl.text1,
@@ -2037,21 +1757,18 @@ class _AIScanTabState extends State<AIScanTab> {
                           height: 1.4)),
                       if (hm['type'] != null)
                         Padding(
-                          padding: const EdgeInsets.only(
-                              top: 2),
+                          padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             hm['type'].toString(),
                             style: TextStyle(
-                                color: sl.text4,
-                                fontSize: 8))),
+                                color: sl.text4, fontSize: 8))),
                     ])),
                   ])),
                 _htd(hm['description']?.toString() ?? '', sl),
                 _htd(hm['regulation']?.toString()  ?? '', sl),
                 Padding(
                   padding: const EdgeInsets.all(7),
-                  child: Center(
-                      child: _sevPill(sev, color))),
+                  child: Center(child: _sevPill(sev, color))),
                 _htd(hm['correctiveAction']?.toString() ?? '', sl),
               ]);
           }).toList(),
@@ -2094,18 +1811,15 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Widget _infoBox(SL sl) {
-    final cardBg = sl.isDark
-        ? const Color(0xFF252840) : Colors.white;
+    final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: cardBg,
-        border: Border.all(
-            color: AppColors.accent.withOpacity(0.35)),
+        border: Border.all(color: AppColors.accent.withOpacity(0.35)),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [BoxShadow(
-          color: Colors.black.withOpacity(
-              sl.isDark ? 0.15 : 0.04),
+          color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04),
           blurRadius: 6, offset: const Offset(0, 2))]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
