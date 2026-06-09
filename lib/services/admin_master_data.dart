@@ -1,0 +1,158 @@
+// lib/services/admin_master_data.dart
+// SAIL Safety Lens — Master data + Custom list editor storage
+//
+// Constants for SAIL plants, default WSA causes, default departments.
+// Plus storage hooks for user-edited custom lists.
+
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+
+class AdminMasterData {
+  // ── SAIL PLANTS (14 units + Others) ──────────────────────────────
+  static const List<Map<String, String>> sailPlants = [
+    {'code': 'BSP',        'name': 'Bhilai Steel Plant',          'state': 'Chhattisgarh', 'kind': 'Plant'},
+    {'code': 'DSP',        'name': 'Durgapur Steel Plant',        'state': 'West Bengal',  'kind': 'Plant'},
+    {'code': 'RSP',        'name': 'Rourkela Steel Plant',        'state': 'Odisha',       'kind': 'Plant'},
+    {'code': 'BSL',        'name': 'Bokaro Steel Plant',          'state': 'Jharkhand',    'kind': 'Plant'},
+    {'code': 'ISP',        'name': 'IISCO Steel Plant Burnpur',   'state': 'West Bengal',  'kind': 'Plant'},
+    {'code': 'ASP',        'name': 'Alloy Steels Plant',          'state': 'West Bengal',  'kind': 'Plant'},
+    {'code': 'SSP',        'name': 'Salem Steel Plant',           'state': 'Tamil Nadu',   'kind': 'Plant'},
+    {'code': 'CFP',        'name': 'Chandrapur Ferro Alloys',     'state': 'Maharashtra',  'kind': 'Plant'},
+    {'code': 'CMO',        'name': 'Central Marketing Org',       'state': 'Delhi',        'kind': 'Marketing'},
+    {'code': 'JGOM',       'name': 'Jharkhand Group of Mines',    'state': 'Jharkhand',    'kind': 'Mines'},
+    {'code': 'OGOM',       'name': 'Odisha Group of Mines',       'state': 'Odisha',       'kind': 'Mines'},
+    {'code': 'BSP_MINES',  'name': 'BSP Mines',                   'state': 'Chhattisgarh', 'kind': 'Mines'},
+    {'code': 'COLLIERIES', 'name': 'Collieries Division',         'state': 'Jharkhand/WB', 'kind': 'Mines'},
+    {'code': 'SRU',        'name': 'SRU Kulti',                   'state': 'West Bengal',  'kind': 'Refractory'},
+    {'code': 'CORP',       'name': 'Corporate — Ranchi',          'state': 'Jharkhand',    'kind': 'HQ'},
+    {'code': 'OTHER',      'name': 'Others',                      'state': '—',            'kind': 'Other'},
+  ];
+
+  static String stateForPlant(String plantNameOrCode) {
+    final q = plantNameOrCode.trim().toUpperCase();
+    for (final p in sailPlants) {
+      if (q == p['code']!.toUpperCase() ||
+          q == p['name']!.toUpperCase() ||
+          p['name']!.toUpperCase().contains(q)) {
+        return p['state']!;
+      }
+    }
+    return '—';
+  }
+
+  // ── DEFAULT WSA 13 CAUSES ────────────────────────────────────────
+  static const List<String> defaultWsaCauses = [
+    '1. Failure to follow procedure',
+    '2. Lack of hazard awareness',
+    '3. Improper PPE use',
+    '4. Unsafe body positioning',
+    '5. Equipment failure',
+    '6. Communication failure',
+    '7. Human error',
+    '8. Poor housekeeping',
+    '9. Lack of supervision',
+    '10. Fatigue / time pressure',
+    '11. Unauthorized operation',
+    '12. Inadequate isolation (LOTO/PTW)',
+    '13. Environmental conditions',
+  ];
+
+  // ── DEFAULT DEPARTMENTS ──────────────────────────────────────────
+  static const List<String> defaultDepartments = [
+    'Blast Furnace', 'Steel Melting Shop', 'Coke Ovens',
+    'Sinter Plant', 'Rolling Mill', 'Hot Strip Mill',
+    'Cold Rolling Mill', 'Plate Mill', 'Bar & Rod Mill',
+    'Wire Rod Mill', 'Power Plant', 'Oxygen Plant',
+    'Refractory', 'Mechanical Maintenance',
+    'Electrical Maintenance', 'Instrumentation',
+    'Civil', 'Stores', 'Transport', 'Mines',
+    'Quality Assurance', 'Safety', 'Fire Brigade',
+    'Medical', 'Security', 'Personnel', 'Finance',
+    'IT', 'Training', 'Environment',
+  ];
+
+  // ── DEFAULT SEVERITIES ───────────────────────────────────────────
+  static const List<String> defaultSeverities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+
+  // ── DEFAULT STATUSES ─────────────────────────────────────────────
+  static const List<String> defaultStatuses = [
+    'OPEN', 'INVESTIGATING', 'ACTION TAKEN', 'VERIFIED', 'CLOSED',
+  ];
+
+  // ── DEFAULT OBSERVATION TYPES ────────────────────────────────────
+  static const List<String> defaultObservationTypes = [
+    'Unsafe Act', 'Unsafe Condition', 'Near Miss', 'First Aid Case',
+  ];
+
+  // ── STORAGE KEYS for custom (user-edited) lists ──────────────────
+  static const String _kPlants     = 'admin_master_plants';
+  static const String _kDepts      = 'admin_master_departments';
+  static const String _kWsa        = 'admin_master_wsa_causes';
+  static const String _kSeverities = 'admin_master_severities';
+  static const String _kStatuses   = 'admin_master_statuses';
+  static const String _kObsTypes   = 'admin_master_obs_types';
+
+  // ── READ helpers — fall back to defaults if not customised ───────
+  static Future<List<Map<String, String>>> getPlants() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw   = prefs.getString(_kPlants);
+    if (raw == null) {
+      return sailPlants.map((p) => Map<String, String>.from(p)).toList();
+    }
+    try {
+      final l = (jsonDecode(raw) as List)
+          .map((e) => Map<String, String>.from(
+              (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+          .toList();
+      return l;
+    } catch (_) {
+      return sailPlants.map((p) => Map<String, String>.from(p)).toList();
+    }
+  }
+
+  static Future<List<String>> _getList(String key, List<String> def) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(key);
+    if (raw == null) return List<String>.from(def);
+    try {
+      final l = (jsonDecode(raw) as List).map((e) => e.toString()).toList();
+      return l;
+    } catch (_) {
+      return List<String>.from(def);
+    }
+  }
+
+  static Future<List<String>> getDepartments() => _getList(_kDepts, defaultDepartments);
+  static Future<List<String>> getWsaCauses()   => _getList(_kWsa, defaultWsaCauses);
+  static Future<List<String>> getSeverities()  => _getList(_kSeverities, defaultSeverities);
+  static Future<List<String>> getStatuses()    => _getList(_kStatuses, defaultStatuses);
+  static Future<List<String>> getObsTypes()    => _getList(_kObsTypes, defaultObservationTypes);
+
+  // ── SAVE helpers ─────────────────────────────────────────────────
+  static Future<void> savePlants(List<Map<String, String>> v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPlants, jsonEncode(v));
+  }
+
+  static Future<void> _saveList(String key, List<String> v) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode(v));
+  }
+
+  static Future<void> saveDepartments(List<String> v) => _saveList(_kDepts, v);
+  static Future<void> saveWsaCauses(List<String> v)   => _saveList(_kWsa, v);
+  static Future<void> saveSeverities(List<String> v)  => _saveList(_kSeverities, v);
+  static Future<void> saveStatuses(List<String> v)    => _saveList(_kStatuses, v);
+  static Future<void> saveObsTypes(List<String> v)    => _saveList(_kObsTypes, v);
+
+  // ── RESET to defaults ────────────────────────────────────────────
+  static Future<void> resetAllToDefaults() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kPlants);
+    await prefs.remove(_kDepts);
+    await prefs.remove(_kWsa);
+    await prefs.remove(_kSeverities);
+    await prefs.remove(_kStatuses);
+    await prefs.remove(_kObsTypes);
+  }
+}
