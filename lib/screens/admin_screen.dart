@@ -1,16 +1,19 @@
 // lib/screens/admin_screen.dart
-// SAIL Safety Lens — Admin Control Panel v3
+// SAIL Safety Lens — Admin Control Panel v4
 // Login: username=admin / password=admin
 // 5 tabs: Overview · Users · Incidents · Knowledge Base · Settings
 // ✅ NEW: Merged user loading — Sheets + cached + local + admin
 // ✅ NEW: Daily Report card with 7-day mini-chart
+// ✅ NEW: Danger Zone — Reset all reports & Re-seed knowledge base
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
+import '../services/kb_seed_data.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -1068,6 +1071,53 @@ class _AdminScreenState extends State<AdminScreen>
             _smBtn('Update password', AppColors.amber, _changePassword),
           ]),
         ])),
+
+      // ══════════════════════════════════════════════════════════
+      // ✅ NEW: DANGER ZONE
+      // ══════════════════════════════════════════════════════════
+      const SizedBox(height: 24),
+      Row(children: [
+        Container(width: 3, height: 16, color: AppColors.red,
+            margin: const EdgeInsets.only(right: 8)),
+        const Text('⚠ Danger Zone',
+            style: TextStyle(color: AppColors.red, fontSize: 14,
+                fontWeight: FontWeight.w700)),
+      ]),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.red.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.red.withOpacity(0.3))),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Destructive actions — proceed with caution',
+                style: TextStyle(color: AppColors.red, fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            _dangerAction(
+              sl,
+              Icons.delete_sweep_rounded,
+              'Reset all reports & analysis',
+              'Clears all incidents from local storage AND Google Sheets. '
+                  'Users and Knowledge Base are preserved.',
+              _confirmResetAllData,
+              AppColors.red,
+            ),
+            const SizedBox(height: 10),
+            _dangerAction(
+              sl,
+              Icons.menu_book_rounded,
+              'Wipe & re-seed knowledge base',
+              'Deletes all KB entries and reloads ${KbSeedData.count} '
+                  'regulatory entries from FA 1948, SMPV 2016, CEA 2023, '
+                  'IS 14489, and state factory rules.',
+              _confirmSeedKb,
+              AppColors.amber,
+            ),
+          ])),
     ]));
 
   Widget _settingField(String label, TextEditingController ctrl, SL sl,
@@ -1757,6 +1807,254 @@ class _AdminScreenState extends State<AdminScreen>
     _pwOldCtrl.clear(); _pwNewCtrl.clear(); _pwConCtrl.clear();
     _showSnack('Password updated ✓', AppColors.green);
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // ✅ NEW: DANGER ZONE METHODS
+  // ══════════════════════════════════════════════════════════════
+
+  Widget _dangerAction(SL sl, IconData icon, String title, String subtitle,
+      VoidCallback onTap, Color color) =>
+    GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: sl.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.4), width: 1.2)),
+        child: Row(children: [
+          Container(
+            width: 36, height: 36,
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(8)),
+            child: Icon(icon, color: color, size: 18)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(
+                color: sl.text1, fontSize: 12,
+                fontWeight: FontWeight.w700)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: TextStyle(
+                color: sl.text3, fontSize: 10, height: 1.3)),
+            ])),
+          Icon(Icons.chevron_right_rounded, color: color, size: 18),
+        ])));
+
+  Future<void> _confirmResetAllData() async {
+    final sl = SL.of(context);
+    final ctrl = TextEditingController();
+    bool canDelete = false;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => StatefulBuilder(builder: (ctx, setS) => AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: AppColors.red, size: 20),
+          const SizedBox(width: 8),
+          Text('Reset All Data', style: TextStyle(
+              color: sl.text1, fontSize: 15,
+              fontWeight: FontWeight.w800)),
+        ]),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min, children: [
+            Text('This will permanently delete:',
+              style: TextStyle(color: sl.text2, fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            _bulletLine('All AI Scan reports', sl),
+            _bulletLine('All Near Miss reports', sl),
+            _bulletLine('Feedback corrections', sl),
+            _bulletLine('Image duplicate cache', sl),
+            _bulletLine('Pending sync queue', sl),
+            _bulletLine('Chat history', sl),
+            const SizedBox(height: 10),
+            Text('Local data AND Google Sheets will be cleared.',
+              style: TextStyle(color: AppColors.red, fontSize: 11,
+                  fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text('Users and Knowledge Base are preserved.',
+              style: TextStyle(color: AppColors.green, fontSize: 11)),
+            const SizedBox(height: 14),
+            Text('Type RESET to confirm:',
+              style: TextStyle(color: sl.text3, fontSize: 11,
+                  fontWeight: FontWeight.w600)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: ctrl, autofocus: true,
+              style: TextStyle(color: sl.text1, fontSize: 13,
+                  fontWeight: FontWeight.w700, letterSpacing: 2),
+              onChanged: (v) => setS(() {
+                canDelete = v.trim() == 'RESET';
+              }),
+              decoration: InputDecoration(
+                hintText: 'RESET',
+                hintStyle: TextStyle(color: sl.text4, fontSize: 11,
+                    letterSpacing: 2),
+                filled: true, fillColor: sl.bg,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 10),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: BorderSide(color: sl.border)),
+                focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    borderSide: const BorderSide(
+                        color: AppColors.red, width: 2)))),
+          ])),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: canDelete ? () => Navigator.pop(ctx, true) : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red,
+              disabledBackgroundColor: AppColors.red.withOpacity(0.3),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8))),
+            child: const Text('Reset All Data',
+                style: TextStyle(color: Colors.white,
+                    fontWeight: FontWeight.w700))),
+        ])));
+
+    if (ok != true) return;
+
+    _showSnack('Resetting all data…', AppColors.amber);
+
+    // 1. Local reset
+    int localCleared = 0;
+    try {
+      final res = await LocalDB.resetAllData(
+        keepUsers: true,
+        keepKb: true,
+        keepLogin: true,
+      );
+      localCleared = res['incidentsCleared'] is int
+          ? res['incidentsCleared'] as int
+          : int.tryParse('${res['incidentsCleared']}') ?? 0;
+    } catch (e) {
+      _showSnack('Local reset error: $e', AppColors.red);
+    }
+
+    // 2. Remote reset (Apps Script clearAllIncidents)
+    int remoteCleared = 0;
+    bool remoteOk = false;
+    try {
+      const url = 'https://script.google.com/macros/s/'
+          'AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
+      final resp = await http.post(
+        Uri.parse(url),
+        body: jsonEncode({'action': 'clearAllIncidents'}),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 30));
+      if (resp.statusCode == 200) {
+        try {
+          final data = jsonDecode(resp.body);
+          if (data is Map && (data['ok'] == true || data['success'] == true)) {
+            final rc = data['rowsCleared'];
+            remoteCleared = rc is int ? rc : int.tryParse('$rc') ?? 0;
+            remoteOk = true;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    await _loadAll();
+
+    if (remoteOk) {
+      _showSnack(
+        'Reset complete ✓  Local: $localCleared · Sheets: $remoteCleared',
+        AppColors.green);
+    } else {
+      _showSnack(
+        'Local reset complete ($localCleared). '
+        'Sheets reset failed — deploy Apps Script v10.',
+        AppColors.amber);
+    }
+  }
+
+  Future<void> _confirmSeedKb() async {
+    final sl = SL.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(children: [
+          const Icon(Icons.menu_book_rounded,
+              color: AppColors.amber, size: 20),
+          const SizedBox(width: 8),
+          Text('Seed Knowledge Base', style: TextStyle(
+              color: sl.text1, fontSize: 15,
+              fontWeight: FontWeight.w800)),
+        ]),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min, children: [
+            Text('Load ${KbSeedData.count} regulatory entries into the KB?',
+              style: TextStyle(color: sl.text2, fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+            const SizedBox(height: 10),
+            Text('Existing KB entries will be replaced. This includes:',
+              style: TextStyle(color: sl.text3, fontSize: 11)),
+            const SizedBox(height: 6),
+            _bulletLine('Factories Act 1948 (S21–S41H)', sl),
+            _bulletLine('SMPV Rules 2016', sl),
+            _bulletLine('CEA Regulations 2023', sl),
+            _bulletLine('IS 14489:2018 Steel Plant OHS', sl),
+            _bulletLine('CG / Odisha / TN / Bihar Factory Rules', sl),
+            _bulletLine('Hazard → Regulation quick-reference', sl),
+            _bulletLine('SAIL plant → state jurisdiction map', sl),
+          ])),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel',
+                style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.amber,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8))),
+            child: const Text('Wipe & Seed',
+                style: TextStyle(color: Colors.white,
+                    fontWeight: FontWeight.w700))),
+        ]));
+
+    if (ok != true) return;
+
+    _showSnack('Seeding knowledge base…', AppColors.amber);
+    try {
+      final res = await LocalDB.seedKnowledgeBase(replace: true);
+      final loaded = res['loaded'] is int
+          ? res['loaded'] as int
+          : int.tryParse('${res['loaded']}') ?? KbSeedData.count;
+      await _loadAll();
+      _showSnack('KB seeded ✓  $loaded entries loaded',
+          const Color(0xFF0F6E56));
+    } catch (e) {
+      _showSnack('Seed failed: $e', AppColors.red);
+    }
+  }
+
+  Widget _bulletLine(String text, SL sl) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('• ', style: TextStyle(color: sl.text3, fontSize: 11)),
+      Expanded(child: Text(text,
+          style: TextStyle(color: sl.text3, fontSize: 11, height: 1.4))),
+    ]));
 
   // ── Helpers ───────────────────────────────────────────────────
   SL get sl => SL.of(context);
