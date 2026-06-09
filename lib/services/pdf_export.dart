@@ -1,3 +1,12 @@
+// lib/services/pdf_export.dart
+// SAIL Safety Lens — branded PDF report generator
+// ✅ All existing functionality preserved
+// ✅ NEW: Hazard bounding-box overlays on the evidence photograph
+//    Reads `bbox` per hazard as either {x,y,w,h} OR {x,y,width,height}
+//    Coordinates are normalized 0–1, top-left origin.
+//    Each box is severity-coloured with a numbered tag matching the
+//    "#" column in the hazards table below.
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
@@ -66,7 +75,8 @@ class PdfExport {
         if (imgBytes != null) {
           w.add(_sectionTitle('EVIDENCE PHOTOGRAPH  &  INCIDENT SUMMARY'));
           w.add(pw.SizedBox(height: 5));
-          w.add(_photoAndSummary(imgBytes, hazards.length, summary, severity, riskScore, confidence));
+          w.add(_photoAndSummary(imgBytes, hazards.length, summary,
+              severity, riskScore, confidence, hazards));
           w.add(pw.SizedBox(height: 14));
         } else {
           w.add(_sectionTitle('INCIDENT SUMMARY'));
@@ -210,7 +220,6 @@ class PdfExport {
     ]);
   }
 
-  // ─── SECTION TITLE ───────────────────────────────────────────────────────
   static pw.Widget _sectionTitle(String t) => pw.Container(
     padding: const pw.EdgeInsets.fromLTRB(8, 4, 8, 4),
     color: _sailLight,
@@ -222,7 +231,6 @@ class PdfExport {
         color: _sailBlue, letterSpacing: 0.4)),
     ]));
 
-  // ─── DETAILS GRID ────────────────────────────────────────────────────────
   static pw.Widget _detailsGrid(Map<String, dynamic> inc, String date,
       String reporter, String pno) {
     pw.Widget cell(String lbl, String val, {bool hi = false}) =>
@@ -275,13 +283,24 @@ class PdfExport {
     );
   }
 
-  // ─── PHOTO + SUMMARY SIDE BY SIDE ────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  //  PHOTO + SUMMARY (with bbox overlays)
+  // ─────────────────────────────────────────────────────────────────────────
   static pw.Widget _photoAndSummary(Uint8List img, int count, String summary,
-      String severity, dynamic score, dynamic conf) {
+      String severity, dynamic score, dynamic conf,
+      List<Map<String, dynamic>> hazards) {
     final sc = _getSevCol(severity);
     final sb = _getSevBg(severity);
     final s  = (score is int ? score : int.tryParse('$score') ?? 0).clamp(0, 100);
     final c  = (conf is int ? conf : int.tryParse('$conf') ?? 0).clamp(0, 100);
+
+    const photoW = 278.0;
+    const photoH = 185.0;
+
+    final annotatedPhoto = _buildAnnotatedPhoto(img, hazards, photoW, photoH);
+
+    final bboxedCount = hazards.where((h) => h['bbox'] != null).length;
+
     return pw.Container(
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: _divider, width: 0.6)),
@@ -293,13 +312,14 @@ class PdfExport {
             child: pw.Column(children: [
               pw.Container(
                 padding: const pw.EdgeInsets.all(6),
-                child: pw.Image(pw.MemoryImage(img),
-                  height: 185, fit: pw.BoxFit.contain)),
+                child: annotatedPhoto),
               pw.Container(
                 padding: const pw.EdgeInsets.fromLTRB(6, 3, 6, 4),
                 color: PdfColor.fromHex('#F5F5F5'),
                 child: pw.Text(
-                  '$count hazard(s) identified — see table below.',
+                  bboxedCount > 0
+                    ? '$count hazard(s) identified — $bboxedCount marked on photo. See table below.'
+                    : '$count hazard(s) identified — see table below.',
                   style: pw.TextStyle(fontSize: 7, color: _textMed,
                     fontStyle: pw.FontStyle.italic))),
             ])),
@@ -360,24 +380,114 @@ class PdfExport {
     );
   }
 
-  // ─── PHOTO ───────────────────────────────────────────────────────────────
-  static pw.Widget _photoBox(Uint8List img, int count) => pw.Container(
-    decoration: pw.BoxDecoration(
-      border: pw.Border.all(color: _divider, width: 0.6)),
-    child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-      children: [
-        pw.Padding(padding: const pw.EdgeInsets.all(8),
-          child: pw.Image(pw.MemoryImage(img),
-            height: 190, fit: pw.BoxFit.contain)),
-        if (count > 0)
-          pw.Container(
-            padding: const pw.EdgeInsets.fromLTRB(8, 4, 8, 4),
-            color: PdfColor.fromHex('#F5F5F5'),
-            child: pw.Text(
-              '$count hazard(s) identified — see table below for full analysis.',
-              style: pw.TextStyle(fontSize: 7.5, color: _textMed,
-                fontStyle: pw.FontStyle.italic))),
-      ]));
+  // ─────────────────────────────────────────────────────────────────────────
+  //  ANNOTATED PHOTO BUILDER (image + bbox rectangles)
+  //
+  //  Accepts bbox in EITHER format:
+  //    {x, y, w, h}           ← short form (Apps Script v9 default)
+  //    {x, y, width, height}  ← long form
+  //  All values normalised 0..1, top-left origin.
+  // ─────────────────────────────────────────────────────────────────────────
+  static pw.Widget _buildAnnotatedPhoto(
+      Uint8List imgBytes,
+      List<Map<String, dynamic>> hazards,
+      double containerW,
+      double containerH) {
+
+    final memImage = pw.MemoryImage(imgBytes);
+    final imgW = (memImage.width  ?? 0).toDouble();
+    final imgH = (memImage.height ?? 0).toDouble();
+
+    // Find hazards that have a usable bbox
+    final bboxed = <int>[];
+    for (var i = 0; i < hazards.length; i++) {
+      if (hazards[i]['bbox'] is Map) bboxed.add(i);
+    }
+
+    // No bbox data, or undecodable image → plain image
+    if (bboxed.isEmpty || imgW <= 0 || imgH <= 0) {
+      return pw.Image(memImage, height: containerH, fit: pw.BoxFit.contain);
+    }
+
+    // BoxFit.contain math — preserve aspect ratio
+    final scaleX = containerW / imgW;
+    final scaleY = containerH / imgH;
+    final scale  = scaleX < scaleY ? scaleX : scaleY;
+
+    final displayedW = imgW * scale;
+    final displayedH = imgH * scale;
+    final offsetX   = (containerW - displayedW) / 2;
+    final offsetY   = (containerH - displayedH) / 2;
+
+    return pw.SizedBox(
+      width: containerW,
+      height: containerH,
+      child: pw.Stack(
+        children: [
+          pw.Positioned(
+            left: offsetX, top: offsetY,
+            child: pw.Image(memImage,
+              width: displayedW, height: displayedH,
+              fit: pw.BoxFit.fill)),
+
+          ...bboxed.map((i) {
+            final h     = hazards[i];
+            final bbMap = h['bbox'] as Map;
+
+            final bx = _asDouble(bbMap['x']);
+            final by = _asDouble(bbMap['y']);
+            // ✅ Accept BOTH "width"/"height" AND "w"/"h" key conventions
+            final bw = _asDouble(bbMap['width']  ?? bbMap['w']);
+            final bh = _asDouble(bbMap['height'] ?? bbMap['h']);
+
+            if (bw <= 0 || bh <= 0) return pw.SizedBox();
+
+            final sev   = h['severity']?.toString() ?? 'MEDIUM';
+            final color = _getSevCol(sev);
+
+            // Clamp to [0,1]
+            final cx = bx.clamp(0.0, 1.0);
+            final cy = by.clamp(0.0, 1.0);
+            final cw = (bx + bw > 1.0 ? 1.0 - cx : bw).clamp(0.0, 1.0);
+            final ch = (by + bh > 1.0 ? 1.0 - cy : bh).clamp(0.0, 1.0);
+
+            final rectLeft = offsetX + (cx * displayedW);
+            final rectTop  = offsetY + (cy * displayedH);
+            final rectW    = cw * displayedW;
+            final rectH    = ch * displayedH;
+
+            return pw.Positioned(
+              left: rectLeft, top: rectTop,
+              child: pw.Container(
+                width: rectW, height: rectH,
+                decoration: pw.BoxDecoration(
+                  border: pw.Border.all(color: color, width: 1.4)),
+                child: pw.Stack(children: [
+                  pw.Positioned(
+                    left: -1, top: -1,
+                    child: pw.Container(
+                      width: 13, height: 13,
+                      color: color,
+                      alignment: pw.Alignment.center,
+                      child: pw.Text('${i + 1}',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 7,
+                          fontWeight: pw.FontWeight.bold)))),
+                ]),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  static double _asDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0.0;
+    return 0.0;
+  }
 
   // ─── HAZARDS TABLE ───────────────────────────────────────────────────────
   static pw.Widget _hazardsTable(List<Map<String, dynamic>> hazards) {
@@ -391,13 +501,12 @@ class PdfExport {
     return pw.Table(
       border: pw.TableBorder.all(color: PdfColor.fromHex('#9E9E9E'), width: 0.8),
       columnWidths: const {
-        0: pw.FixedColumnWidth(18),   // #
-        1: pw.FlexColumnWidth(1.8),   // Hazard
-        // FIX: was FixedColumnWidth(46) — "SEVERITY" needs ~58pt at 7.5pt bold
-        2: pw.FixedColumnWidth(58),   // Severity
-        3: pw.FlexColumnWidth(2.4),   // Description
-        4: pw.FlexColumnWidth(1.6),   // Regulation
-        5: pw.FlexColumnWidth(2.4),   // Action
+        0: pw.FixedColumnWidth(18),
+        1: pw.FlexColumnWidth(1.8),
+        2: pw.FixedColumnWidth(58),
+        3: pw.FlexColumnWidth(2.4),
+        4: pw.FlexColumnWidth(1.6),
+        5: pw.FlexColumnWidth(2.4),
       },
       children: [
         pw.TableRow(children: [
@@ -416,7 +525,6 @@ class PdfExport {
           final bg  = i % 2 == 0 ? _rowNorm : _rowAlt;
 
           return pw.TableRow(children: [
-            // #
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(5, 6, 5, 6),
               color: PdfColor.fromHex('#E3F2FD'),
@@ -424,14 +532,12 @@ class PdfExport {
                 fontSize: 8, fontWeight: pw.FontWeight.bold,
                 color: _sailBlue),
                 textAlign: pw.TextAlign.center)),
-            // Hazard name
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 6, 6, 6),
               color: bg,
               child: pw.Text(h['name']?.toString() ?? '',
                 style: pw.TextStyle(fontSize: 8,
                   fontWeight: pw.FontWeight.bold, color: _textDark))),
-            // Severity — text + bar, centered
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(4, 6, 4, 6),
               color: sb,
@@ -444,24 +550,20 @@ class PdfExport {
                     color: sc),
                     textAlign: pw.TextAlign.center),
                   pw.SizedBox(height: 2),
-                  // Bar trimmed to 26pt to fit within 58pt column with padding
                   pw.Container(height: 2, width: 26, color: sc),
                 ])),
-            // Description
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 6, 6, 6),
               color: bg,
               child: pw.Text(h['description']?.toString() ?? '',
                 style: pw.TextStyle(fontSize: 7.5, color: _textDark,
                   lineSpacing: 1.2))),
-            // Regulation
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 6, 6, 6),
               color: bg,
               child: pw.Text(h['regulation']?.toString() ?? '',
                 style: pw.TextStyle(fontSize: 7, color: _textMed,
                   lineSpacing: 1.2))),
-            // Action
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 6, 6, 6),
               color: bg,
@@ -474,7 +576,6 @@ class PdfExport {
     );
   }
 
-  // ─── RISK SCORE BAR ──────────────────────────────────────────────────────
   static pw.Widget _riskScoreBar(dynamic rawScore, String severity) {
     final score = (rawScore is int
         ? rawScore : int.tryParse('$rawScore') ?? 0).clamp(0, 100);
@@ -534,7 +635,6 @@ class PdfExport {
 
   static int hazards_countBySev(List l, String s) => 0;
 
-  // ─── SUMMARY BOX ─────────────────────────────────────────────────────────
   static pw.Widget _summaryBox(String summary) => pw.Container(
     padding: const pw.EdgeInsets.all(10),
     decoration: pw.BoxDecoration(
@@ -543,7 +643,6 @@ class PdfExport {
     child: pw.Text(summary.isEmpty ? 'No summary provided.' : summary,
       style: pw.TextStyle(fontSize: 9, color: _textDark, lineSpacing: 1.6)));
 
-  // ─── TWO COLUMN ──────────────────────────────────────────────────────────
   static pw.Widget _twoCol(Map<String, dynamic> inc) => pw.Row(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
@@ -592,7 +691,6 @@ class PdfExport {
         ])),
     ]);
 
-  // ─── SIGN-OFF ─────────────────────────────────────────────────────────────
   static pw.Widget _signOff(String reporter, String pno) => pw.Container(
     padding: const pw.EdgeInsets.all(10),
     decoration: pw.BoxDecoration(
@@ -630,7 +728,6 @@ class PdfExport {
         ]),
       ]));
 
-  // ─── HELPERS ─────────────────────────────────────────────────────────────
   static List<Map<String, dynamic>> _parseHazards(dynamic raw) {
     if (raw == null) return [];
     if (raw is List) {
@@ -766,7 +863,7 @@ class PdfExport {
             1: pw.FixedColumnWidth(54),
             2: pw.FlexColumnWidth(2.0),
             3: pw.FlexColumnWidth(1.5),
-            4: pw.FixedColumnWidth(58),  // FIX: was 50, same SEVERITY fix
+            4: pw.FixedColumnWidth(58),
             5: pw.FixedColumnWidth(46),
           },
           children: [
