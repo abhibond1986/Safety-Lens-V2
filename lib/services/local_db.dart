@@ -1,13 +1,25 @@
+// lib/services/local_db.dart
+// SAIL Safety Lens — Local storage layer (SharedPreferences)
+// ✅ All existing methods preserved
+// ✅ NEW: seedKnowledgeBase() — loads 38 default FA 1948 + state-rules entries
+// ✅ NEW: resetAllData()      — wipes incidents (optionally KB / users)
+// ✅ NEW: dataCounts()        — counts for confirmation dialogs
+
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'kb_seed_data.dart';
 
 class LocalDB {
   static late SharedPreferences _prefs;
-  static const _kUsers        = 'users';
-  static const _kIncidents    = 'incidents';
-  static const _kCurrentUser  = 'current_user';
-  static const _kKbTopics     = 'kb_topics';
-  static const _kCachedUsers  = 'cached_users'; // ← NEW: users fetched from Sheets
+  static const _kUsers         = 'users';
+  static const _kIncidents     = 'incidents';
+  static const _kCurrentUser   = 'current_user';
+  // ignore: unused_field
+  static const _kKbTopics      = 'kb_topics';
+  static const _kCachedUsers   = 'cached_users';
+  static const _kKbDocs        = 'kb_documents';
+  static const _kFeedback      = 'feedback_corrections';
+  static const _kCustomHazards = 'custom_hazards';
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -153,13 +165,8 @@ class LocalDB {
   //  AUTH
   // ═══════════════════════════════════════════════════════════════
 
-  // ── SIGN IN ─────────────────────────────────────────────────
-  // Accepts plain password (local DB) OR passwordHash (from Sheets sync).
-  // Also tries online login via SyncService if local fails.
   static Future<Map<String, dynamic>?> signIn(
       String username, String password) async {
-
-    // 1. Always accept admin/admin as hardcoded offline fallback
     if (username == 'admin' && password == 'admin') {
       final adminUser = {
         'username': 'admin', 'password': 'admin',
@@ -171,7 +178,6 @@ class LocalDB {
       return adminUser;
     }
 
-    // 2. Check local users (plain password field)
     final users = await getUsers();
     for (final u in users) {
       final uname   = u['username']?.toString() ?? '';
@@ -185,7 +191,6 @@ class LocalDB {
       }
     }
 
-    // 3. Check cached users from Sheets (passwordHash field)
     final cached = await getAllUsers();
     for (final u in cached) {
       final uname   = u['username']?.toString() ?? '';
@@ -203,7 +208,7 @@ class LocalDB {
       Map<String, dynamic> userData) async {
     final users = await getUsers();
     if (users.any((u) => u['username'] == userData['username'])) {
-      return null; // duplicate
+      return null;
     }
     users.add(userData);
     await _prefs.setString(_kUsers, jsonEncode(users));
@@ -222,7 +227,7 @@ class LocalDB {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  USERS — local seed list
+  //  USERS
   // ═══════════════════════════════════════════════════════════════
 
   static Future<List<Map<String, dynamic>>> getUsers() async {
@@ -233,26 +238,17 @@ class LocalDB {
         .toList();
   }
 
-  // ── NEW: All users for dashboard user-switcher ─────────────────
-  /// Returns all users available for the dashboard switcher.
-  /// Priority: Sheets-cached users (most up to date) → local seed users.
   static Future<List<Map<String, dynamic>>> getAllUsers() async {
-    // 1. Try Sheets-cached users first (fetched from Apps Script)
     final cached = await getCachedUsers();
     if (cached.isNotEmpty) return cached;
-
-    // 2. Fall back to local seed users (always available offline)
     return getUsers();
   }
 
-  /// Save the user list fetched from Google Sheets to local cache.
-  /// Called by dashboard after SyncService.fetchUsers() returns data.
   static Future<void> cacheUsers(
       List<Map<String, dynamic>> users) async {
     await _prefs.setString(_kCachedUsers, jsonEncode(users));
   }
 
-  /// Get previously cached Sheets users.
   static Future<List<Map<String, dynamic>>> getCachedUsers() async {
     final raw = _prefs.getString(_kCachedUsers);
     if (raw == null || raw.isEmpty) return [];
@@ -265,7 +261,6 @@ class LocalDB {
     }
   }
 
-  /// Clear the Sheets user cache (call on logout or full reset).
   static Future<void> clearCachedUsers() async {
     await _prefs.remove(_kCachedUsers);
   }
@@ -307,6 +302,12 @@ class LocalDB {
     await _prefs.setString(_kIncidents, jsonEncode(all));
   }
 
+  static Future<void> deleteIncident(String id) async {
+    final incidents = await getIncidents();
+    incidents.removeWhere((i) => i['id']?.toString() == id);
+    await _prefs.setString(_kIncidents, jsonEncode(incidents));
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  PLANT STATS
   // ═══════════════════════════════════════════════════════════════
@@ -339,9 +340,6 @@ class LocalDB {
   // ═══════════════════════════════════════════════════════════════
   //  FEEDBACK & LEARNING
   // ═══════════════════════════════════════════════════════════════
-
-  static const _kFeedback      = 'feedback_corrections';
-  static const _kCustomHazards = 'custom_hazards';
 
   static Future<void> saveFeedback({
     required int imageSeed,
@@ -409,8 +407,6 @@ class LocalDB {
   //  KNOWLEDGE BASE
   // ═══════════════════════════════════════════════════════════════
 
-  static const _kKbDocs = 'kb_documents';
-
   static Future<void> addKnowledgeDoc({
     required String title,
     required String content,
@@ -418,7 +414,7 @@ class LocalDB {
   }) async {
     final all = await getKnowledgeDocs();
     all.add({
-      'id':         DateTime.now().millisecondsSinceEpoch.toString(),
+      'id':         '${DateTime.now().millisecondsSinceEpoch}-${all.length}',
       'title':      title,
       'content':    content,
       'source':     source ?? 'uploaded',
@@ -506,10 +502,105 @@ class LocalDB {
     return results.take(3).toList();
   }
 
-  // ── DELETE INCIDENT ───────────────────────────────────────────
-  static Future<void> deleteIncident(String id) async {
-    final incidents = await getIncidents();
-    incidents.removeWhere((i) => i['id']?.toString() == id);
-    await _prefs.setString(_kIncidents, jsonEncode(incidents));
+  // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW: SEED KNOWLEDGE BASE
+  //  Wipes existing KB (if replace=true), loads 38 default entries
+  //  covering Factories Act 1948 + Chhattisgarh/Odisha/TN/Bihar rules.
+  //  Returns count of entries added.
+  // ═══════════════════════════════════════════════════════════════
+  static Future<int> seedKnowledgeBase({bool replace = true}) async {
+    if (replace) {
+      await _prefs.remove(_kKbDocs);
+    }
+
+    final all      = <Map<String, dynamic>>[];
+    final userName = (await getCurrentUser())?['name'] ?? 'system-seed';
+    int added = 0;
+
+    for (final entry in KbSeedData.entries) {
+      try {
+        all.add({
+          'id':         'seed-${DateTime.now().millisecondsSinceEpoch}-$added',
+          'title':      entry['title']  ?? 'Untitled',
+          'content':    entry['content'] ?? '',
+          'source':     entry['source']  ?? 'Default seed',
+          'uploadedAt': DateTime.now().toIso8601String(),
+          'uploadedBy': userName,
+        });
+        added++;
+      } catch (_) {
+        // Skip the one bad entry, continue
+      }
+    }
+
+    // If not replacing, merge with existing KB first
+    if (!replace) {
+      final existing = await getKnowledgeDocs();
+      all.insertAll(0, existing);
+    }
+
+    await _prefs.setString(_kKbDocs, jsonEncode(all));
+    return added;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW: RESET ALL DATA
+  //  Clears incidents + feedback + sync caches.
+  //  Optionally clears KB / users / login.
+  // ═══════════════════════════════════════════════════════════════
+  static Future<void> resetAllData({
+    bool keepUsers = true,
+    bool keepKb    = true,
+    bool keepLogin = true,
+  }) async {
+    // 1. Always clear incidents
+    await _prefs.remove(_kIncidents);
+
+    // 2. Always clear feedback/learning data linked to past scans
+    await _prefs.remove(_kFeedback);
+    await _prefs.remove(_kCustomHazards);
+
+    // 3. Clear best-effort caches if they exist (no-op if absent)
+    await _prefs.remove('image_hashes');
+    await _prefs.remove('sync_queue');
+    await _prefs.remove('pending_pdfs');
+    await _prefs.remove('chat_history');
+
+    // 4. Optional clears
+    if (!keepKb)    await _prefs.remove(_kKbDocs);
+    if (!keepUsers) {
+      await _prefs.remove(_kUsers);
+      await _prefs.remove(_kCachedUsers);
+    }
+    if (!keepLogin) await _prefs.remove(_kCurrentUser);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW: DATA COUNTS — for confirmation dialogs
+  // ═══════════════════════════════════════════════════════════════
+  static Future<Map<String, int>> dataCounts() async {
+    int incidents = 0, kb = 0, users = 0;
+    try {
+      final raw = _prefs.getString(_kIncidents);
+      if (raw != null) {
+        final list = jsonDecode(raw);
+        if (list is List) incidents = list.length;
+      }
+    } catch (_) {}
+    try {
+      final raw = _prefs.getString(_kKbDocs);
+      if (raw != null) {
+        final list = jsonDecode(raw);
+        if (list is List) kb = list.length;
+      }
+    } catch (_) {}
+    try {
+      final raw = _prefs.getString(_kUsers);
+      if (raw != null) {
+        final list = jsonDecode(raw);
+        if (list is List) users = list.length;
+      }
+    } catch (_) {}
+    return {'incidents': incidents, 'kb': kb, 'users': users};
   }
 }
