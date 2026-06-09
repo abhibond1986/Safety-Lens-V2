@@ -1,8 +1,9 @@
 // lib/screens/admin_screen.dart
-// SAIL Safety Lens — Admin Control Panel v2
+// SAIL Safety Lens — Admin Control Panel v3
 // Login: username=admin / password=admin
-// 4 tabs: Overview · Users · Incidents · Knowledge Base
-// + Settings tab for password change & app config
+// 5 tabs: Overview · Users · Incidents · Knowledge Base · Settings
+// ✅ NEW: Merged user loading — Sheets + cached + local + admin
+// ✅ NEW: Daily Report card with 7-day mini-chart
 
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -11,9 +12,6 @@ import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Entry point — shows login gate, then the panel
-// ─────────────────────────────────────────────────────────────────────────────
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
   @override
@@ -23,16 +21,14 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen>
     with SingleTickerProviderStateMixin {
 
-  // ── Login state ───────────────────────────────────────────────
   bool _loggedIn = false;
   bool _loginLoading = false;
   String _loginError = '';
   final _unameCtrl = TextEditingController(text: 'admin');
   final _pwCtrl    = TextEditingController();
   bool  _pwVisible = false;
-  String _adminPassword = 'admin'; // changeable at runtime
+  String _adminPassword = 'admin';
 
-  // ── Panel state ───────────────────────────────────────────────
   late TabController _tabs;
   bool _loading = true;
 
@@ -56,6 +52,52 @@ class _AdminScreenState extends State<AdminScreen>
       (i['type']?.toString().toUpperCase() ?? '') == 'NEAR_MISS').length;
   int get _activeUsersCount => _users.where((u) =>
       (u['status']?.toString().toLowerCase() ?? 'active') == 'active').length;
+
+  // ── Daily Report counters ─────────────────────────────────────
+  String _ymd(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final d = DateTime.parse(raw);
+      return '${d.year.toString().padLeft(4, '0')}-'
+             '${d.month.toString().padLeft(2, '0')}-'
+             '${d.day.toString().padLeft(2, '0')}';
+    } catch (_) { return ''; }
+  }
+
+  String get _todayYmd {
+    final n = DateTime.now();
+    return '${n.year.toString().padLeft(4, '0')}-'
+           '${n.month.toString().padLeft(2, '0')}-'
+           '${n.day.toString().padLeft(2, '0')}';
+  }
+
+  int get _todayAiScans => _incidents.where((i) =>
+      (i['type']?.toString().toUpperCase() ?? '') == 'AI_SCAN' &&
+      _ymd(i['date']?.toString()) == _todayYmd).length;
+
+  int get _todayNearMiss => _incidents.where((i) =>
+      (i['type']?.toString().toUpperCase() ?? '') == 'NEAR_MISS' &&
+      _ymd(i['date']?.toString()) == _todayYmd).length;
+
+  Map<String, Map<String, int>> get _last7Days {
+    final result = <String, Map<String, int>>{};
+    for (int i = 6; i >= 0; i--) {
+      final d = DateTime.now().subtract(Duration(days: i));
+      final ymd = '${d.year.toString().padLeft(4, '0')}-'
+                  '${d.month.toString().padLeft(2, '0')}-'
+                  '${d.day.toString().padLeft(2, '0')}';
+      result[ymd] = {'ai': 0, 'nm': 0};
+    }
+    for (final inc in _incidents) {
+      final ymd = _ymd(inc['date']?.toString());
+      if (result.containsKey(ymd)) {
+        final t = (inc['type']?.toString().toUpperCase() ?? '');
+        if (t == 'AI_SCAN')   result[ymd]!['ai'] = result[ymd]!['ai']! + 1;
+        if (t == 'NEAR_MISS') result[ymd]!['nm'] = result[ymd]!['nm']! + 1;
+      }
+    }
+    return result;
+  }
 
   // ── Settings controllers ──────────────────────────────────────
   final _cfgNameCtrl = TextEditingController(text: 'SAIL Safety Lens V2');
@@ -88,12 +130,9 @@ class _AdminScreenState extends State<AdminScreen>
     final u = _unameCtrl.text.trim().toLowerCase();
     final p = _pwCtrl.text;
 
-    // Accept admin/admin hardcoded (always works offline)
-    // OR any user in LocalDB with isAdmin=true and matching password
     bool ok = (u == 'admin' && p == _adminPassword);
 
     if (!ok) {
-      // Try local DB — allow any admin-flagged user
       try {
         final localUser = await LocalDB.signIn(u, p);
         if (localUser != null) {
@@ -115,18 +154,58 @@ class _AdminScreenState extends State<AdminScreen>
     }
   }
 
+  // ── LOAD ALL — Merged user loading ────────────────────────────
   Future<void> _loadAll() async {
     setState(() => _loading = true);
     try {
-      final users = await SyncService.fetchUsers();
-      final incs  = await LocalDB.getIncidents();
-      final kb    = await LocalDB.getKnowledgeDocs();
-      // Fallback to local cache if backend returned nothing — must be awaited
-      // outside setState because setState callback must be synchronous.
-      final resolvedUsers = users.isNotEmpty ? users : await _localUsers();
+      // Pull users from EVERY available source and merge — guarantees a
+      // registered user shows up no matter where they registered.
+      List<Map<String, dynamic>> sheetsUsers = [];
+      try {
+        sheetsUsers = await SyncService.fetchUsers();
+      } catch (_) {}
+      final localUsers  = await LocalDB.getUsers();
+      final cachedUsers = await LocalDB.getCachedUsers();
+
+      // Merge with username as the unique key.
+      // Priority: Sheets > cached > local.
+      final byUname = <String, Map<String, dynamic>>{};
+      for (final u in [...sheetsUsers, ...cachedUsers, ...localUsers]) {
+        final uname = (u['username']?.toString() ?? '').trim();
+        if (uname.isEmpty) continue;
+        if (!byUname.containsKey(uname)) {
+          byUname[uname] = Map<String, dynamic>.from(u);
+        } else {
+          // Fill missing fields from lower-priority sources
+          final existing = byUname[uname]!;
+          u.forEach((k, v) {
+            if (existing[k] == null || existing[k].toString().isEmpty) {
+              existing[k] = v;
+            }
+          });
+        }
+      }
+
+      // Always include the built-in admin user
+      if (!byUname.containsKey('admin')) {
+        byUname['admin'] = {
+          'username': 'admin',
+          'name': 'System Admin',
+          'designation': 'Administrator',
+          'plant': 'SAIL HQ',
+          'pno': 'ADMIN001',
+          'isAdmin': true,
+          'status': 'active',
+        };
+      }
+
+      final mergedUsers = byUname.values.toList();
+      final incs = await LocalDB.getIncidents();
+      final kb   = await LocalDB.getKnowledgeDocs();
+
       if (!mounted) return;
       setState(() {
-        _users     = resolvedUsers;
+        _users     = mergedUsers;
         _incidents = incs;
         _kbDocs    = kb;
         _loading   = false;
@@ -136,9 +215,6 @@ class _AdminScreenState extends State<AdminScreen>
       setState(() => _loading = false);
     }
   }
-
-  Future<List<Map<String, dynamic>>> _localUsers() async =>
-      await LocalDB.getAllUsers();
 
   // ─────────────────────────────────────────────────────────────
   //  BUILD
@@ -169,7 +245,6 @@ class _AdminScreenState extends State<AdminScreen>
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: sl.border)),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                // Badge
                 Container(
                   width: 56, height: 56,
                   decoration: BoxDecoration(
@@ -186,12 +261,10 @@ class _AdminScreenState extends State<AdminScreen>
                   style: TextStyle(color: sl.text3, fontSize: 13)),
                 const SizedBox(height: 24),
 
-                // Username
                 _loginField('Username', _unameCtrl, sl,
                     icon: Icons.person_outline_rounded),
                 const SizedBox(height: 12),
 
-                // Password
                 TextField(
                   controller: _pwCtrl,
                   obscureText: !_pwVisible,
@@ -222,7 +295,6 @@ class _AdminScreenState extends State<AdminScreen>
                             color: AppColors.amber, width: 2)))),
                 const SizedBox(height: 18),
 
-                // Sign in button
                 SizedBox(width: double.infinity,
                   height: 46,
                   child: ElevatedButton(
@@ -240,13 +312,12 @@ class _AdminScreenState extends State<AdminScreen>
                           color: Colors.white, fontSize: 15,
                           fontWeight: FontWeight.w700)))),
 
-                // Error
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   child: _loginError.isEmpty
                     ? const SizedBox(height: 8, key: ValueKey('empty'))
                     : Padding(
-                        key: ValueKey('err'),
+                        key: const ValueKey('err'),
                         padding: const EdgeInsets.only(top: 10),
                         child: Text(_loginError,
                           style: const TextStyle(
@@ -354,14 +425,13 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  TAB — OVERVIEW
+  //  TAB — OVERVIEW (with Daily Report card)
   // ══════════════════════════════════════════════════════════════
   Widget _tabOverview(SL sl) => SingleChildScrollView(
     padding: const EdgeInsets.all(16),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _sectionHead('Dashboard', sl),
       const SizedBox(height: 12),
-      // Primary stats grid — 6 tiles
       GridView.count(
         crossAxisCount: 2, shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -381,6 +451,9 @@ class _AdminScreenState extends State<AdminScreen>
               Icons.check_circle_rounded, sl),
         ]),
       const SizedBox(height: 14),
+      // ── Daily Report Card ──────────────────────────────────────
+      _dailyReportCard(sl),
+      const SizedBox(height: 14),
       // Status summary bar
       Container(
         padding: const EdgeInsets.all(14),
@@ -389,7 +462,7 @@ class _AdminScreenState extends State<AdminScreen>
           border: Border.all(color: sl.border)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Icon(Icons.pie_chart_rounded, color: AppColors.accent, size: 14),
+            const Icon(Icons.pie_chart_rounded, color: AppColors.accent, size: 14),
             const SizedBox(width: 6),
             Text('Status Summary', style: TextStyle(
                 color: sl.text2, fontSize: 11,
@@ -441,14 +514,152 @@ class _AdminScreenState extends State<AdminScreen>
           border: Border.all(color: AppColors.amber.withOpacity(0.3))),
         child: Column(children: [
           _credRow('Username', 'admin', sl),
-          _credRow('Password', '${_adminPassword == 'admin' ? 'admin ⚠ change recommended' : '••••••'}', sl),
+          _credRow('Password', _adminPassword == 'admin' ? 'admin ⚠ change recommended' : '••••••', sl),
           _credRow('Role', 'System Administrator', sl),
           _credRow('Plants', 'All plants — full access', sl),
         ])),
     ]),
   );
 
-  /// Horizontal progress bar showing status distribution
+  // ══════════════════════════════════════════════════════════════
+  //  DAILY REPORT CARD — today + 7-day mini-chart
+  // ══════════════════════════════════════════════════════════════
+  Widget _dailyReportCard(SL sl) {
+    final week    = _last7Days;
+    final maxAi   = week.values.fold<int>(0, (m, v) => v['ai']! > m ? v['ai']! : m);
+    final maxNm   = week.values.fold<int>(0, (m, v) => v['nm']! > m ? v['nm']! : m);
+    final maxAny  = (maxAi > maxNm ? maxAi : maxNm);
+    final scale   = maxAny == 0 ? 1 : maxAny;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [
+            AppColors.accent.withOpacity(0.08),
+            AppColors.cyan.withOpacity(0.04),
+          ]),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.accent.withOpacity(0.25))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8)),
+            child: const Icon(Icons.today_rounded,
+                color: AppColors.accent, size: 16)),
+          const SizedBox(width: 8),
+          Text('Daily Report — $_todayYmd',
+              style: TextStyle(color: sl.text1, fontSize: 13,
+                  fontWeight: FontWeight.w700)),
+        ]),
+
+        const SizedBox(height: 12),
+
+        Row(children: [
+          Expanded(child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: sl.card, borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.accent.withOpacity(0.2))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.camera_alt_rounded,
+                    color: AppColors.accent, size: 13),
+                const SizedBox(width: 4),
+                Text('AI Scans today',
+                    style: TextStyle(color: sl.text3, fontSize: 10)),
+              ]),
+              const SizedBox(height: 4),
+              Text('$_todayAiScans',
+                  style: const TextStyle(color: AppColors.accent,
+                      fontSize: 22, fontWeight: FontWeight.w800)),
+            ]))),
+          const SizedBox(width: 10),
+          Expanded(child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: sl.card, borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.amber.withOpacity(0.25))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.warning_amber_rounded,
+                    color: AppColors.amber, size: 13),
+                const SizedBox(width: 4),
+                Text('Near Miss today',
+                    style: TextStyle(color: sl.text3, fontSize: 10)),
+              ]),
+              const SizedBox(height: 4),
+              Text('$_todayNearMiss',
+                  style: const TextStyle(color: AppColors.amber,
+                      fontSize: 22, fontWeight: FontWeight.w800)),
+            ]))),
+        ]),
+
+        const SizedBox(height: 14),
+
+        Text('Last 7 days',
+            style: TextStyle(color: sl.text4, fontSize: 9,
+                fontWeight: FontWeight.w700, letterSpacing: 0.6)),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 80,
+          child: Row(crossAxisAlignment: CrossAxisAlignment.end,
+            children: week.entries.map((e) {
+              final ymd = e.key;
+              final ai  = e.value['ai']!;
+              final nm  = e.value['nm']!;
+              final aiH = (ai / scale) * 50;
+              final nmH = (nm / scale) * 50;
+              final day = ymd.substring(8);
+              return Expanded(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          width: 7, height: aiH.clamp(2, 50).toDouble(),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            borderRadius: BorderRadius.circular(2))),
+                        const SizedBox(width: 2),
+                        Container(
+                          width: 7, height: nmH.clamp(2, 50).toDouble(),
+                          decoration: BoxDecoration(
+                            color: AppColors.amber,
+                            borderRadius: BorderRadius.circular(2))),
+                      ]),
+                    const SizedBox(height: 4),
+                    Text(day,
+                        style: TextStyle(color: sl.text4, fontSize: 8.5)),
+                    Text('${ai + nm}',
+                        style: TextStyle(color: sl.text3, fontSize: 8,
+                            fontWeight: FontWeight.w600)),
+                  ]),
+              ));
+            }).toList()),
+        ),
+        const SizedBox(height: 6),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Container(width: 8, height: 8, decoration: BoxDecoration(
+              color: AppColors.accent, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 4),
+          Text('AI Scans', style: TextStyle(color: sl.text3, fontSize: 9)),
+          const SizedBox(width: 14),
+          Container(width: 8, height: 8, decoration: BoxDecoration(
+              color: AppColors.amber, borderRadius: BorderRadius.circular(2))),
+          const SizedBox(width: 4),
+          Text('Near Miss', style: TextStyle(color: sl.text3, fontSize: 9)),
+        ]),
+      ]));
+  }
+
   Widget _statusBar(String label, int count, Color color, SL sl) {
     final pct = _incidents.isEmpty ? 0.0 : count / _incidents.length;
     return Row(children: [
@@ -623,7 +834,6 @@ class _AdminScreenState extends State<AdminScreen>
             i['severity']?.toString().toUpperCase() == _incFilter).toList();
 
     return Column(children: [
-      // Filter chips
       Container(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
         color: sl.bg2,
@@ -669,8 +879,8 @@ class _AdminScreenState extends State<AdminScreen>
     final sev     = inc['severity']?.toString().toUpperCase() ?? '—';
     final status  = inc['status']?.toString().toUpperCase() ?? '—';
     final plant   = inc['plant']?.toString() ?? '—';
-    final _rawDate = inc['date']?.toString() ?? '';
-    final date    = _rawDate.length > 10 ? _rawDate.substring(0, 10) : _rawDate;
+    final rawDate = inc['date']?.toString() ?? '';
+    final date    = rawDate.length > 10 ? rawDate.substring(0, 10) : rawDate;
     final isClosed = status == 'CLOSED';
 
     final sevColor = switch (sev) {
@@ -735,7 +945,6 @@ class _AdminScreenState extends State<AdminScreen>
       ])));
   }
 
-
   // ══════════════════════════════════════════════════════════════
   //  TAB — KNOWLEDGE BASE
   // ══════════════════════════════════════════════════════════════
@@ -743,7 +952,6 @@ class _AdminScreenState extends State<AdminScreen>
     _listHeader('${_kbDocs.length} documents', sl,
         action: _showAddKbDialog, actionLabel: 'Add Entry',
         actionColor: const Color(0xFF0F6E56)),
-    // Upload PDF button
     Padding(
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
       child: SizedBox(width: double.infinity, child: OutlinedButton.icon(
@@ -1177,16 +1385,6 @@ class _AdminScreenState extends State<AdminScreen>
       ]));
     if (ok != true) return;
 
-    // Update LocalDB
-    final updated = Map<String, dynamic>.from(u);
-    updated['name']        = nameCtrl.text.trim();
-    updated['designation'] = desigCtrl.text.trim();
-    updated['plant']       = plantCtrl.text.trim();
-    updated['pno']         = pnoCtrl.text.trim();
-    updated['mobile']      = mobCtrl.text.trim();
-    updated['email']       = emailCtrl.text.trim();
-
-    // Update each field via SyncService (mirrors updates to Sheets)
     final username = u['username']?.toString() ?? '';
     if (username.isNotEmpty) {
       final fields = {
@@ -1207,7 +1405,7 @@ class _AdminScreenState extends State<AdminScreen>
   }
 
   // ──────────────────────────────────────────────────────────────
-  //  SHOW FULL INCIDENT DETAILS — admin can see everything
+  //  INCIDENT DETAILS — full case info, all hazards & findings
   // ──────────────────────────────────────────────────────────────
   void _showIncidentDetails(Map<String, dynamic> inc) {
     final sl     = SL.of(context);
@@ -1230,7 +1428,6 @@ class _AdminScreenState extends State<AdminScreen>
     final date   = inc['date']?.toString() ?? '';
     final dateStr = date.length > 19 ? date.substring(0, 19).replaceAll('T', ' ') : date;
 
-    // Parse hazards (JSON string or list)
     List<Map<String, dynamic>> hazards = [];
     final hz = inc['hazards'];
     if (hz is List) {
@@ -1257,13 +1454,10 @@ class _AdminScreenState extends State<AdminScreen>
             color: sl.bg2,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20))),
           child: Column(children: [
-            // Drag handle
             Container(width: 40, height: 4,
               margin: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
                   color: sl.border, borderRadius: BorderRadius.circular(2))),
-
-            // Header bar
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Row(children: [
@@ -1288,13 +1482,10 @@ class _AdminScreenState extends State<AdminScreen>
               ]),
             ),
             Divider(height: 1, color: sl.border),
-
-            // Body — scrollable
             Expanded(child: ListView(
               controller: scrollCtrl,
               padding: const EdgeInsets.all(16),
               children: [
-                // Title + badges
                 Text(title, style: TextStyle(
                     color: sl.text1, fontSize: 15,
                     fontWeight: FontWeight.w800, height: 1.3)),
@@ -1306,26 +1497,19 @@ class _AdminScreenState extends State<AdminScreen>
                   if (risk != '—') _pill('Risk: $risk', AppColors.red),
                   if (conf != '—') _pill('Conf: $conf%', AppColors.cyan),
                 ]),
-
                 const SizedBox(height: 16),
-
-                // Reporter info
                 _detailSection(sl, 'Reporter', Icons.person_outline_rounded, [
                   _detailRow('Reported by', repBy, sl),
                   _detailRow('P. No.',      pno,   sl),
                   _detailRow('Date',        dateStr, sl),
                 ]),
-
                 const SizedBox(height: 14),
-
-                // Location
                 _detailSection(sl, 'Location', Icons.location_on_outlined, [
                   _detailRow('Plant',       plant, sl),
                   _detailRow('Department',  dept,  sl),
                   _detailRow('Site',        loc,   sl),
                   _detailRow('WSA cause',   wsa,   sl),
                 ]),
-
                 if (summary.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _detailSection(sl, 'AI Summary',
@@ -1333,7 +1517,6 @@ class _AdminScreenState extends State<AdminScreen>
                     _detailParagraph(summary, sl),
                   ]),
                 ],
-
                 if (desc.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _detailSection(sl, 'Description',
@@ -1341,7 +1524,6 @@ class _AdminScreenState extends State<AdminScreen>
                     _detailParagraph(desc, sl),
                   ]),
                 ],
-
                 if (imm.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _detailSection(sl, 'Immediate Action',
@@ -1349,7 +1531,6 @@ class _AdminScreenState extends State<AdminScreen>
                     _detailParagraph(imm, sl),
                   ]),
                 ],
-
                 if (hazards.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _detailSection(sl,
@@ -1358,7 +1539,6 @@ class _AdminScreenState extends State<AdminScreen>
                       hazards.asMap().entries.map((e) =>
                           _hazardItem(e.key + 1, e.value, sl)).toList()),
                 ],
-
                 if (pdfUrl.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   Container(
@@ -1375,10 +1555,7 @@ class _AdminScreenState extends State<AdminScreen>
                           style: TextStyle(color: sl.text2, fontSize: 11))),
                     ])),
                 ],
-
                 const SizedBox(height: 18),
-
-                // Bottom action — delete from admin
                 SizedBox(width: double.infinity,
                   child: OutlinedButton.icon(
                     onPressed: () { Navigator.pop(context); _deleteIncident(inc); },
@@ -1482,7 +1659,7 @@ class _AdminScreenState extends State<AdminScreen>
         ],
         if (action.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text('✅ $action', style: TextStyle(
+          Text('✅ $action', style: const TextStyle(
               color: AppColors.green, fontSize: 10, height: 1.4)),
         ],
       ]));
@@ -1518,7 +1695,6 @@ class _AdminScreenState extends State<AdminScreen>
               bytes.where((b) => b >= 32 && b <= 126).toList());
         }
       } else {
-        // PDF text extraction — basic
         final raw = String.fromCharCodes(
             bytes.where((b) => b >= 32 && b <= 126).toList());
         final extracted = StringBuffer();
@@ -1667,7 +1843,6 @@ class _AdminScreenState extends State<AdminScreen>
       duration: const Duration(seconds: 3)));
   }
 
-  // Matches Apps Script simpleHash()
   String _simpleHash(String s) {
     int h = 0;
     for (int i = 0; i < s.length; i++) {
