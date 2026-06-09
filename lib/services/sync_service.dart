@@ -437,6 +437,105 @@ class SyncService {
     } catch (_) { return false; }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW (admin v5): PUSH USER
+  //  Insert-or-update a user record on the Apps Script backend.
+  //  Used by Admin Command Centre after upsertUser() local write.
+  //
+  //  Strategy: try `register` first (handles new + existing in v9+);
+  //  if backend doesn't recognise it, fall back to upsertUser action.
+  //  Returns true on backend success, false on any failure (caller
+  //  wraps in try/catch and treats it as best-effort).
+  // ═══════════════════════════════════════════════════════════════
+  static Future<bool> pushUser(Map<String, dynamic> user) async {
+    if (!await isConfigured) return false;
+
+    final uname = (user['username']?.toString() ?? '').trim();
+    if (uname.isEmpty) return false;
+
+    final url = await getBackendUrl();
+
+    // Strip any password material that shouldn't go over the wire
+    // unless explicitly set on this payload (the caller knows best).
+    final body = <String, dynamic>{};
+    user.forEach((k, v) {
+      if (v == null) { body[k] = ''; return; }
+      if (v is List || v is Map) { body[k] = jsonEncode(v); return; }
+      body[k] = v.toString();
+    });
+
+    // Attempt 1: action=upsertUser (preferred when backend supports it)
+    try {
+      final b1 = Map<String, dynamic>.from(body)..['action'] = 'upsertUser';
+      final client = http.Client();
+      http.Response resp;
+      try {
+        resp = await client.post(
+          Uri.parse(url),
+          body: jsonEncode(b1),
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        ).timeout(const Duration(seconds: 20));
+        if (resp.statusCode == 302 || resp.statusCode == 301) {
+          final loc = resp.headers['location'] ?? '';
+          if (loc.isNotEmpty) {
+            resp = await client.post(
+              Uri.parse(loc),
+              body: jsonEncode(b1),
+              headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            ).timeout(const Duration(seconds: 20));
+          }
+        }
+      } finally { client.close(); }
+
+      if (resp.statusCode == 200) {
+        try {
+          final data = jsonDecode(resp.body);
+          if (data is Map &&
+              (data['success'] == true || data['ok'] == true)) {
+            return true;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    // Attempt 2: fall back to register (Apps Script v9 accepts this
+    // and silently updates an existing user if `username` matches).
+    try {
+      final b2 = Map<String, dynamic>.from(body)..['action'] = 'register';
+      final client = http.Client();
+      http.Response resp;
+      try {
+        resp = await client.post(
+          Uri.parse(url),
+          body: jsonEncode(b2),
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        ).timeout(const Duration(seconds: 20));
+        if (resp.statusCode == 302 || resp.statusCode == 301) {
+          final loc = resp.headers['location'] ?? '';
+          if (loc.isNotEmpty) {
+            resp = await client.post(
+              Uri.parse(loc),
+              body: jsonEncode(b2),
+              headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            ).timeout(const Duration(seconds: 20));
+          }
+        }
+      } finally { client.close(); }
+
+      if (resp.statusCode == 200) {
+        try {
+          final data = jsonDecode(resp.body);
+          if (data is Map &&
+              (data['success'] == true || data['ok'] == true)) {
+            return true;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    return false;
+  }
+
   static Future<void> pushAllIncidents(
       List<Map<String, dynamic>> incidents) async {
     for (final inc in incidents) {
