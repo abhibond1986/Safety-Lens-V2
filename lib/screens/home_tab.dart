@@ -4,6 +4,8 @@
 //
 // ✅ Daily safety-quote bar is an opaque amber → orange → red sunset gradient
 //    (SAIL theme) with a soft red glow + subtle text shadow for legibility.
+// ✅ Admin shield pill in the hero top-right opens the Command Centre.
+//    Visible only when widget.user?['isAdmin'] is true.
 
 import 'dart:math' as math;
 import 'dart:ui';
@@ -12,6 +14,7 @@ import '../main.dart' show AppColors, SL;
 import '../services/local_db.dart';
 import '../services/i18n.dart';
 import 'reports_tab.dart';
+import 'admin_screen.dart';
 import '../widgets/universal_app_bar.dart';
 
 class HomeTab extends StatefulWidget {
@@ -57,6 +60,18 @@ class _HomeTabState extends State<HomeTab> {
     final inc = await LocalDB.getIncidents();
     if (!mounted) return;
     setState(() { _incidents = inc; _loading = false; });
+  }
+
+  /// True for admin users. Accepts boolean, 'true', or 'TRUE' string forms.
+  bool _isAdmin() {
+    final v = widget.user?['isAdmin'];
+    if (v is bool) return v;
+    return v?.toString().toLowerCase() == 'true';
+  }
+
+  void _openAdminPanel() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => const AdminScreen()));
   }
 
   // ── COMPUTED STATS ─────────────────────────────────────────────
@@ -241,7 +256,7 @@ class _HomeTabState extends State<HomeTab> {
           child: _glow(120, Colors.white.withOpacity(0.12))),
 
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          // Greeting
+          // Greeting row — with ADMIN shield pill on the right for admins only
           Row(children: [
             const Icon(Icons.waving_hand_rounded,
                 color: Colors.white, size: 18),
@@ -249,6 +264,40 @@ class _HomeTabState extends State<HomeTab> {
             Text(I18n.t(_greetingKey),
                 style: const TextStyle(color: Colors.white70, fontSize: 13,
                     fontWeight: FontWeight.w500)),
+            const Spacer(),
+            if (_isAdmin())
+              GestureDetector(
+                onTap: _openAdminPanel,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft, end: Alignment.bottomRight,
+                      colors: [Color(0xFFD97706), Color(0xFFB45309)]),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.4), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFB45309).withOpacity(0.45),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2)),
+                    ],
+                  ),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.shield_moon_rounded,
+                        color: Colors.white, size: 14),
+                    SizedBox(width: 5),
+                    Text('ADMIN',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8)),
+                  ]),
+                ),
+              ),
           ]),
           const SizedBox(height: 4),
           // Full name (use first name from name field)
