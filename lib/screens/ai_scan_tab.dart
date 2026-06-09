@@ -1510,35 +1510,53 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
 
       if (_imageBytes != null) ...[
-        // ✅ FIX: cap display height + add pinch-to-zoom.
-        // Previously the image filled entire desktop viewport with no max
-        // height, and BoxFit.cover cropped off bounding boxes near edges.
-        // Now: capped at 45% of screen height, fits without cropping,
-        // pinch/scroll to zoom (max 4×) to inspect bounding-box details.
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.45,
+        // ✅ Scan canvas — full image with all bounding boxes visible.
+        // Container framing makes it read as a proper "scan canvas".
+        // Max-height bumped to 55% of screen so boxes stay readable on
+        // widescreen. InteractiveViewer kept for pinch/zoom on details.
+        Container(
+          decoration: BoxDecoration(
+            color: sl.isDark
+                ? const Color(0xFF1A1D2E)
+                : const Color(0xFFF8F9FB),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: sl.border.withOpacity(0.35)),
+          ),
+          padding: const EdgeInsets.all(6),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.55,
+              ),
+              child: hasBbox
+                ? InteractiveViewer(
+                    maxScale: 4.0,
+                    minScale: 0.5,
+                    boundaryMargin: const EdgeInsets.all(40),
+                    child: HazardAnnotatedImage(
+                      imageBytes: _imageBytes!,
+                      hazards: hazards,
+                      onHazardTap: _onBboxTap),
+                  )
+                : InteractiveViewer(
+                    maxScale: 4.0,
+                    child: Image.memory(_imageBytes!,
+                        width: double.infinity,
+                        fit: BoxFit.contain),
+                  ),
             ),
-            child: hasBbox
-              ? InteractiveViewer(
-                  maxScale: 4.0,
-                  minScale: 0.8,
-                  boundaryMargin: const EdgeInsets.all(20),
-                  child: HazardAnnotatedImage(
-                    imageBytes: _imageBytes!,
-                    hazards: hazards,
-                    onHazardTap: _onBboxTap),
-                )
-              : InteractiveViewer(
-                  maxScale: 4.0,
-                  child: Image.memory(_imageBytes!,
-                      width: double.infinity,
-                      fit: BoxFit.contain),
-                ),
           ),
         ),
+
+        // ✅ NEW: Hazard Map Legend — numbered chips below the image.
+        // Each chip = number + severity colour + hazard name.
+        // Tapping a chip highlights that hazard's row in the table below,
+        // exactly like tapping the corresponding box on the image.
+        if (hasBbox) ...[
+          const SizedBox(height: 8),
+          _hazardLegendStrip(hazards, sl),
+        ],
         const SizedBox(height: 10),
       ],
 
@@ -1831,6 +1849,99 @@ class _AIScanTabState extends State<AIScanTab> {
       case 'LOW':      return AppColors.green;
       default:         return AppColors.amber;
     }
+  }
+
+  // ✅ NEW: Hazard Map Legend — horizontally scrollable numbered chips
+  // that correlate to bounding boxes on the image. Tapping a chip
+  // triggers _onBboxTap which highlights the matching table row.
+  Widget _hazardLegendStrip(List hazards, SL sl) {
+    final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: sl.border.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        Row(children: [
+          const Icon(Icons.my_location_rounded,
+              size: 12, color: AppColors.accent),
+          const SizedBox(width: 5),
+          Text('HAZARD MAP — TAP A CHIP OR BOX TO LOCATE',
+            style: TextStyle(color: sl.text4, fontSize: 9,
+                fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+        ]),
+        const SizedBox(height: 7),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: hazards.asMap().entries.map((e) {
+              final i     = e.key;
+              final h     = Map<String, dynamic>.from(e.value as Map);
+              final sev   = (h['severity'] ?? 'MEDIUM').toString();
+              final color = _sevColor(sev);
+              final name  = h['name']?.toString() ?? 'Hazard';
+              final isHighlighted = _highlightedRow == i;
+              return GestureDetector(
+                onTap: () => _onBboxTap(i),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.fromLTRB(5, 4, 8, 4),
+                  decoration: BoxDecoration(
+                    color: isHighlighted
+                        ? color.withOpacity(0.18)
+                        : color.withOpacity(0.06),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: color,
+                        width: isHighlighted ? 1.5 : 1),
+                  ),
+                  child: Row(children: [
+                    Container(
+                      width: 20, height: 20,
+                      decoration: BoxDecoration(
+                          color: color, shape: BoxShape.circle),
+                      child: Center(child: Text('${i+1}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800))),
+                    ),
+                    const SizedBox(width: 7),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Text(
+                        name,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                        style: TextStyle(
+                            color: sl.text1, fontSize: 10.5,
+                            fontWeight: FontWeight.w600)),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                          color: color.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: color)),
+                      child: Text(
+                        sev.substring(0, sev.length > 4 ? 4 : sev.length),
+                        style: TextStyle(
+                            color: color, fontSize: 8,
+                            fontWeight: FontWeight.w800)),
+                    ),
+                  ]),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ]));
   }
 
   Widget _infoBox(SL sl) {
