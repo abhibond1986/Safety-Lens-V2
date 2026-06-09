@@ -4,6 +4,8 @@
 // ✅ NEW: seedKnowledgeBase() — loads 38 default FA 1948 + state-rules entries
 // ✅ NEW: resetAllData()      — wipes incidents (optionally KB / users)
 // ✅ NEW: dataCounts()        — counts for confirmation dialogs
+// ✅ NEW (admin v5): upsertUser, deleteUser, replaceAllIncidents,
+//                   replaceAllUsers, replaceAllKnowledgeDocs
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -266,6 +268,74 @@ class LocalDB {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW (admin v5): UPSERT USER
+  //  Insert or update a user record by `username`.
+  //  Writes to the same `_kUsers` bucket that getUsers() reads.
+  // ═══════════════════════════════════════════════════════════════
+  static Future<void> upsertUser(Map<String, dynamic> user) async {
+    final uname = (user['username']?.toString() ?? '').trim();
+    if (uname.isEmpty) return;
+
+    final users = await getUsers();
+    final idx = users.indexWhere(
+        (u) => (u['username']?.toString() ?? '').trim() == uname);
+
+    if (idx >= 0) {
+      // Merge: incoming non-empty values overwrite, others preserved
+      final merged = Map<String, dynamic>.from(users[idx]);
+      user.forEach((k, v) {
+        if (v != null && v.toString().isNotEmpty) merged[k] = v;
+      });
+      users[idx] = merged;
+    } else {
+      users.add(Map<String, dynamic>.from(user));
+    }
+    await _prefs.setString(_kUsers, jsonEncode(users));
+
+    // Also refresh cached_users so the dashboard switcher sees the change
+    try {
+      final cached = await getCachedUsers();
+      if (cached.isNotEmpty) {
+        final cIdx = cached.indexWhere(
+            (u) => (u['username']?.toString() ?? '').trim() == uname);
+        if (cIdx >= 0) {
+          final merged = Map<String, dynamic>.from(cached[cIdx]);
+          user.forEach((k, v) {
+            if (v != null && v.toString().isNotEmpty) merged[k] = v;
+          });
+          cached[cIdx] = merged;
+        } else {
+          cached.add(Map<String, dynamic>.from(user));
+        }
+        await _prefs.setString(_kCachedUsers, jsonEncode(cached));
+      }
+    } catch (_) {}
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW (admin v5): DELETE USER
+  //  Removes a user (and cached copy) by username.
+  // ═══════════════════════════════════════════════════════════════
+  static Future<void> deleteUser(String username) async {
+    final uname = username.trim();
+    if (uname.isEmpty) return;
+
+    final users = await getUsers();
+    users.removeWhere(
+        (u) => (u['username']?.toString() ?? '').trim() == uname);
+    await _prefs.setString(_kUsers, jsonEncode(users));
+
+    try {
+      final cached = await getCachedUsers();
+      if (cached.isNotEmpty) {
+        cached.removeWhere(
+            (u) => (u['username']?.toString() ?? '').trim() == uname);
+        await _prefs.setString(_kCachedUsers, jsonEncode(cached));
+      }
+    } catch (_) {}
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  INCIDENTS
   // ═══════════════════════════════════════════════════════════════
 
@@ -306,6 +376,25 @@ class LocalDB {
     final incidents = await getIncidents();
     incidents.removeWhere((i) => i['id']?.toString() == id);
     await _prefs.setString(_kIncidents, jsonEncode(incidents));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ✅ NEW (admin v5): BULK REPLACE — used by Backup & Restore
+  //  Wipes the bucket and writes the supplied list verbatim.
+  // ═══════════════════════════════════════════════════════════════
+  static Future<void> replaceAllIncidents(
+      List<Map<String, dynamic>> incidents) async {
+    await _prefs.setString(_kIncidents, jsonEncode(incidents));
+  }
+
+  static Future<void> replaceAllUsers(
+      List<Map<String, dynamic>> users) async {
+    await _prefs.setString(_kUsers, jsonEncode(users));
+  }
+
+  static Future<void> replaceAllKnowledgeDocs(
+      List<Map<String, dynamic>> docs) async {
+    await _prefs.setString(_kKbDocs, jsonEncode(docs));
   }
 
   // ═══════════════════════════════════════════════════════════════
