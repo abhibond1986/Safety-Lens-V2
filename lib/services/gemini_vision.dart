@@ -27,60 +27,93 @@ class GeminiVision {
   }
 
   // ── analyseImageBytes (web + mobile) ──────────────────────────────────────
-  static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
-    try {
-      print('GeminiVision: image size = ${bytes.length} bytes');
+  // lib/services/gemini_vision.dart - REPLACE this section (lines 29-84):
 
-      // Step 1: Upload to Cloudinary
-      final imageUrl = await _uploadToCloudinary(bytes);
-      if (imageUrl == null) {
-        print('GeminiVision: Cloudinary upload failed → offline fallback');
-        return _offlineFallback(bytes, reason: 'Cloudinary upload failed');
-      }
-      print('GeminiVision: Cloudinary URL = $imageUrl');
+static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes, {int retryCount = 0}) async {
+  const maxRetries = 2;
+  const timeoutSeconds = 45; // ⬅️ Reduced from 90s
+  
+  try {
+    print('GeminiVision: [Attempt ${retryCount + 1}/${ maxRetries + 1}] image size = ${bytes.length} bytes');
 
-      // Step 2: Send URL to Apps Script
-      // promptMode: 'sail_full' → Apps Script uses the full regulatory prompt
-      // stored server-side, avoiding JSON parse issues with long strings
-      final body = jsonEncode({
-        'action':     'analyzeUrl',
-        'imageUrl':   imageUrl,
-        'promptMode': 'sail_full',
-      });
-
-      final response = await http.post(
-        Uri.parse(_backendUrl),
-        body: body,
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(const Duration(seconds: 90));
-
-      print('GeminiVision: Apps Script status = ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        if (data is Map && data['error'] != null) {
-          print('GeminiVision: Apps Script error = ${data['error']}');
-          return _offlineFallback(bytes, reason: data['error'].toString());
-        }
-
-        if (data is Map && data['hazards'] != null) {
-          print('GeminiVision: AI SUCCESS — risk=${data['overallRisk']}, '
-              'hazards=${(data['hazards'] as List).length}, '
-              'people=${data['people'] ?? 0}');
-          data['_source'] = 'openrouter_direct';
-          return Map<String, dynamic>.from(data);
-        }
-
-        print('GeminiVision: Unexpected response = ${response.body.substring(0, 200)}');
-        return _offlineFallback(bytes, reason: 'Unexpected response format');
-      }
-
-      return _offlineFallback(bytes, reason: 'HTTP ${response.statusCode}');
-    } catch (e) {
-      print('GeminiVision exception: $e');
-      return _offlineFallback(bytes, reason: e.toString());
+    // NEW: Check network before attempting
+    final networkStatus = await NetworkChecker.getNetworkStatus();
+    if (!networkStatus['hasInternet']!) {
+      print('GeminiVision: No internet → offline fallback');
+      return _offlineFallback(bytes, reason: 'No internet connection');
     }
+
+    // Step 1: Upload to Cloudinary
+    final imageUrl = await _uploadToCloudinary(bytes)
+        .timeout(const Duration(seconds: 30));
+    
+    if (imageUrl == null) {
+      if (retryCount < maxRetries) {
+        print('GeminiVision: Cloudinary failed, retrying…');
+        await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+        return analyseImageBytes(bytes, retryCount: retryCount + 1);
+      }
+      print('GeminiVision: Cloudinary upload failed after retries → offline fallback');
+      return _offlineFallback(bytes, reason: 'Upload failed');
+    }
+    print('GeminiVision: Cloudinary URL = $imageUrl');
+
+    // Step 2: Send URL to Apps Script
+    final body = jsonEncode({
+      'action':     'analyzeUrl',
+      'imageUrl':   imageUrl,
+      'promptMode': 'sail_full',
+    });
+
+    final response = await http.post(
+      Uri.parse(_backendUrl),
+      body: body,
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+    ).timeout(const Duration(seconds: timeoutSeconds));
+
+    print('GeminiVision: Apps Script status = ${response.statusCode}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+
+      if (data is Map && data['error'] != null) {
+        print('GeminiVision: Apps Script error = ${data['error']}');
+        if (retryCount < maxRetries) {
+          print('GeminiVision: Retrying after error…');
+          await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+          return analyseImageBytes(bytes, retryCount: retryCount + 1);
+        }
+        return _offlineFallback(bytes, reason: data['error'].toString());
+      }
+
+      if (data is Map && data['hazards'] != null) {
+        print('GeminiVision: AI SUCCESS — risk=${data['overallRisk']}, '
+            'hazards=${(data['hazards'] as List).length}');
+        data['_source'] = 'ai_online';
+        return Map<String, dynamic>.from(data);
+      }
+
+      return _offlineFallback(bytes, reason: 'Unexpected response');
+    }
+
+    // Retry on non-200 status
+    if (retryCount < maxRetries) {
+      print('GeminiVision: HTTP ${response.statusCode}, retrying…');
+      await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+      return analyseImageBytes(bytes, retryCount: retryCount + 1);
+    }
+
+    return _offlineFallback(bytes, reason: 'HTTP ${response.statusCode}');
+  } catch (e) {
+    print('GeminiVision exception: $e');
+    if (retryCount < maxRetries && e.toString().contains('timeout')) {
+      print('GeminiVision: Timeout, retrying…');
+      await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+      return analyseImageBytes(bytes, retryCount: retryCount + 1);
+    }
+    return _offlineFallback(bytes, reason: e.toString());
+  }
+}
   }
 
   // ── Upload to Cloudinary ───────────────────────────────────────────────────
