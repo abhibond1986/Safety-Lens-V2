@@ -227,7 +227,6 @@ class _NearMissTabState extends State<NearMissTab> {
     final n = name.toLowerCase();
     final d = desc.toLowerCase();
     
-    // Check for explicit structural proximity, manifold pipes, loops, brackets, or oxygen references
     bool isLikelyTubeOrConduit = n.contains('wire') || n.contains('cable') || n.contains('electrical');
     bool hasPipingContext = d.contains('pipe') || d.contains('bracket') || d.contains('oxygen') || d.contains('manifold') || d.contains('support') || d.contains('tube');
     
@@ -237,7 +236,7 @@ class _NearMissTabState extends State<NearMissTab> {
         'desc': 'Small diameter instrumentation line, impulse line, or process tubing tracking along the primary structural bracket alignment. Safe fixed configuration.',
         'action': 'Maintain standard periodic mechanical integrity checks on pipes and structural bracket elements.',
         'reg': 'FA 1948 S39 (Equipment Integrity & Inspection)',
-        'cause': 'Equipment failure', // Remapped from Electrical
+        'cause': 'Equipment failure',
         'obsType': 'Unsafe Condition'
       };
     }
@@ -288,7 +287,6 @@ class _NearMissTabState extends State<NearMissTab> {
       String rawReg    = first?['regulation']?.toString() ?? '';
       String rawCause  = _mapToWsaCause(first?['category']?.toString() ?? '', rawName);
       
-      // ✅ V15 Elimination Layer Enforced Programmatically
       final refinedData = _applyHardenedV15Filters(rawName, rawDesc, rawAction, rawReg, rawCause);
 
       final sev        = (first?['severity']?.toString() ?? 'MEDIUM').toUpperCase();
@@ -389,7 +387,7 @@ class _NearMissTabState extends State<NearMissTab> {
             SizedBox(width: 8),
             Text('Possible Duplicate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ]),
-          content: Text('A near miss from this exact location was already reported within the last 10 minutes.\n\nSubmit anyway?', style: const TextStyle(fontSize: 13, height: 1.5)),
+          content: const Text('A near miss from this exact location was already reported within the last 10 minutes.\n\nSubmit anyway?', style: TextStyle(fontSize: 13, height: 1.5)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
             ElevatedButton(
@@ -495,4 +493,271 @@ class _NearMissTabState extends State<NearMissTab> {
     );
   }
 
-  // [Remainder of layout blocks continue downward below seamlessly...]
+  Widget _guidanceBox(SL sl) => Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    padding: const EdgeInsets.all(11),
+    decoration: BoxDecoration(
+      color: AppColors.amber.withOpacity(0.07),
+      border: Border.all(color: AppColors.amber.withOpacity(0.5)),
+      borderRadius: BorderRadius.circular(11)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Row(children: [
+        Icon(Icons.info_outline, size: 12, color: AppColors.amber),
+        SizedBox(width: 5),
+        Text('Reporting guidance', style: TextStyle(color: AppColors.amber, fontSize: 11, fontWeight: FontWeight.w700)),
+      ]),
+      const SizedBox(height: 5),
+      Text(
+        'A near miss is an unplanned event that did NOT result in injury but had the potential to do so. Report freely — no blame, only learning.',
+        style: TextStyle(color: sl.text2, fontSize: 10, height: 1.5)),
+    ]));
+
+  Widget _imageSection(SL sl) {
+    final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: cardBg,
+        border: Border.all(color: sl.border.withOpacity(0.4)),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04), blurRadius: 8, offset: const Offset(0, 2))]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _stepLabel('1', 'Image evidence (optional)', sl),
+        const SizedBox(height: 10),
+        if (_imageBytes == null && !_analyzing) _emptyImage(sl),
+        if (_analyzing) _analyzingImage(),
+        if (_imageBytes != null && !_analyzing && _aiBrief != null) _imageWithBrief(sl),
+      ]));
+  }
+
+  Widget _emptyImage(SL sl) => Column(children: [
+    GestureDetector(
+      onTap: () => _pickImage(ImageSource.camera),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 2),
+          borderRadius: BorderRadius.circular(12)),
+        child: Column(children: [
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.1), shape: BoxShape.circle),
+            child: const Icon(Icons.camera_alt_outlined, size: 26, color: AppColors.accent)),
+          const SizedBox(height: 8),
+          Text('Add photo of hazard', style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3),
+          Text('AI identifies hazard & pre-fills form', style: TextStyle(color: sl.text4, fontSize: 9)),
+        ])),
+    ),
+    const SizedBox(height: 10),
+    Row(children: [
+      Expanded(child: ElevatedButton.icon(
+        onPressed: () => _pickImage(ImageSource.camera),
+        icon: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
+        label: const Text('Capture', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+      )),
+      const SizedBox(width: 8),
+      Expanded(child: OutlinedButton.icon(
+        onPressed: () => _pickImage(ImageSource.gallery),
+        icon: const Icon(Icons.photo_library, size: 14, color: AppColors.accent),
+        label: const Text('Gallery', style: TextStyle(color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.accent, width: 2), padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+      )),
+    ]),
+  ]);
+
+  Widget _analyzingImage() => Container(
+    height: 130,
+    decoration: BoxDecoration(
+      color: const Color(0xFF252840),
+      borderRadius: BorderRadius.circular(10),
+      image: _imageBytes != null ? DecorationImage(image: MemoryImage(_imageBytes!), fit: BoxFit.cover) : null),
+    child: Container(
+      decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(10)),
+      child: Center(child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.accent)),
+          const SizedBox(height: 8),
+          Text(_step, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+        ]))));
+
+  Widget _imageWithBrief(SL sl) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.memory(_imageBytes!, height: 130, fit: BoxFit.cover)),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _isOnlineMode ? AppColors.purple.withOpacity(0.08) : AppColors.amber.withOpacity(0.08),
+          border: Border.all(color: _isOnlineMode ? AppColors.purple.withOpacity(0.4) : AppColors.amber.withOpacity(0.4), width: 1.5),
+          borderRadius: BorderRadius.circular(12)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.auto_awesome, size: 12, color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber),
+            const SizedBox(width: 4),
+            Text(_isOnlineMode ? 'AI assessment' : 'Knowledge-based', style: TextStyle(color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber, fontSize: 11, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: AppColors.amber.withOpacity(0.15), border: Border.all(color: AppColors.amber), borderRadius: BorderRadius.circular(8)),
+              child: Text('${_aiBrief!['severity']} · ${_aiBrief!['confidence']}%', style: const TextStyle(color: AppColors.amber, fontSize: 8, fontWeight: FontWeight.w800))),
+          ]),
+          const SizedBox(height: 8),
+          _briefRow('Identified', _aiBrief!['identified'].toString(), sl),
+          _briefRow('Statutory',  _aiBrief!['statutory'].toString(),  sl),
+          _briefRow('Type',       _aiBrief!['type'].toString(),       sl),
+          const SizedBox(height: 8),
+          Text('AI brief (editable):', style: TextStyle(color: sl.text3, fontSize: 10, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          TextField(
+            controller: _brief,
+            maxLines: 4,
+            style: TextStyle(color: sl.text1, fontSize: 11, height: 1.5),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+              contentPadding: const EdgeInsets.all(10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: sl.border, width: 1.5)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+            )),
+          const SizedBox(height: 6),
+          Text('Edit any field directly above', textAlign: TextAlign.center, style: TextStyle(color: sl.text4, fontSize: 9)),
+        ])),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: () => setState(() { _pickedFile = null; _imageBytes = null; _aiBrief = null; _brief.clear(); }),
+        icon: const Icon(Icons.delete_outline, size: 14, color: AppColors.accent),
+        label: const Text('Remove image', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.accent, width: 1.5), padding: const EdgeInsets.symmetric(vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+    ]);
+
+  Widget _briefRow(String k, String v, SL sl) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(width: 76, child: Text(k, style: TextStyle(color: sl.text4, fontSize: 9, fontWeight: FontWeight.w700))),
+      Expanded(child: Text(v, style: TextStyle(color: sl.text1, fontSize: 10, height: 1.4))),
+    ]));
+
+  Widget _detailsSection(SL sl) {
+    final cardBg  = sl.isDark ? const Color(0xFF252840) : Colors.white;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: cardBg,
+        border: Border.all(color: sl.border.withOpacity(0.4)),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04), blurRadius: 8, offset: const Offset(0, 2))]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _stepLabel('2', 'Observation Particulars', sl),
+          const SizedBox(height: 12),
+          _buildDropdownField('Plant/Unit', _plant, _plants, (v) => setState(() => _plant = v!)),
+          _buildTextField('Department/Shop', _dept, Icons.business, sl),
+          _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _location ? Colors.red : AppColors.accent), onPressed: () => _toggleVoice(_location))),
+          _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!)),
+          _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!)),
+          _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!)),
+          _buildTextField('People Exposed (Count)', _people, Icons.people_outline, sl, keyboardType: TextInputType.number),
+          _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _description ? Colors.red : AppColors.accent), onPressed: () => _toggleVoice(_description))),
+          _buildTextField('Immediate Corrective Action taken', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _immediateAction ? Colors.red : AppColors.accent), onPressed: () => _toggleVoice(_immediateAction))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, SL sl, {int maxLines = 1, TextInputType keyboardType = TextInputType.text, Widget? suffix}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        style: TextStyle(color: sl.text1, fontSize: 12),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: sl.text3, fontSize: 11),
+          prefixIcon: Icon(icon, size: 16, color: AppColors.accent),
+          suffixIcon: suffix,
+          filled: true,
+          fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: sl.border)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdownField(String label, String value, List<String> items, ValueChanged<String?> onChanged) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: DropdownButtonFormField<String>(
+        value: items.contains(value) ? value : items.first,
+        items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 12)))).toList(),
+        onChanged: onChanged,
+        dropdownColor: isDark ? const Color(0xFF252840) : Colors.white,
+        style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 12),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 11),
+          filled: true,
+          fillColor: isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sl = SL.of(context);
+    return Container(
+      color: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+      child: SafeArea(
+        child: Column(children: [
+          UniversalAppBar(
+            title: I18n.t('nearMiss.title'),
+            user: widget.user,
+            toggleTheme: widget.toggleTheme,
+            onSignOut: widget.onSignOut,
+            isDark: widget.isDark,
+          ),
+          Expanded(child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _guidanceBox(sl),
+                _imageSection(sl),
+                _detailsSection(sl),
+                const SizedBox(height: 14),
+                Row(children: [
+                  Expanded(child: _submitBtn(
+                    label: 'Save Report',
+                    icon:  Icons.save_outlined,
+                    colors: const [Color(0xFF16A34A), Color(0xFF059669)],
+                    onTap: () => _submit(exportAfter: false),
+                  )),
+                  const SizedBox(width: 10),
+                  Expanded(child: _submitBtn(
+                    label: 'Save + PDF',
+                    icon:  Icons.picture_as_pdf,
+                    colors: const [AppColors.accent, AppColors.cyan],
+                    onTap: () => _submit(exportAfter: true),
+                  )),
+                ]),
+              ],
+            ),
+          )),
+        ]),
+      ),
+    );
+  }
+}
