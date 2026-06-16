@@ -7,6 +7,7 @@
 //   ✅ Improved error detection & handling
 
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
