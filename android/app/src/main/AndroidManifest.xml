@@ -12,8 +12,8 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
 
     <application
-        android:label="Safety Lens"
-        android:name="${applicationName}"
+       android:label="SAIL Safety Lens"
+    android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
 
