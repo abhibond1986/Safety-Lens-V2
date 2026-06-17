@@ -2,11 +2,10 @@
 //
 // Limited home screen for contractual employees.
 // Only provides access to AI Scan and Near Miss sections.
-// No login required.
+// No login required. No LanguageFab (language is in UniversalAppBar).
 
 import 'package:flutter/material.dart';
 import '../main.dart';
-import '../widgets/language_fab.dart';
 import 'login_screen.dart';
 import 'ai_scan_tab.dart';
 import 'near_miss_tab.dart';
@@ -79,9 +78,12 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         title: Row(
           children: [
             Image.asset(
-              'assets/images/sail_logo.png',
+              'assets/images/app_icon.png',
               width: 28,
               height: 28,
+              errorBuilder: (_, __, ___) => Image.asset(
+                'assets/images/sail_logo.png',
+                width: 28, height: 28),
             ),
             const SizedBox(width: 10),
             Column(
@@ -126,11 +128,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         ),
       ),
       bottomNavigationBar: _bottomNav(sl),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 68),
-        child: const LanguageFab(),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // No LanguageFab — language toggle is in UniversalAppBar within each tab
     );
   }
 
