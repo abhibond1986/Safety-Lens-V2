@@ -1,16 +1,14 @@
 // lib/screens/home_screen.dart
 //
-// ✅ Uses the new glass-UI HomeTab (replaces DashboardTab on tab 0)
-// ✅ Passes user/toggleTheme/onSignOut/isDark to all 4 tabs that need them
-// ✅ Keeps existing LanguageFab + bottom nav + sign-out flow
-// ✅ Theme state lifted here so all tabs share the same isDark value
+// CHANGES:
+// ✅ Removed LanguageFab (language toggle already in UniversalAppBar)
+// ✅ Everything else preserved
 
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
-import '../widgets/language_fab.dart';
 import 'login_screen.dart';
-import 'home_tab.dart';        // ← new glass-UI home
+import 'home_tab.dart';
 import 'ai_scan_tab.dart';
 import 'near_miss_tab.dart';
 import 'chat_tab.dart';
@@ -63,7 +61,6 @@ class _HomeScreenState extends State<HomeScreen>
         ));
   }
 
-  // Helper — change tab from inside any child (used by HomeTab's quick actions)
   void _changeTab(int i) {
     if (i >= 0 && i < 5 && i != _tabIndex) {
       setState(() => _tabIndex = i);
@@ -76,7 +73,6 @@ class _HomeScreenState extends State<HomeScreen>
     final isDark = sl.isDark;
 
     final tabs = <Widget>[
-      // 0 — Glass-UI Home (replaces DashboardTab)
       HomeTab(
         user: _user,
         toggleTheme: widget.toggleTheme,
@@ -84,23 +80,19 @@ class _HomeScreenState extends State<HomeScreen>
         isDark: isDark,
         onTabChange: _changeTab,
       ),
-      // 1 — AI Scan
       AIScanTab(
         user: _user,
         toggleTheme: widget.toggleTheme,
         onSignOut: _signOut,
         isDark: isDark,
       ),
-      // 2 — Near Miss
       NearMissTab(
         user: _user,
         toggleTheme: widget.toggleTheme,
         onSignOut: _signOut,
         isDark: isDark,
       ),
-      // 3 — Ask AI (no props needed)
       const ChatTab(),
-      // 4 — Reports
       ReportsTab(
         user: _user,
         toggleTheme: widget.toggleTheme,
@@ -119,12 +111,7 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       ),
       bottomNavigationBar: _bottomNav(sl),
-      // Language FAB — visible on all tabs, sits above bottom nav
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 68),
-        child: const LanguageFab(),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // ✅ REMOVED: LanguageFab — language toggle is already in UniversalAppBar
     );
   }
 
