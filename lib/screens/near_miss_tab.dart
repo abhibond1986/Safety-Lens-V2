@@ -1,9 +1,7 @@
 // lib/screens/near_miss_tab.dart
-// v15 MOBILE OPTIMIZATIONS:
-//   ✅ Network status check before image analysis
-//   ✅ Clear warnings when offline or backend unreachable
-//   ✅ Form works fully offline (image analysis optional)
-//   ✅ All original voice input, duplicate detection preserved
+// v16 FIXES:
+//   ✅ FIX: Explicit microphone permission request before speech init
+//   ✅ All v15 features preserved (network check, form, duplicate detection)
 //   ✅ Infographic header with workflow steps
 //   ✅ v15 Hardened suppression protocol for industrial tubes/wires
 
@@ -13,6 +11,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:permission_handler/permission_handler.dart';
 import '../main.dart';
 import '../services/gemini_vision.dart';
 import '../services/network_checker.dart';
@@ -80,24 +79,42 @@ class _NearMissTabState extends State<NearMissTab> {
     _initSpeech();
   }
 
+  // ✅ FIX v16: Request microphone permission BEFORE initializing speech
   Future<void> _initSpeech() async {
     try {
+      // Request microphone permission explicitly (Android requires runtime permission)
+      if (!kIsWeb) {
+        final status = await Permission.microphone.request();
+        if (!status.isGranted) {
+          debugPrint('Speech: Microphone permission denied (status: $status)');
+          if (mounted) {
+            setState(() => _speechAvailable = false);
+          }
+          return;
+        }
+        debugPrint('Speech: Microphone permission granted');
+      }
+
       _speechAvailable = await _speech.initialize(
         onError: (e) {
-          debugPrint('Speech error: ${e.errorMsg}');
+          debugPrint('Speech error: ${e.errorMsg} (permanent: ${e.permanent})');
           if (mounted) setState(() => _isListening = false);
         },
         onStatus: (s) {
+          debugPrint('Speech status: $s');
           if (s == 'done' && _isListening && _activeMicField != null) {
+            // Auto-restart for continuous dictation
             _restartListening();
           } else if (s == 'notListening') {
             if (mounted) setState(() => _isListening = false);
           }
         },
       );
+      debugPrint('Speech: initialized=$_speechAvailable');
       if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Speech init error: $e');
+      if (mounted) setState(() => _speechAvailable = false);
     }
   }
 
@@ -106,6 +123,7 @@ class _NearMissTabState extends State<NearMissTab> {
     final field    = _activeMicField!;
     final baseText = field.text;
     try {
+      await Future.delayed(const Duration(milliseconds: 300)); // small gap
       await _speech.listen(
         onResult: (result) {
           if (!mounted || _activeMicField != field) return;
@@ -120,37 +138,50 @@ class _NearMissTabState extends State<NearMissTab> {
         },
         localeId:     _voiceLocaleId,
         listenFor:    const Duration(minutes: 5),
-        pauseFor:     const Duration(seconds: 30),
+        pauseFor:     const Duration(seconds: 15),
         partialResults: true,
         cancelOnError:  false,
         listenMode:   stt.ListenMode.dictation,
       );
     } catch (e) {
+      debugPrint('Speech restart error: $e');
       if (mounted) setState(() => _isListening = false);
     }
   }
 
   Future<void> _toggleVoice([TextEditingController? field]) async {
     final targetField = field ?? _location;
+
+    // If already listening on the same field, stop
     if (_isListening && _activeMicField == targetField) {
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
       return;
     }
+
+    // If listening on a different field, stop first
     if (_isListening) {
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
-      await Future.delayed(const Duration(milliseconds: 200));
+      await Future.delayed(const Duration(milliseconds: 300));
     }
+
+    // Check availability
     if (!_speechAvailable) {
       await _initSpeech();
       if (!_speechAvailable) {
         if (mounted) {
-          _snack(kIsWeb ? 'Voice input requires Chrome.' : 'Microphone unavailable.', AppColors.amber);
+          _snack(
+            kIsWeb
+              ? 'Voice input requires Chrome browser.'
+              : 'Microphone unavailable. Please check app permissions in Settings.',
+            AppColors.amber,
+          );
         }
         return;
       }
     }
+
     final baseText = targetField.text;
     _activeMicField = targetField;
     try {
@@ -169,13 +200,15 @@ class _NearMissTabState extends State<NearMissTab> {
         },
         localeId:       _voiceLocaleId,
         listenFor:      const Duration(minutes: 5),
-        pauseFor:       const Duration(seconds: 30),
+        pauseFor:       const Duration(seconds: 15),
         partialResults: true,
         cancelOnError:  false,
         listenMode:     stt.ListenMode.dictation,
       );
     } catch (e) {
+      debugPrint('Speech listen error: $e');
       if (mounted) setState(() { _isListening = false; _activeMicField = null; });
+      _snack('Voice input failed: $e', AppColors.red);
     }
   }
 
@@ -222,14 +255,13 @@ class _NearMissTabState extends State<NearMissTab> {
     await _analyzeImage();
   }
 
-  // ─── OPTIMIZED V15 SUPPRESSION FILTER ───────────────────────
   Map<String, dynamic> _applyHardenedV15Filters(String name, String desc, String action, String reg, String cause) {
     final n = name.toLowerCase();
     final d = desc.toLowerCase();
-    
+
     bool isLikelyTubeOrConduit = n.contains('wire') || n.contains('cable') || n.contains('electrical');
     bool hasPipingContext = d.contains('pipe') || d.contains('bracket') || d.contains('oxygen') || d.contains('manifold') || d.contains('support') || d.contains('tube');
-    
+
     if (isLikelyTubeOrConduit && hasPipingContext) {
       return {
         'name': 'Small-bore process tubing / conduit',
@@ -245,9 +277,9 @@ class _NearMissTabState extends State<NearMissTab> {
 
   Future<void> _analyzeImage() async {
     final networkStatus = await NetworkChecker.getNetworkStatus();
-    
+
     if (!networkStatus['hasInternet']!) {
-      _snack('📱 Offline · Image analysis skipped. Fill form manually.', const Color(0xFFD97706));
+      _snack('Offline - Image analysis skipped. Fill form manually.', const Color(0xFFD97706));
       setState(() {
         _isOnlineMode = false;
         _aiBrief = {
@@ -264,10 +296,10 @@ class _NearMissTabState extends State<NearMissTab> {
     }
 
     if (!networkStatus['backendReachable']!) {
-      _snack('⚠️ AI server unavailable · Using knowledge-based analysis', const Color(0xFFD97706));
+      _snack('AI server unavailable - Using knowledge-based analysis', const Color(0xFFD97706));
     }
 
-    final steps = ['Uploaded', 'Analyzing image…', 'Classifying hazard…', 'Pre-filling form…'];
+    final steps = ['Uploaded', 'Analyzing image...', 'Classifying hazard...', 'Pre-filling form...'];
     for (var i = 0; i < steps.length - 1; i++) {
       setState(() => _step = steps[i]);
       await Future.delayed(const Duration(milliseconds: 700));
@@ -286,7 +318,7 @@ class _NearMissTabState extends State<NearMissTab> {
       String rawAction = first?['correctiveAction']?.toString() ?? '';
       String rawReg    = first?['regulation']?.toString() ?? '';
       String rawCause  = _mapToWsaCause(first?['category']?.toString() ?? '', rawName);
-      
+
       final refinedData = _applyHardenedV15Filters(rawName, rawDesc, rawAction, rawReg, rawCause);
 
       final sev        = (first?['severity']?.toString() ?? 'MEDIUM').toUpperCase();
@@ -300,7 +332,7 @@ class _NearMissTabState extends State<NearMissTab> {
         _isOnlineMode = isOnline;
         _aiBrief = {
           'identified': refinedData['name'],
-          'statutory':  refinedData['reg'].isEmpty ? 'Refer Factories Act §35-41' : refinedData['reg'],
+          'statutory':  refinedData['reg'].isEmpty ? 'Refer Factories Act S35-41' : refinedData['reg'],
           'type':       refinedData['obsType'],
           'severity':   sev,
           'confidence': result?['confidence'] ?? 75,
@@ -587,7 +619,7 @@ class _NearMissTabState extends State<NearMissTab> {
   Widget _imageWithBrief(SL sl) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.memory(_imageBytes!, height: 130, fit: BoxFit.cover)),
+      ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.memory(_imageBytes!, fit: BoxFit.fitWidth)),
       const SizedBox(height: 10),
       Container(
         padding: const EdgeInsets.all(12),
@@ -599,13 +631,32 @@ class _NearMissTabState extends State<NearMissTab> {
           Row(children: [
             Icon(Icons.auto_awesome, size: 12, color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber),
             const SizedBox(width: 4),
-            Text(_isOnlineMode ? 'AI assessment' : 'Knowledge-based', style: TextStyle(color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber, fontSize: 11, fontWeight: FontWeight.w700)),
+            Text(_isOnlineMode ? 'AI assessment' : 'Knowledge-based (offline)', style: TextStyle(color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber, fontSize: 11, fontWeight: FontWeight.w700)),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(color: AppColors.amber.withOpacity(0.15), border: Border.all(color: AppColors.amber), borderRadius: BorderRadius.circular(8)),
-              child: Text('${_aiBrief!['severity']} · ${_aiBrief!['confidence']}%', style: const TextStyle(color: AppColors.amber, fontSize: 8, fontWeight: FontWeight.w800))),
+              child: Text('${_aiBrief!['severity']} - ${_aiBrief!['confidence']}%', style: const TextStyle(color: AppColors.amber, fontSize: 8, fontWeight: FontWeight.w800))),
           ]),
+          // ✅ Show warning if offline/fallback
+          if (!_isOnlineMode) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.amber.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(children: [
+                const Icon(Icons.wifi_off, color: AppColors.amber, size: 12),
+                const SizedBox(width: 6),
+                Expanded(child: Text(
+                  'Not real image analysis. Connect to internet for AI-powered detection.',
+                  style: TextStyle(color: AppColors.amber.withOpacity(0.9), fontSize: 9, height: 1.3),
+                )),
+              ]),
+            ),
+          ],
           const SizedBox(height: 8),
           _briefRow('Identified', _aiBrief!['identified'].toString(), sl),
           _briefRow('Statutory',  _aiBrief!['statutory'].toString(),  sl),
@@ -658,13 +709,13 @@ class _NearMissTabState extends State<NearMissTab> {
           const SizedBox(height: 12),
           _buildDropdownField('Plant/Unit', _plant, _plants, (v) => setState(() => _plant = v!)),
           _buildTextField('Department/Shop', _dept, Icons.business, sl),
-          _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _location ? Colors.red : AppColors.accent), onPressed: () => _toggleVoice(_location))),
+          _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _location ? Colors.red : AppColors.accent, size: 20), onPressed: () => _toggleVoice(_location))),
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!)),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!)),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!)),
           _buildTextField('People Exposed (Count)', _people, Icons.people_outline, sl, keyboardType: TextInputType.number),
-          _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _description ? Colors.red : AppColors.accent), onPressed: () => _toggleVoice(_description))),
-          _buildTextField('Immediate Corrective Action taken', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _immediateAction ? Colors.red : AppColors.accent), onPressed: () => _toggleVoice(_immediateAction))),
+          _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _description ? Colors.red : AppColors.accent, size: 20), onPressed: () => _toggleVoice(_description))),
+          _buildTextField('Immediate Corrective Action taken', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _immediateAction ? Colors.red : AppColors.accent, size: 20), onPressed: () => _toggleVoice(_immediateAction))),
         ],
       ),
     );
