@@ -1,16 +1,16 @@
 // lib/screens/login_screen.dart
 //
 // CHANGES (this version):
+// • Added "Contractor Access" button below the login form
+// • Contractors can skip login and access AI Scan + Near Miss only
 // • Plant dropdown updated to 14 user-specified SAIL units + "Others"
 // • All other logic preserved exactly as before
-//
-// Full list: BSP, DSP, RSP, BSL, ISP, ASP, SSP, CFP, CMO,
-//            JGOM, OGOM, BSP(M), Collieries, SRU Kulti, Others
 
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import 'home_screen.dart';
+import 'contractor_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final VoidCallback toggleTheme;
@@ -132,6 +132,20 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // ── NEW: Navigate to contractor-only screen ──────────────────────────
+  void _contractorAccess() {
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, a, __) =>
+            ContractorHomeScreen(toggleTheme: widget.toggleTheme),
+        transitionsBuilder: (_, a, __, child) =>
+            FadeTransition(opacity: a, child: child),
+        transitionDuration: const Duration(milliseconds: 400),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sl = SL.of(context);
@@ -247,6 +261,37 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Colors.white,
                               fontSize: 15,
                               fontWeight: FontWeight.w700))))),
+
+                // ── NEW: Contractor Access Button ─────────────────────
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _contractorAccess,
+                    icon: const Icon(Icons.engineering_outlined, size: 18),
+                    label: const Text('Contractor Access'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.cyan,
+                      side: BorderSide(
+                        color: AppColors.cyan.withOpacity(0.5),
+                        width: 1.5,
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'No login required — AI Scan & Near Miss only',
+                  style: TextStyle(
+                    color: sl.text4,
+                    fontSize: 10,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
 
                 const SizedBox(height: 16),
 
