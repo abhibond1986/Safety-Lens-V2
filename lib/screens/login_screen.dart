@@ -1,10 +1,10 @@
 // lib/screens/login_screen.dart
 //
 // CHANGES (this version):
-// • Added "Contractor Access" button below the login form
-// • Contractors can skip login and access AI Scan + Near Miss only
-// • Plant dropdown updated to 14 user-specified SAIL units + "Others"
-// • All other logic preserved exactly as before
+// * Plant dropdown updated to 14 user-specified SAIL units + "Others"
+// * Added "Contractor Access" button (skip login → AI Scan + Near Miss only)
+// * Logo uses assets/images/app_icon.png
+// * All other logic preserved exactly as before
 
 import 'package:flutter/material.dart';
 import '../main.dart';
@@ -40,7 +40,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _selectedPlant;
   bool _isOtherPlant = false;
 
-  // ── UPDATED: 14 SAIL plants/units + Others ──────────────────────────
   static const List<String> _sailPlants = [
     'BSP — Bhilai Steel Plant',
     'DSP — Durgapur Steel Plant',
@@ -132,7 +131,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ── NEW: Navigate to contractor-only screen ──────────────────────────
+  // ── Navigate to contractor-only screen ──────────────────────────
   void _contractorAccess() {
     Navigator.pushReplacement(
       context,
@@ -175,8 +174,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(14),
                     child: Image.asset(
-                      'assets/images/sail_logo.png',
-                      fit: BoxFit.contain))),
+                      'assets/images/app_icon.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Image.asset(
+                        'assets/images/sail_logo.png',
+                        fit: BoxFit.contain),
+                    ))),
                 const SizedBox(height: 18),
                 const BrandTitle(size: 24),
                 const SizedBox(height: 6),
@@ -262,7 +265,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontSize: 15,
                               fontWeight: FontWeight.w700))))),
 
-                // ── NEW: Contractor Access Button ─────────────────────
+                // ── Contractor Access Button ──────────────────────────
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
