@@ -163,27 +163,16 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: 76, height: 76,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1E1E3F), Color(0xFF2A2A50)]),
-                    border: Border.all(
-                      color: AppColors.accent.withOpacity(0.4),
-                      width: 1.5),
-                    boxShadow: [BoxShadow(
-                      color: AppColors.accent.withOpacity(0.2),
-                      blurRadius: 20)]),
-                  child: Padding(
-                    padding: const EdgeInsets.all(14),
-                    child: Image.asset(
-                      'assets/images/app_icon.png',
-                      fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Image.asset(
-                        'assets/images/sail_logo.png',
-                        fit: BoxFit.contain),
-                    ))),
+                // ── SAIL Logo — clean, no backdrop ────────────────
+                Image.asset(
+                  'assets/images/app_icon.png',
+                  width: 80, height: 80,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Image.asset(
+                    'assets/images/sail_logo.png',
+                    width: 80, height: 80,
+                    fit: BoxFit.contain),
+                ),
                 const SizedBox(height: 18),
                 const BrandTitle(size: 24),
                 const SizedBox(height: 6),
