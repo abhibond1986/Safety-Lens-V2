@@ -1,11 +1,9 @@
 // lib/screens/splash_screen.dart
 //
-// FIX: Removed double-loading — SplashScreen no longer re-initialises
-// LocalDB/SyncService since main() already does it before runApp().
-// Also added the language FAB overlay via LanguageFab widget.
+// FIX: Removed blue backdrop around SAIL logo — minimalist, clean design.
+// Logo is just the raw app_icon.png image, no container decoration.
 
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import 'login_screen.dart';
@@ -34,7 +32,6 @@ class _SplashScreenState extends State<SplashScreen>
     _scale = Tween<double>(begin: 0.85, end: 1.0).animate(
       CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
     _ctrl.forward();
-    // Navigate after animation — no extra async init (main() already did it)
     Future.delayed(const Duration(milliseconds: 2000), _navigate);
   }
 
@@ -69,27 +66,16 @@ class _SplashScreenState extends State<SplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // SAIL logo in rounded square (as requested)
-                Container(
-                  width: 88, height: 88,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF1E1E3F), Color(0xFF2A2A50)]),
-                    border: Border.all(
-                      color: AppColors.accent.withOpacity(0.5),
-                      width: 1.5),
-                    boxShadow: [BoxShadow(
-                      color: AppColors.accent.withOpacity(0.25),
-                      blurRadius: 24,
-                      spreadRadius: 2)]),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Image.asset(
-                      'assets/images/sail_logo.png',
-                      fit: BoxFit.contain))),
+                // ── SAIL Logo — clean, no backdrop ────────────────
+                Image.asset(
+                  'assets/images/app_icon.png',
+                  width: 100, height: 100,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Image.asset(
+                    'assets/images/sail_logo.png',
+                    width: 100, height: 100,
+                    fit: BoxFit.contain),
+                ),
                 const SizedBox(height: 24),
                 const BrandTitle(size: 28),
                 const SizedBox(height: 8),
