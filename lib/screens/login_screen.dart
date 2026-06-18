@@ -1,14 +1,16 @@
 // lib/screens/login_screen.dart
 //
-// CHANGES (this version):
-// * Plant dropdown updated to 14 user-specified SAIL units + "Others"
-// * Added "Contractor Access" button (skip login → AI Scan + Near Miss only)
-// * Logo uses assets/images/app_icon.png
-// * All other logic preserved exactly as before
+// FIXES:
+// ✅ After registration, auto-login and go to HomeScreen (no re-login needed)
+// ✅ Plant dropdown: 14 SAIL units + "Others"
+// ✅ "Contractor Access" button (skip login → AI Scan + Near Miss only)
+// ✅ Logo uses assets/images/app_icon.png
+// ✅ Uses I18n.t() for translatable strings
 
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
+import '../services/i18n.dart';
 import 'home_screen.dart';
 import 'contractor_home_screen.dart';
 
@@ -24,11 +26,9 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   String _err = '';
 
-  // Login controllers
   final _userCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
 
-  // Register controllers
   final _regNameCtrl   = TextEditingController();
   final _regUserCtrl   = TextEditingController();
   final _regPassCtrl   = TextEditingController();
@@ -36,7 +36,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _regPnoCtrl    = TextEditingController();
   final _regOtherPlantCtrl = TextEditingController();
 
-  // Plant dropdown
   String? _selectedPlant;
   bool _isOtherPlant = false;
 
@@ -71,6 +70,15 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
+  void _goHome() {
+    Navigator.pushReplacement(context, PageRouteBuilder(
+      pageBuilder: (_, a, __) =>
+          HomeScreen(toggleTheme: widget.toggleTheme),
+      transitionsBuilder: (_, a, __, child) =>
+          FadeTransition(opacity: a, child: child),
+      transitionDuration: const Duration(milliseconds: 400)));
+  }
+
   Future<void> _login() async {
     if (_userCtrl.text.trim().isEmpty || _passCtrl.text.isEmpty) {
       setState(() => _err = 'Please fill all fields');
@@ -82,12 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _userCtrl.text.trim(), _passCtrl.text);
       if (!mounted) return;
       if (user != null) {
-        Navigator.pushReplacement(context, PageRouteBuilder(
-          pageBuilder: (_, a, __) =>
-              HomeScreen(toggleTheme: widget.toggleTheme),
-          transitionsBuilder: (_, a, __, child) =>
-              FadeTransition(opacity: a, child: child),
-          transitionDuration: const Duration(milliseconds: 400)));
+        _goHome();
       } else {
         setState(() => _err = 'Invalid credentials');
       }
@@ -117,10 +120,13 @@ class _LoginScreenState extends State<LoginScreen> {
         'pno': _regPnoCtrl.text.trim()});
       if (!mounted) return;
       if (ok != null) {
-        setState(() { _isLogin = true; _err = ''; });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Account created! Please login.'),
-          backgroundColor: Colors.green));
+        // ✅ FIX: Auto-login after registration — go directly to HomeScreen
+        // LocalDB.register() already saves user as current_user in SharedPreferences
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${I18n.t('common.success')}! Welcome, $name'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2)));
+        _goHome();
       } else {
         setState(() => _err = 'Username already taken');
       }
@@ -131,7 +137,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // ── Navigate to contractor-only screen ──────────────────────────
   void _contractorAccess() {
     Navigator.pushReplacement(
       context,
@@ -158,7 +163,6 @@ class _LoginScreenState extends State<LoginScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ── Logo ─────────────────────────────────────────────
                 Container(
                   width: 76, height: 76,
                   decoration: BoxDecoration(
@@ -183,13 +187,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 18),
                 const BrandTitle(size: 24),
                 const SizedBox(height: 6),
-                Text('AI Safety Platform',
+                Text(I18n.t('app.tagline'),
                   style: TextStyle(
                     color: sl.text4, fontSize: 12,
                     letterSpacing: 1.2)),
                 const SizedBox(height: 32),
 
-                // ── Tab switcher ─────────────────────────────────────
                 Container(
                   decoration: BoxDecoration(
                     color: sl.card2,
@@ -204,7 +207,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ])),
                 const SizedBox(height: 24),
 
-                // ── Form ─────────────────────────────────────────────
                 if (_isLogin) ..._loginFields(sl)
                 else ..._registerFields(sl),
 
@@ -229,7 +231,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 20),
 
-                // ── Submit button ─────────────────────────────────────
                 SizedBox(
                   width: double.infinity,
                   child: AnimatedContainer(
@@ -265,7 +266,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontSize: 15,
                               fontWeight: FontWeight.w700))))),
 
-                // ── Contractor Access Button ──────────────────────────
                 const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
@@ -298,7 +298,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 16),
 
-                // ── Theme toggle ──────────────────────────────────────
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -331,22 +330,18 @@ class _LoginScreenState extends State<LoginScreen> {
   ];
 
   List<Widget> _registerFields(SL sl) => [
-    _field('Full Name', _regNameCtrl, sl,
-      hint: 'e.g. Rajesh Kumar'),
+    _field('Full Name', _regNameCtrl, sl, hint: 'e.g. Rajesh Kumar'),
     const SizedBox(height: 12),
-    _field('Username', _regUserCtrl, sl,
-      hint: 'Choose a username'),
+    _field('Username', _regUserCtrl, sl, hint: 'Choose a username'),
     const SizedBox(height: 12),
     _field('Password', _regPassCtrl, sl, obscure: true),
     const SizedBox(height: 12),
     _field('Designation', _regDesigCtrl, sl,
       hint: 'e.g. AGM Safety, Safety Officer'),
     const SizedBox(height: 12),
-    _field('Employee No. (P.No.)', _regPnoCtrl, sl,
-      hint: 'Optional'),
+    _field('Employee No. (P.No.)', _regPnoCtrl, sl, hint: 'Optional'),
     const SizedBox(height: 12),
 
-    // ── Plant dropdown ────────────────────────────────────────────
     Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -384,7 +379,6 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           )),
 
-        // Free-text field when "Others" is selected
         if (_isOtherPlant) ...[
           const SizedBox(height: 8),
           _field('Specify your plant / unit',
