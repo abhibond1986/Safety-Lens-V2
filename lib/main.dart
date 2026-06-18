@@ -4,7 +4,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/local_db.dart';
 import 'services/sync_service.dart';
+import 'services/i18n.dart';  // ← ADDED: fixes "I18n not defined" error
 import 'screens/splash_screen.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LocaleService().load();
@@ -13,6 +15,7 @@ void main() async {
   SyncService.drainPendingQueue().catchError((_) => 0);
   runApp(const SafetyLensApp());
 }
+
 // ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
 class AppColors {
   static const bg     = darkBg;
@@ -25,6 +28,7 @@ class AppColors {
   static const text2  = Color(0xFFCBD5E1);
   static const text3  = Color(0xFF94A3B8);
   static const text4  = Color(0xFF64748B);
+
   // Vibrant accent palette — Image 3 style
   static const accent     = Color(0xFF7C4DFF);   // deep violet-purple
   static const accentDark = Color(0xFF6534E0);
@@ -32,10 +36,12 @@ class AppColors {
   static const cyan       = Color(0xFF00BCD4);   // teal-cyan
   static const purple     = Color(0xFFE040FB);   // bright magenta-purple
   static const pink       = Color(0xFFFF4081);   // vivid pink
+
   static const crit  = Color(0xFFFF1744);
   static const red   = Color(0xFFFF5252);
   static const amber = Color(0xFFFFAB00);
   static const green = Color(0xFF00E676);
+
   // Dark mode — Image 3 style: true dark grey (not deep purple/blue)
   static const darkBg     = Color(0xFF121212);   // Material dark baseline
   static const darkBg2    = Color(0xFF1E1E1E);   // slightly lighter
@@ -43,6 +49,7 @@ class AppColors {
   static const darkCard2  = Color(0xFF2D2D2D);   // elevated card
   static const darkCard3  = Color(0xFF373737);   // top-most surface
   static const darkBorder = Color(0xFF424242);   // subtle separator
+
   // Light mode — clean white with very subtle tint
   static const lightBg     = Color(0xFFF8F8F8);  // near-white, no tint
   static const lightBg2    = Color(0xFFEFEFEF);  // very light grey
@@ -50,26 +57,31 @@ class AppColors {
   static const lightCard2  = Color(0xFFF3F3F3);  // input field bg
   static const lightBorder = Color(0xFFE0E0E0);  // clear grey border
 }
+
 // ─── THEME HELPER ─────────────────────────────────────────────────────────────
 class SL {
   final bool isDark;
   const SL(this.isDark);
+
   static SL of(BuildContext context) =>
       SL(Theme.of(context).brightness == Brightness.dark);
+
   Color get bg     => isDark ? AppColors.darkBg    : AppColors.lightBg;
   Color get bg2    => isDark ? AppColors.darkBg2   : AppColors.lightBg2;
   Color get card   => isDark ? AppColors.darkCard   : AppColors.lightCard;
   Color get card2  => isDark ? AppColors.darkCard2  : AppColors.lightCard2;
   Color get card3  => isDark ? AppColors.darkCard3  : const Color(0xFFECEBFF);
   Color get border => isDark ? AppColors.darkBorder : AppColors.lightBorder;
-  Color get text1  => isDark ? const Color(0xFFF1F5F9) : const Color(0xFF111111);  // near-black on white
-  Color get text2  => isDark ? const Color(0xFFCBD5E1) : const Color(0xFF333333);  // dark grey
-  Color get text3  => isDark ? const Color(0xFF94A3B8) : const Color(0xFF555555);  // medium grey
-  Color get text4  => isDark ? const Color(0xFF64748B) : const Color(0xFF777777);  // light grey (still visible)
+  Color get text1  => isDark ? const Color(0xFFF1F5F9) : const Color(0xFF111111);
+  Color get text2  => isDark ? const Color(0xFFCBD5E1) : const Color(0xFF333333);
+  Color get text3  => isDark ? const Color(0xFF94A3B8) : const Color(0xFF555555);
+  Color get text4  => isDark ? const Color(0xFF64748B) : const Color(0xFF777777);
   Color get surface => isDark ? AppColors.darkCard  : Colors.white;
+
   List<Color> get bgGradient => isDark
       ? [const Color(0xFF121212), const Color(0xFF1E1E1E)]
       : [const Color(0xFFF8F8F8), const Color(0xFFEFEFEF)];
+
   Gradient get cardGradient => isDark
       ? LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
@@ -77,43 +89,50 @@ class SL {
       : LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
           colors: [Colors.white, const Color(0xFFF5F4FF)]);
+
   BoxShadow get cardShadow => BoxShadow(
       color: isDark
           ? Colors.black.withOpacity(0.4)
           : AppColors.accent.withOpacity(0.08),
       blurRadius: 20,
       offset: const Offset(0, 4));
+
   BoxShadow get glowShadow => BoxShadow(
       color: AppColors.accent.withOpacity(isDark ? 0.2 : 0.12),
       blurRadius: 24,
       spreadRadius: 0);
 }
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 class SafetyLensApp extends StatefulWidget {
   const SafetyLensApp({super.key});
   @override
   State<SafetyLensApp> createState() => _SafetyLensAppState();
 }
+
 class _SafetyLensAppState extends State<SafetyLensApp> {
   // ✅ FIX: Default to LIGHT mode instead of dark
- @override
-void initState() {
-  super.initState();
-  I18n.instance.addListener(_onLocaleChanged);  // ADD
-}
-
-@override
-void dispose() {
-  I18n.instance.removeListener(_onLocaleChanged);  // ADD
-  super.dispose();
-}
-
-void _onLocaleChanged() {  // ADD
-  if (mounted) setState(() {});
-}
   ThemeMode _mode = ThemeMode.light;
+
+  @override
+  void initState() {
+    super.initState();
+    I18n.instance.addListener(_onLocaleChanged);
+  }
+
+  @override
+  void dispose() {
+    I18n.instance.removeListener(_onLocaleChanged);
+    super.dispose();
+  }
+
+  void _onLocaleChanged() {
+    if (mounted) setState(() {});
+  }
+
   void toggleTheme() =>
       setState(() => _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
+
   ThemeData _buildTheme(bool dark) {
     final base = dark ? ThemeData.dark() : ThemeData.light();
     return base.copyWith(
@@ -182,7 +201,7 @@ void _onLocaleChanged() {  // ADD
                   : const Color(0xFF1A1A3E))),
     );
   }
-  // ── FIXED build() — was using => { instead of proper function body ────────
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -208,6 +227,7 @@ void _onLocaleChanged() {  // ADD
     );
   }
 }
+
 // ─── SHARED WIDGETS ───────────────────────────────────────────────────────────
 class BrandTitle extends StatelessWidget {
   final double size;
@@ -249,6 +269,7 @@ class BrandTitle extends StatelessWidget {
     );
   }
 }
+
 class BrandTagline extends StatelessWidget {
   const BrandTagline({super.key});
   @override
@@ -274,6 +295,7 @@ class BrandTagline extends StatelessWidget {
     ]);
   }
 }
+
 class SailLogoTile extends StatelessWidget {
   final double size;
   const SailLogoTile({super.key, this.size = 40});
@@ -284,6 +306,7 @@ class SailLogoTile extends StatelessWidget {
       child: Image.asset('assets/images/app_icon.png', fit: BoxFit.contain,
         errorBuilder: (_, __, ___) => Image.asset('assets/images/sail_logo.png', fit: BoxFit.contain)));
 }
+
 // ─── GLASSMORPHISM CARD ───────────────────────────────────────────────────────
 class GlassCard extends StatelessWidget {
   final Widget child;
@@ -319,6 +342,7 @@ class GlassCard extends StatelessWidget {
     );
   }
 }
+
 // ─── SEVERITY BADGE ───────────────────────────────────────────────────────────
 class SeverityBadge extends StatelessWidget {
   final String severity;
@@ -353,6 +377,7 @@ class SeverityBadge extends StatelessWidget {
     );
   }
 }
+
 // ─── GRADIENT BUTTON ──────────────────────────────────────────────────────────
 class GradientButton extends StatelessWidget {
   final String label;
@@ -414,6 +439,7 @@ class GradientButton extends StatelessWidget {
     );
   }
 }
+
 // ─── NEON DIVIDER ─────────────────────────────────────────────────────────────
 class NeonDivider extends StatelessWidget {
   final Color color;
@@ -428,20 +454,24 @@ class NeonDivider extends StatelessWidget {
         Colors.transparent
       ])));
 }
+
 // ─── LOCALE SERVICE ─────────────────────────────────────────────────────────
 class LocaleService extends ChangeNotifier {
   static const String _key = 'selected_locale';
   Locale _locale = const Locale('en');
   Locale get locale => _locale;
+
   static final LocaleService _instance = LocaleService._internal();
   factory LocaleService() => _instance;
   LocaleService._internal();
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final code = prefs.getString(_key) ?? 'en';
     _locale = Locale(code);
     notifyListeners();
   }
+
   Future<void> setLocale(Locale locale) async {
     if (_locale == locale) return;
     _locale = locale;
@@ -449,12 +479,14 @@ class LocaleService extends ChangeNotifier {
     await prefs.setString(_key, locale.languageCode);
     notifyListeners();
   }
+
   static const List<Locale> supportedLocales = [
     Locale('en'),
     Locale('hi'),
     Locale('bn'),
     Locale('or'),
   ];
+
   static const List<Map<String, String>> languages = [
     {'code': 'en', 'name': 'English', 'native': 'English', 'flag': '🇬🇧'},
     {'code': 'hi', 'name': 'Hindi',   'native': 'हिंदी',    'flag': '🇮🇳'},
@@ -462,20 +494,23 @@ class LocaleService extends ChangeNotifier {
     {'code': 'or', 'name': 'Odia',    'native': 'ଓଡ଼ିଆ',   'flag': '🇮🇳'},
   ];
 }
+
 // ─── APP LOCALIZATIONS ──────────────────────────────────────────────────────
 //
 // Hand-written localizations — NO code generation required.
 // No flutter_gen, no build_runner.
-// Add this file to lib/l10n/ and import it directly.
 class AppLocalizations {
   final Locale locale;
   AppLocalizations(this.locale);
+
   static AppLocalizations of(BuildContext context) {
     return Localizations.of<AppLocalizations>(context, AppLocalizations)
         ?? AppLocalizations(const Locale('en'));
   }
+
   static const LocalizationsDelegate<AppLocalizations> delegate =
       _AppLocalizationsDelegate();
+
   // ── All strings ────────────────────────────────────────────────────────
   String get appName          => _t('appName');
   String get selectLanguage   => _t('selectLanguage');
@@ -649,6 +684,7 @@ class AppLocalizations {
   String get success  => _t('success');
   String get warning  => _t('warning');
   String get info     => _t('info');
+
   // ── Translation lookup ─────────────────────────────────────────────────
   String _t(String key) {
     final lang = locale.languageCode;
@@ -657,6 +693,7 @@ class AppLocalizations {
     if (lang == 'or') return _or[key] ?? _en[key] ?? key;
     return _en[key] ?? key;
   }
+
   // ── English ───────────────────────────────────────────────────────────
   static const Map<String, String> _en = {
     'appName': 'SAIL Safety Lens',
@@ -745,6 +782,7 @@ class AppLocalizations {
     'noData': 'No data available', 'error': 'Error', 'success': 'Success',
     'warning': 'Warning', 'info': 'Info',
   };
+
   // ── Hindi ─────────────────────────────────────────────────────────────
   static const Map<String, String> _hi = {
     'appName': 'SAIL सेफ्टी लेंस',
@@ -831,6 +869,7 @@ class AppLocalizations {
     'reset': 'रीसेट', 'search': 'खोजें', 'noData': 'कोई डेटा उपलब्ध नहीं',
     'error': 'त्रुटि', 'success': 'सफल', 'warning': 'चेतावनी', 'info': 'जानकारी',
   };
+
   // ── Bengali ───────────────────────────────────────────────────────────
   static const Map<String, String> _bn = {
     'appName': 'SAIL সেফটি লেন্স',
@@ -915,6 +954,7 @@ class AppLocalizations {
     'reset': 'রিসেট', 'search': 'খুঁজুন', 'noData': 'কোনো ডেটা পাওয়া যায়নি',
     'error': 'ত্রুটি', 'success': 'সফল', 'warning': 'সতর্কতা', 'info': 'তথ্য',
   };
+
   // ── Odia ──────────────────────────────────────────────────────────────
   static const Map<String, String> _or = {
     'appName': 'SAIL ସେଫ୍ଟି ଲେନ୍ସ',
@@ -981,7 +1021,7 @@ class AppLocalizations {
     'settingsSyncNow': 'ଏବେ ସିଙ୍କ କରନ୍ତୁ', 'settingsTheme': 'ଥିମ',
     'settingsLanguage': 'ଭାଷା', 'settingsDark': 'ଅନ୍ଧାର', 'settingsLight': 'ଆଲୋକ',
     'settingsVersion': 'ସଂସ୍କରଣ', 'settingsSyncSuccess': 'ସିଙ୍କ ସମ୍ପୂର୍ଣ୍ଣ', 'settingsSyncFail': 'ସିଙ୍କ ବିଫଳ',
-    'adminTitle': 'ଆଡମିନ କଣ୍ଟ୍ରୋଲ ପ୍ୟାନେଲ', 'adminKnowledge': 'ଜ୍ଞାନ ଭଣ୍ଡାର',
+    'adminTitle': 'ଆଡमିନ କଣ୍ଟ୍ରୋଲ ପ୍ୟାନେଲ', 'adminKnowledge': 'ଜ୍ଞାନ ଭଣ୍ଡାର',
     'adminUsers': 'ଉପଯୋଗକର୍ତ୍ତା', 'adminAnalytics': 'ବିଶ୍ଳେଷଣ',
     'adminAddText': 'ଟେକ୍ସଟ ଏଣ୍ଟ୍ରି ଯୋଡନ୍ତୁ', 'adminSyncCloud': 'କ୍ଲାଉଡରୁ ସିଙ୍କ କରନ୍ତୁ',
     'adminEbook': 'ଇ-ବୁକ → ଲୋକାଲ AI KB', 'adminEbookSubtitle': 'KB ପାଇଁ PDF ଅପଲୋଡ କରନ୍ତୁ',
@@ -1000,6 +1040,7 @@ class AppLocalizations {
     'error': 'ତ୍ରୁଟି', 'success': 'ସଫଳ', 'warning': 'ଚେତାବନୀ', 'info': 'ସୂଚନା',
   };
 }
+
 // ── Delegate ──────────────────────────────────────────────────────────────────
 class _AppLocalizationsDelegate
     extends LocalizationsDelegate<AppLocalizations> {
