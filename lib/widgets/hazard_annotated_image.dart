@@ -98,8 +98,8 @@ class _BboxOverlay extends StatelessWidget {
             right  = right.clamp(0, w);
             bottom = bottom.clamp(0, h);
 
-            final boxWidth  = (right - left).clamp(20, w);
-            final boxHeight = (bottom - top).clamp(20, h);
+            final double boxWidth  = (right - left).clamp(20.0, w).toDouble();
+            final double boxHeight = (bottom - top).clamp(20.0, h).toDouble();
 
             final severity = (hazard['severity']?.toString() ?? 'MEDIUM').toUpperCase();
             final color = _sevColor(severity);
