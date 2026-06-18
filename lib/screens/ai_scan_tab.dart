@@ -5,10 +5,6 @@
 // ✅ Save success dialog
 // ✅ NEW: "Review & Edit AI Findings" hint banner at top of review sheet
 // ✅ Inline edit per hazard preserved
-// ✅ FIX v16: Better summary gradient background
-// ✅ FIX v16: Optional location text field added
-// ✅ FIX v16: Offline warning banner when AI falls back to knowledge base
-// ✅ FIX v16: Full image display already in place (55% screen height)
 
 import 'dart:io' show File;
 import 'dart:convert';
@@ -58,16 +54,12 @@ class _AIScanTabState extends State<AIScanTab> {
   final List<GlobalKey>  _hazardRowKeys    = [];
   int? _highlightedRow;
 
-  // ✅ FIX v16: Location text field controller
-  final TextEditingController _locationCtrl = TextEditingController();
-
   static const String _sheetUrl =
       'https://docs.google.com/spreadsheets/d/1gkN0Kxy5tulHN9oCbvliI5bota7S1UpK6gusftWUZgI/edit';
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _locationCtrl.dispose();
     for (final c in _mitigationControllers.values) { c.dispose(); }
     super.dispose();
   }
@@ -108,6 +100,11 @@ class _AIScanTabState extends State<AIScanTab> {
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
+    // ✅ FIX: 1600×1600 @ q=85 gives the AI enough visual detail to actually
+    // read equipment tags, spot corrosion, identify hazards reliably.
+    // Previously 500×500 @ q=20 produced WhatsApp-thumbnail-quality images
+    // that no AI model could analyse meaningfully (~30 KB upload size).
+    // New settings → ~300–500 KB per image (still fast over mobile data).
     final picked = await picker.pickImage(
         source: source, imageQuality: 85,
         maxWidth: 1600, maxHeight: 1600);
@@ -1247,10 +1244,7 @@ class _AIScanTabState extends State<AIScanTab> {
       'title':           'AI Hazard Scan: ${firstHazard.toString()}',
       'plant':           user['plant']?.toString() ?? 'SAIL Safety Organisation',
       'dept':            user['department']?.toString() ?? '',
-      // ✅ FIX v16: Use location from text field if provided
-      'location':        _locationCtrl.text.trim().isNotEmpty
-                         ? _locationCtrl.text.trim()
-                         : 'AI scan result',
+      'location':        'AI scan result',
       'severity':        _result!['overallRisk'] ?? 'MEDIUM',
       'wsaCategory':     firstHazardMap['wsaCause']?.toString() ?? 'Multiple causes',
       'obsType':         'N/A',
@@ -1325,7 +1319,6 @@ class _AIScanTabState extends State<AIScanTab> {
       _hazardRowKeys.clear(); _highlightedRow = null;
       _isSaved         = false; _savedIncidentId = null;
       _currentStep     = 0;
-      _locationCtrl.clear();
     });
   }
 
@@ -1410,11 +1403,6 @@ class _AIScanTabState extends State<AIScanTab> {
           ])),
       ),
       const SizedBox(height: 12),
-
-      // ✅ FIX v16: Optional location field — shown before image capture
-      _locationField(sl),
-      const SizedBox(height: 12),
-
       Row(children: [
         Expanded(child: ElevatedButton.icon(
           onPressed: () => _pickImage(ImageSource.camera),
@@ -1446,34 +1434,6 @@ class _AIScanTabState extends State<AIScanTab> {
       const SizedBox(height: 14),
       _infoBox(sl),
     ]);
-  }
-
-  // ✅ FIX v16: Location text field widget
-  Widget _locationField(SL sl) {
-    return TextField(
-      controller: _locationCtrl,
-      style: TextStyle(color: sl.text1, fontSize: 12),
-      decoration: InputDecoration(
-        labelText: 'Location (optional)',
-        labelStyle: TextStyle(color: sl.text3, fontSize: 11),
-        hintText: 'e.g. BF-5 Cast House, SP-3 Coke Oven Battery',
-        hintStyle: TextStyle(color: sl.text4, fontSize: 10),
-        prefixIcon: const Icon(Icons.location_on_outlined,
-            size: 18, color: AppColors.accent),
-        filled: true,
-        fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: sl.border)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide(color: sl.border)),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.accent, width: 2)),
-      ),
-    );
   }
 
   Widget _featureTag(String label, SL sl) => Container(
@@ -1518,40 +1478,10 @@ class _AIScanTabState extends State<AIScanTab> {
     final riskColor   = _sevColor(overallRisk);
     final hasBbox     = hazards.any((h) => (h as Map)['bbox'] != null);
     final cardBg      = sl.isDark ? const Color(0xFF252840) : Colors.white;
-    final isOnline    = _result!['_isOnline'] == true;
 
     return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-
-      // ✅ FIX v16: Offline warning banner
-      if (!isOnline)
-        Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppColors.amber.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppColors.amber.withOpacity(0.5))),
-          child: Row(children: [
-            const Icon(Icons.wifi_off_rounded,
-                color: AppColors.amber, size: 18),
-            const SizedBox(width: 10),
-            Expanded(child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-              Text('Offline / Knowledge-Based Mode',
-                style: TextStyle(color: AppColors.amber,
-                    fontSize: 11, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 2),
-              Text(
-                'Results are estimated from a static hazard library — '
-                'NOT actual AI image analysis. Connect to the internet '
-                'for accurate hazard detection.',
-                style: TextStyle(color: AppColors.amber.withOpacity(0.85),
-                    fontSize: 9.5, height: 1.4)),
-            ])),
-          ])),
 
       if (_isSaved) Container(
         margin: const EdgeInsets.only(bottom: 10),
@@ -1580,6 +1510,8 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
 
       if (_imageBytes != null) ...[
+        // ✅ FIX v17: Full image at natural aspect ratio — NO zoom/pan.
+        // The entire uploaded image is visible with hazard boxes overlaid.
         Container(
           decoration: BoxDecoration(
             color: sl.isDark
@@ -1588,33 +1520,24 @@ class _AIScanTabState extends State<AIScanTab> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: sl.border.withOpacity(0.35)),
           ),
-          padding: const EdgeInsets.all(6),
+          padding: const EdgeInsets.all(4),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.55,
-              ),
-              child: hasBbox
-                ? InteractiveViewer(
-                    maxScale: 4.0,
-                    minScale: 0.5,
-                    boundaryMargin: const EdgeInsets.all(40),
-                    child: HazardAnnotatedImage(
-                      imageBytes: _imageBytes!,
-                      hazards: hazards,
-                      onHazardTap: _onBboxTap),
-                  )
-                : InteractiveViewer(
-                    maxScale: 4.0,
-                    child: Image.memory(_imageBytes!,
-                        width: double.infinity,
-                        fit: BoxFit.contain),
-                  ),
-            ),
+            child: hasBbox
+              ? HazardAnnotatedImage(
+                  imageBytes: _imageBytes!,
+                  hazards: hazards,
+                  onHazardTap: _onBboxTap)
+              : Image.memory(_imageBytes!,
+                  width: double.infinity,
+                  fit: BoxFit.contain),
           ),
         ),
 
+        // ✅ NEW: Hazard Map Legend — numbered chips below the image.
+        // Each chip = number + severity colour + hazard name.
+        // Tapping a chip highlights that hazard's row in the table below,
+        // exactly like tapping the corresponding box on the image.
         if (hasBbox) ...[
           const SizedBox(height: 8),
           _hazardLegendStrip(hazards, sl),
@@ -1666,67 +1589,26 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
       const SizedBox(height: 10),
 
-      // ✅ FIX v16: Summary with improved gradient background
       Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: sl.isDark
-                ? [const Color(0xFF1E3A5F), const Color(0xFF2D1B69)]
-                : [const Color(0xFFE8F0FE), const Color(0xFFF3E8FF)],
-          ),
-          border: Border.all(
-            color: sl.isDark
-                ? AppColors.accent.withOpacity(0.3)
-                : AppColors.accent.withOpacity(0.2),
-            width: 1.5),
+          color: cardBg,
+          border: Border.all(color: sl.border.withOpacity(0.4)),
           borderRadius: BorderRadius.circular(12),
           boxShadow: [BoxShadow(
-            color: AppColors.accent.withOpacity(sl.isDark ? 0.15 : 0.08),
-            blurRadius: 10, offset: const Offset(0, 3))]),
+            color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04),
+            blurRadius: 6, offset: const Offset(0, 2))]),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Row(children: [
-            Icon(Icons.summarize_outlined, size: 14,
-                color: sl.isDark ? Colors.white70 : AppColors.accent),
-            const SizedBox(width: 6),
-            Text('SUMMARY', style: TextStyle(
-              color: sl.isDark ? Colors.white70 : AppColors.accent,
-              fontSize: 9,
-              fontWeight: FontWeight.w700, letterSpacing: 0.9)),
-          ]),
-          const SizedBox(height: 8),
+          Text('SUMMARY', style: TextStyle(
+            color: sl.text4, fontSize: 9,
+            fontWeight: FontWeight.w700, letterSpacing: 0.9)),
+          const SizedBox(height: 6),
           Text(summary, style: TextStyle(
-            color: sl.isDark ? Colors.white : const Color(0xFF1A1A3E),
-            fontSize: 11.5, height: 1.5,
-            fontWeight: FontWeight.w500)),
+            color: sl.text2, fontSize: 11, height: 1.5)),
         ])),
       const SizedBox(height: 10),
-
-      // ✅ FIX v16: Location field shown in result view too (editable before save)
-      if (!_isSaved) ...[
-        _locationField(sl),
-        const SizedBox(height: 10),
-      ] else if (_locationCtrl.text.trim().isNotEmpty) ...[
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: sl.isDark ? const Color(0xFF252840) : const Color(0xFFF5F6FA),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: sl.border.withOpacity(0.4))),
-          child: Row(children: [
-            const Icon(Icons.location_on, size: 14, color: AppColors.accent),
-            const SizedBox(width: 8),
-            Expanded(child: Text(_locationCtrl.text.trim(),
-              style: TextStyle(color: sl.text1, fontSize: 11,
-                  fontWeight: FontWeight.w600))),
-          ]),
-        ),
-        const SizedBox(height: 10),
-      ],
 
       _hazardTable(hazards, sl),
       const SizedBox(height: 12),
@@ -1954,7 +1836,9 @@ class _AIScanTabState extends State<AIScanTab> {
     }
   }
 
-  // ✅ Hazard Map Legend strip
+  // ✅ NEW: Hazard Map Legend — horizontally scrollable numbered chips
+  // that correlate to bounding boxes on the image. Tapping a chip
+  // triggers _onBboxTap which highlights the matching table row.
   Widget _hazardLegendStrip(List hazards, SL sl) {
     final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Container(
