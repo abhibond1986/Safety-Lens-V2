@@ -1,9 +1,11 @@
 // lib/screens/near_miss_tab.dart
-// v16 FIXES:
-//   ✅ FIX: Explicit microphone permission request before speech init
-//   ✅ All v15 features preserved (network check, form, duplicate detection)
-//   ✅ Infographic header with workflow steps
-//   ✅ v15 Hardened suppression protocol for industrial tubes/wires
+// v17 FIXES:
+//   ✅ FIX: Voice-to-text now works on web (no permission_handler on web)
+//   ✅ FIX: Visual pulsing mic indicator when listening
+//   ✅ FIX: Better error handling + auto-retry on speech init
+//   ✅ UI/UX: More attractive form design with better spacing & animations
+//   ✅ UI/UX: Polished cards, improved visual hierarchy
+//   ✅ All v16 features preserved (network check, form, duplicate detection)
 
 import 'dart:convert';
 import 'dart:io' show File;
@@ -37,7 +39,7 @@ class NearMissTab extends StatefulWidget {
   State<NearMissTab> createState() => _NearMissTabState();
 }
 
-class _NearMissTabState extends State<NearMissTab> {
+class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin {
   XFile?      _pickedFile;
   Uint8List? _imageBytes;
   bool        _analyzing = false;
@@ -64,6 +66,10 @@ class _NearMissTabState extends State<NearMissTab> {
   bool                    _isListening     = false;
   TextEditingController? _activeMicField;
 
+  // Mic pulse animation
+  late AnimationController _micPulseCtrl;
+  late Animation<double> _micPulse;
+
   static const Map<String, String> _voiceLocaleMap = {
     'en': 'en-IN', 'hi': 'hi-IN', 'bn': 'bn-IN', 'or': 'or-IN',
   };
@@ -76,20 +82,23 @@ class _NearMissTabState extends State<NearMissTab> {
   @override
   void initState() {
     super.initState();
+    _micPulseCtrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 1000));
+    _micPulse = Tween<double>(begin: 1.0, end: 1.35).animate(
+      CurvedAnimation(parent: _micPulseCtrl, curve: Curves.easeInOut));
+    _micPulseCtrl.repeat(reverse: true);
     _initSpeech();
   }
 
-  // ✅ FIX v16: Request microphone permission BEFORE initializing speech
+  // ✅ FIX v17: Improved speech init with web support
   Future<void> _initSpeech() async {
     try {
-      // Request microphone permission explicitly (Android requires runtime permission)
+      // Only request permission on native platforms (not web)
       if (!kIsWeb) {
         final status = await Permission.microphone.request();
         if (!status.isGranted) {
           debugPrint('Speech: Microphone permission denied (status: $status)');
-          if (mounted) {
-            setState(() => _speechAvailable = false);
-          }
+          if (mounted) setState(() => _speechAvailable = false);
           return;
         }
         debugPrint('Speech: Microphone permission granted');
@@ -99,11 +108,16 @@ class _NearMissTabState extends State<NearMissTab> {
         onError: (e) {
           debugPrint('Speech error: ${e.errorMsg} (permanent: ${e.permanent})');
           if (mounted) setState(() => _isListening = false);
+          // ✅ Auto-retry on non-permanent errors
+          if (!e.permanent && _activeMicField != null) {
+            Future.delayed(const Duration(seconds: 1), () {
+              if (mounted && _isListening) _restartListening();
+            });
+          }
         },
         onStatus: (s) {
           debugPrint('Speech status: $s');
           if (s == 'done' && _isListening && _activeMicField != null) {
-            // Auto-restart for continuous dictation
             _restartListening();
           } else if (s == 'notListening') {
             if (mounted) setState(() => _isListening = false);
@@ -123,7 +137,7 @@ class _NearMissTabState extends State<NearMissTab> {
     final field    = _activeMicField!;
     final baseText = field.text;
     try {
-      await Future.delayed(const Duration(milliseconds: 300)); // small gap
+      await Future.delayed(const Duration(milliseconds: 300));
       await _speech.listen(
         onResult: (result) {
           if (!mounted || _activeMicField != field) return;
@@ -166,14 +180,14 @@ class _NearMissTabState extends State<NearMissTab> {
       await Future.delayed(const Duration(milliseconds: 300));
     }
 
-    // Check availability
+    // Check availability — re-init if needed
     if (!_speechAvailable) {
       await _initSpeech();
       if (!_speechAvailable) {
         if (mounted) {
           _snack(
             kIsWeb
-              ? 'Voice input requires Chrome browser.'
+              ? 'Voice input requires a supported browser (Chrome, Edge). Please allow microphone access when prompted.'
               : 'Microphone unavailable. Please check app permissions in Settings.',
             AppColors.amber,
           );
@@ -208,7 +222,7 @@ class _NearMissTabState extends State<NearMissTab> {
     } catch (e) {
       debugPrint('Speech listen error: $e');
       if (mounted) setState(() { _isListening = false; _activeMicField = null; });
-      _snack('Voice input failed: $e', AppColors.red);
+      _snack('Voice input failed. Try again.', AppColors.red);
     }
   }
 
@@ -234,6 +248,7 @@ class _NearMissTabState extends State<NearMissTab> {
 
   @override
   void dispose() {
+    _micPulseCtrl.dispose();
     _speech.cancel();
     _brief.dispose(); _dept.dispose(); _location.dispose();
     _people.dispose(); _description.dispose(); _immediateAction.dispose();
@@ -413,7 +428,7 @@ class _NearMissTabState extends State<NearMissTab> {
         context: context,
         builder: (_) => AlertDialog(
           backgroundColor: Theme.of(context).colorScheme.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Row(children: [
             Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 22),
             SizedBox(width: 8),
@@ -424,7 +439,7 @@ class _NearMissTabState extends State<NearMissTab> {
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD97706)),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD97706), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
               child: const Text('Submit Anyway', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700))),
           ]));
       return confirm != true;
@@ -493,26 +508,91 @@ class _NearMissTabState extends State<NearMissTab> {
   void _snack(String msg, Color color) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(fontSize: 12)),
+      content: Row(children: [
+        Icon(
+          color == AppColors.green ? Icons.check_circle_rounded
+            : color == AppColors.red ? Icons.error_rounded
+            : Icons.info_rounded,
+          color: Colors.white, size: 18),
+        const SizedBox(width: 10),
+        Expanded(child: Text(msg, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500))),
+      ]),
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: const EdgeInsets.all(12),
       duration: const Duration(seconds: 3),
     ));
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  LISTENING BANNER — shows at top when voice is active
+  // ═══════════════════════════════════════════════════════════════
+  Widget _listeningBanner(SL sl) {
+    if (!_isListening) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _micPulse,
+      builder: (_, __) => Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.red.withOpacity(0.12), Colors.red.withOpacity(0.05)]),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.red.withOpacity(0.4))),
+        child: Row(children: [
+          Transform.scale(
+            scale: _micPulse.value,
+            child: Container(
+              width: 28, height: 28,
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.15),
+                shape: BoxShape.circle),
+              child: const Icon(Icons.mic, color: Colors.red, size: 16)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Listening...', style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.w700)),
+              Text('Speak clearly. Tap mic again to stop.',
+                style: TextStyle(color: sl.text3, fontSize: 10)),
+            ])),
+          GestureDetector(
+            onTap: () => _toggleVoice(_activeMicField),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8)),
+              child: Text('STOP', style: TextStyle(
+                color: Colors.red.shade700, fontSize: 10, fontWeight: FontWeight.w800))),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _stepLabel(String num, String txt, SL sl) => Row(children: [
-    CircleAvatar(radius: 9, backgroundColor: AppColors.accent, child: Text(num, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
-    const SizedBox(width: 6),
-    Text(txt, style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w700))
+    Container(
+      width: 22, height: 22,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)]),
+        borderRadius: BorderRadius.circular(7)),
+      child: Center(child: Text(num, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)))),
+    const SizedBox(width: 8),
+    Text(txt, style: TextStyle(color: sl.text1, fontSize: 13, fontWeight: FontWeight.w700))
   ]);
 
   Widget _submitBtn({required String label, required IconData icon, required List<Color> colors, required VoidCallback onTap}) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(colors: colors),
-        borderRadius: BorderRadius.circular(12)),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: colors.first.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
+        ]),
       child: ElevatedButton.icon(
         onPressed: onTap,
         icon: Icon(icon, size: 16, color: Colors.white),
@@ -520,43 +600,49 @@ class _NearMissTabState extends State<NearMissTab> {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
+          padding: const EdgeInsets.symmetric(vertical: 15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)))),
     );
   }
 
   Widget _guidanceBox(SL sl) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(11),
+    margin: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: AppColors.amber.withOpacity(0.07),
-      border: Border.all(color: AppColors.amber.withOpacity(0.5)),
-      borderRadius: BorderRadius.circular(11)),
+      gradient: LinearGradient(
+        colors: [AppColors.amber.withOpacity(0.08), AppColors.amber.withOpacity(0.03)]),
+      border: Border.all(color: AppColors.amber.withOpacity(0.4)),
+      borderRadius: BorderRadius.circular(12)),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Row(children: [
-        Icon(Icons.info_outline, size: 12, color: AppColors.amber),
-        SizedBox(width: 5),
-        Text('Reporting guidance', style: TextStyle(color: AppColors.amber, fontSize: 11, fontWeight: FontWeight.w700)),
+      Row(children: [
+        Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppColors.amber.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6)),
+          child: const Icon(Icons.lightbulb_outline_rounded, size: 14, color: AppColors.amber)),
+        const SizedBox(width: 8),
+        const Text('Reporting Guidance', style: TextStyle(color: AppColors.amber, fontSize: 12, fontWeight: FontWeight.w700)),
       ]),
-      const SizedBox(height: 5),
+      const SizedBox(height: 8),
       Text(
         'A near miss is an unplanned event that did NOT result in injury but had the potential to do so. Report freely — no blame, only learning.',
-        style: TextStyle(color: sl.text2, fontSize: 10, height: 1.5)),
+        style: TextStyle(color: sl.text2, fontSize: 11, height: 1.5)),
     ]));
 
   Widget _imageSection(SL sl) {
-    final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Container(
-      padding: const EdgeInsets.all(14),
-      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: cardBg,
-        border: Border.all(color: sl.border.withOpacity(0.4)),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04), blurRadius: 8, offset: const Offset(0, 2))]),
+        color: sl.card,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(sl.isDark ? 0.2 : 0.06), blurRadius: 12, offset: const Offset(0, 3)),
+        ]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _stepLabel('1', 'Image evidence (optional)', sl),
-        const SizedBox(height: 10),
+        _stepLabel('1', 'Image Evidence (Optional)', sl),
+        const SizedBox(height: 12),
         if (_imageBytes == null && !_analyzing) _emptyImage(sl),
         if (_analyzing) _analyzingImage(),
         if (_imageBytes != null && !_analyzing && _aiBrief != null) _imageWithBrief(sl),
@@ -567,210 +653,307 @@ class _NearMissTabState extends State<NearMissTab> {
     GestureDetector(
       onTap: () => _pickImage(ImageSource.camera),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
         decoration: BoxDecoration(
-          border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 2),
-          borderRadius: BorderRadius.circular(12)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [AppColors.accent.withOpacity(0.06), AppColors.accent.withOpacity(0.02)]),
+          border: Border.all(color: AppColors.accent.withOpacity(0.3), width: 1.5),
+          borderRadius: BorderRadius.circular(14)),
         child: Column(children: [
           Container(
-            width: 48, height: 48,
-            decoration: BoxDecoration(color: AppColors.accent.withOpacity(0.1), shape: BoxShape.circle),
-            child: const Icon(Icons.camera_alt_outlined, size: 26, color: AppColors.accent)),
-          const SizedBox(height: 8),
-          Text('Add photo of hazard', style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 3),
-          Text('AI identifies hazard & pre-fills form', style: TextStyle(color: sl.text4, fontSize: 9)),
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [AppColors.accent.withOpacity(0.15), AppColors.accent.withOpacity(0.05)]),
+              shape: BoxShape.circle),
+            child: const Icon(Icons.camera_alt_rounded, size: 28, color: AppColors.accent)),
+          const SizedBox(height: 12),
+          Text('Tap to capture hazard photo', style: TextStyle(color: sl.text1, fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text('AI will auto-identify hazard & pre-fill the form', style: TextStyle(color: sl.text4, fontSize: 10)),
         ])),
     ),
     const SizedBox(height: 10),
     Row(children: [
-      Expanded(child: ElevatedButton.icon(
-        onPressed: () => _pickImage(ImageSource.camera),
-        icon: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
-        label: const Text('Capture', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
-        style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+      Expanded(child: _actionButton(
+        icon: Icons.camera_alt_rounded,
+        label: 'Capture',
+        filled: true,
+        onTap: () => _pickImage(ImageSource.camera),
       )),
-      const SizedBox(width: 8),
-      Expanded(child: OutlinedButton.icon(
-        onPressed: () => _pickImage(ImageSource.gallery),
-        icon: const Icon(Icons.photo_library, size: 14, color: AppColors.accent),
-        label: const Text('Gallery', style: TextStyle(color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w600)),
-        style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.accent, width: 2), padding: const EdgeInsets.symmetric(vertical: 11), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+      const SizedBox(width: 10),
+      Expanded(child: _actionButton(
+        icon: Icons.photo_library_rounded,
+        label: 'Gallery',
+        filled: false,
+        onTap: () => _pickImage(ImageSource.gallery),
       )),
     ]),
   ]);
 
+  Widget _actionButton({required IconData icon, required String label, required bool filled, required VoidCallback onTap}) {
+    if (filled) {
+      return Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)]),
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [BoxShadow(color: AppColors.accent.withOpacity(0.25), blurRadius: 6, offset: const Offset(0, 2))]),
+        child: ElevatedButton.icon(
+          onPressed: onTap,
+          icon: Icon(icon, size: 15, color: Colors.white),
+          label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent, shadowColor: Colors.transparent,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
+      );
+    }
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 15, color: AppColors.accent),
+      label: Text(label, style: const TextStyle(color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w600)),
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: AppColors.accent, width: 1.5),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+    );
+  }
+
   Widget _analyzingImage() => Container(
-    height: 130,
+    height: 140,
     decoration: BoxDecoration(
       color: const Color(0xFF252840),
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
       image: _imageBytes != null ? DecorationImage(image: MemoryImage(_imageBytes!), fit: BoxFit.cover) : null),
     child: Container(
-      decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), borderRadius: BorderRadius.circular(10)),
+      decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
       child: Center(child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.accent)),
-          const SizedBox(height: 8),
-          Text(_step, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 32, height: 32, child: CircularProgressIndicator(strokeWidth: 3, color: AppColors.accent)),
+          const SizedBox(height: 10),
+          Text(_step, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text('Please wait...', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10)),
         ]))));
 
   Widget _imageWithBrief(SL sl) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.memory(_imageBytes!, fit: BoxFit.fitWidth)),
-      const SizedBox(height: 10),
+      ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_imageBytes!, fit: BoxFit.fitWidth)),
+      const SizedBox(height: 12),
       Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: _isOnlineMode ? AppColors.purple.withOpacity(0.08) : AppColors.amber.withOpacity(0.08),
-          border: Border.all(color: _isOnlineMode ? AppColors.purple.withOpacity(0.4) : AppColors.amber.withOpacity(0.4), width: 1.5),
-          borderRadius: BorderRadius.circular(12)),
+          gradient: LinearGradient(
+            colors: _isOnlineMode
+              ? [AppColors.accent.withOpacity(0.08), AppColors.accent.withOpacity(0.02)]
+              : [AppColors.amber.withOpacity(0.08), AppColors.amber.withOpacity(0.02)]),
+          border: Border.all(color: _isOnlineMode ? AppColors.accent.withOpacity(0.3) : AppColors.amber.withOpacity(0.3), width: 1.5),
+          borderRadius: BorderRadius.circular(14)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            Icon(Icons.auto_awesome, size: 12, color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber),
-            const SizedBox(width: 4),
-            Text(_isOnlineMode ? 'AI assessment' : 'Knowledge-based (offline)', style: TextStyle(color: _isOnlineMode ? const Color(0xFFC4B5FD) : AppColors.amber, fontSize: 11, fontWeight: FontWeight.w700)),
+            Icon(Icons.auto_awesome, size: 14, color: _isOnlineMode ? AppColors.accent : AppColors.amber),
+            const SizedBox(width: 6),
+            Text(_isOnlineMode ? 'AI Assessment' : 'Knowledge-based (Offline)',
+              style: TextStyle(color: _isOnlineMode ? AppColors.accent : AppColors.amber, fontSize: 12, fontWeight: FontWeight.w700)),
             const Spacer(),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: AppColors.amber.withOpacity(0.15), border: Border.all(color: AppColors.amber), borderRadius: BorderRadius.circular(8)),
-              child: Text('${_aiBrief!['severity']} - ${_aiBrief!['confidence']}%', style: const TextStyle(color: AppColors.amber, fontSize: 8, fontWeight: FontWeight.w800))),
-          ]),
-          // ✅ Show warning if offline/fallback
-          if (!_isOnlineMode) ...[
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: AppColors.amber.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
+                color: AppColors.amber.withOpacity(0.12),
+                border: Border.all(color: AppColors.amber.withOpacity(0.6)),
+                borderRadius: BorderRadius.circular(8)),
+              child: Text('${_aiBrief!['severity']} · ${_aiBrief!['confidence']}%',
+                style: const TextStyle(color: AppColors.amber, fontSize: 9, fontWeight: FontWeight.w800))),
+          ]),
+          if (!_isOnlineMode) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.amber.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8)),
               child: Row(children: [
-                const Icon(Icons.wifi_off, color: AppColors.amber, size: 12),
-                const SizedBox(width: 6),
+                const Icon(Icons.wifi_off_rounded, color: AppColors.amber, size: 14),
+                const SizedBox(width: 8),
                 Expanded(child: Text(
                   'Not real image analysis. Connect to internet for AI-powered detection.',
-                  style: TextStyle(color: AppColors.amber.withOpacity(0.9), fontSize: 9, height: 1.3),
-                )),
+                  style: TextStyle(color: AppColors.amber.withOpacity(0.9), fontSize: 10, height: 1.3))),
               ]),
             ),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           _briefRow('Identified', _aiBrief!['identified'].toString(), sl),
           _briefRow('Statutory',  _aiBrief!['statutory'].toString(),  sl),
           _briefRow('Type',       _aiBrief!['type'].toString(),       sl),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Text('AI brief (editable):', style: TextStyle(color: sl.text3, fontSize: 10, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           TextField(
             controller: _brief,
             maxLines: 4,
-            style: TextStyle(color: sl.text1, fontSize: 11, height: 1.5),
+            style: TextStyle(color: sl.text1, fontSize: 12, height: 1.5),
             decoration: InputDecoration(
               filled: true,
-              fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
-              contentPadding: const EdgeInsets.all(10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: sl.border, width: 1.5)),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+              fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+              contentPadding: const EdgeInsets.all(12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: sl.border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: AppColors.accent, width: 2)),
             )),
           const SizedBox(height: 6),
-          Text('Edit any field directly above', textAlign: TextAlign.center, style: TextStyle(color: sl.text4, fontSize: 9)),
+          Text('Edit any field above or in the form below', textAlign: TextAlign.center, style: TextStyle(color: sl.text4, fontSize: 10)),
         ])),
-      const SizedBox(height: 8),
+      const SizedBox(height: 10),
       OutlinedButton.icon(
         onPressed: () => setState(() { _pickedFile = null; _imageBytes = null; _aiBrief = null; _brief.clear(); }),
-        icon: const Icon(Icons.delete_outline, size: 14, color: AppColors.accent),
-        label: const Text('Remove image', style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.w600)),
-        style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.accent, width: 1.5), padding: const EdgeInsets.symmetric(vertical: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+        icon: const Icon(Icons.delete_outline_rounded, size: 15, color: AppColors.red),
+        label: const Text('Remove Image', style: TextStyle(color: AppColors.red, fontSize: 12, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: AppColors.red.withOpacity(0.5), width: 1.5),
+          padding: const EdgeInsets.symmetric(vertical: 11),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
     ]);
 
   Widget _briefRow(String k, String v, SL sl) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 2),
+    padding: const EdgeInsets.symmetric(vertical: 3),
     child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(width: 76, child: Text(k, style: TextStyle(color: sl.text4, fontSize: 9, fontWeight: FontWeight.w700))),
-      Expanded(child: Text(v, style: TextStyle(color: sl.text1, fontSize: 10, height: 1.4))),
+      SizedBox(width: 80, child: Text(k, style: TextStyle(color: sl.text4, fontSize: 10, fontWeight: FontWeight.w700))),
+      Expanded(child: Text(v, style: TextStyle(color: sl.text1, fontSize: 11, height: 1.4))),
     ]));
 
+  // ═══════════════════════════════════════════════════════════════
+  //  DETAILS FORM SECTION — with voice mic buttons
+  // ═══════════════════════════════════════════════════════════════
   Widget _detailsSection(SL sl) {
-    final cardBg  = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cardBg,
-        border: Border.all(color: sl.border.withOpacity(0.4)),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(sl.isDark ? 0.15 : 0.04), blurRadius: 8, offset: const Offset(0, 2))]),
+        color: sl.card,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(sl.isDark ? 0.2 : 0.06), blurRadius: 12, offset: const Offset(0, 3)),
+        ]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _stepLabel('2', 'Observation Particulars', sl),
-          const SizedBox(height: 12),
-          _buildDropdownField('Plant/Unit', _plant, _plants, (v) => setState(() => _plant = v!)),
-          _buildTextField('Department/Shop', _dept, Icons.business, sl),
-          _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _location ? Colors.red : AppColors.accent, size: 20), onPressed: () => _toggleVoice(_location))),
-          _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!)),
-          _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!)),
-          _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!)),
-          _buildTextField('People Exposed (Count)', _people, Icons.people_outline, sl, keyboardType: TextInputType.number),
-          _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _description ? Colors.red : AppColors.accent, size: 20), onPressed: () => _toggleVoice(_description))),
-          _buildTextField('Immediate Corrective Action taken', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2, suffix: IconButton(icon: Icon(Icons.mic, color: _isListening && _activeMicField == _immediateAction ? Colors.red : AppColors.accent, size: 20), onPressed: () => _toggleVoice(_immediateAction))),
+          const SizedBox(height: 14),
+          _buildDropdownField('Plant/Unit', _plant, _plants, (v) => setState(() => _plant = v!), sl),
+          _buildTextField('Department/Shop', _dept, Icons.business_rounded, sl),
+          _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl,
+            suffix: _micButton(_location)),
+          _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
+          _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
+          _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
+          _buildTextField('People Exposed (Count)', _people, Icons.people_outline_rounded, sl, keyboardType: TextInputType.number),
+          _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3,
+            suffix: _micButton(_description)),
+          _buildTextField('Immediate Corrective Action', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
+            suffix: _micButton(_immediateAction)),
         ],
+      ),
+    );
+  }
+
+  /// ✅ v17: Animated mic button with pulse when active
+  Widget _micButton(TextEditingController field) {
+    final isActive = _isListening && _activeMicField == field;
+    return AnimatedBuilder(
+      animation: _micPulse,
+      builder: (_, __) => GestureDetector(
+        onTap: () => _toggleVoice(field),
+        child: Container(
+          width: 36, height: 36,
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            color: isActive ? Colors.red.withOpacity(0.12) : AppColors.accent.withOpacity(0.08),
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isActive ? Colors.red.withOpacity(0.5) : Colors.transparent,
+              width: 1.5)),
+          child: Transform.scale(
+            scale: isActive ? _micPulse.value * 0.85 : 1.0,
+            child: Icon(
+              isActive ? Icons.mic : Icons.mic_none_rounded,
+              color: isActive ? Colors.red : AppColors.accent,
+              size: 18)),
+        ),
       ),
     );
   }
 
   Widget _buildTextField(String label, TextEditingController controller, IconData icon, SL sl, {int maxLines = 1, TextInputType keyboardType = TextInputType.text, Widget? suffix}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        style: TextStyle(color: sl.text1, fontSize: 12),
+        style: TextStyle(color: sl.text1, fontSize: 13),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: TextStyle(color: sl.text3, fontSize: 11),
-          prefixIcon: Icon(icon, size: 16, color: AppColors.accent),
+          labelStyle: TextStyle(color: sl.text3, fontSize: 11.5),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(left: 12, right: 8),
+            child: Icon(icon, size: 18, color: AppColors.accent.withOpacity(0.7))),
+          prefixIconConstraints: const BoxConstraints(minWidth: 40),
           suffixIcon: suffix,
           filled: true,
-          fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: sl.border)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+          fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.accent, width: 2)),
         ),
       ),
     );
   }
 
-  Widget _buildDropdownField(String label, String value, List<String> items, ValueChanged<String?> onChanged) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildDropdownField(String label, String value, List<String> items, ValueChanged<String?> onChanged, SL sl) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14),
       child: DropdownButtonFormField<String>(
         value: items.contains(value) ? value : items.first,
         items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 12)))).toList(),
         onChanged: onChanged,
-        dropdownColor: isDark ? const Color(0xFF252840) : Colors.white,
-        style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 12),
+        dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
+        style: TextStyle(color: sl.text1, fontSize: 12),
+        icon: Icon(Icons.keyboard_arrow_down_rounded, color: sl.text3),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 11),
+          labelStyle: TextStyle(color: sl.text3, fontSize: 11.5),
           filled: true,
-          fillColor: isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: isDark ? Colors.grey[800]! : Colors.grey[300]!)),
+          fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.accent, width: 2)),
         ),
       ),
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  BUILD
+  // ═══════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Container(
-      color: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+      color: sl.bg,
       child: SafeArea(
         child: Column(children: [
           UniversalAppBar(
@@ -781,29 +964,32 @@ class _NearMissTabState extends State<NearMissTab> {
             isDark: widget.isDark,
           ),
           Expanded(child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // ✅ Show listening banner when voice active
+                _listeningBanner(sl),
                 _guidanceBox(sl),
                 _imageSection(sl),
                 _detailsSection(sl),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
                 Row(children: [
                   Expanded(child: _submitBtn(
                     label: 'Save Report',
-                    icon:  Icons.save_outlined,
+                    icon:  Icons.save_rounded,
                     colors: const [Color(0xFF16A34A), Color(0xFF059669)],
                     onTap: () => _submit(exportAfter: false),
                   )),
                   const SizedBox(width: 10),
                   Expanded(child: _submitBtn(
                     label: 'Save + PDF',
-                    icon:  Icons.picture_as_pdf,
-                    colors: const [AppColors.accent, AppColors.cyan],
+                    icon:  Icons.picture_as_pdf_rounded,
+                    colors: const [Color(0xFF7B5BFF), Color(0xFF06B6D4)],
                     onTap: () => _submit(exportAfter: true),
                   )),
                 ]),
+                const SizedBox(height: 20),
               ],
             ),
           )),
