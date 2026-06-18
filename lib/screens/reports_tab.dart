@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
-import 'analytics/trend_analysis_tab.dart';
+import 'analytics/data_analysis_tab.dart';
 import 'analytics/predictive_tab.dart';
-import 'analytics/heat_map_tab.dart';
-import 'analytics/report_builder_tab.dart';
 
 class ReportsTab extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -33,7 +31,7 @@ class _ReportsTabState extends State<ReportsTab>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -50,7 +48,6 @@ class _ReportsTabState extends State<ReportsTab>
       body: SafeArea(
         child: Column(
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: Row(
@@ -67,7 +64,6 @@ class _ReportsTabState extends State<ReportsTab>
               ),
             ),
             const SizedBox(height: 12),
-            // Tab bar
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
@@ -77,12 +73,11 @@ class _ReportsTabState extends State<ReportsTab>
               ),
               child: TabBar(
                 controller: _tabController,
-                isScrollable: true,
                 labelColor: Colors.white,
                 unselectedLabelColor: sl.text3,
                 labelStyle: const TextStyle(
-                    fontSize: 12, fontWeight: FontWeight.w600),
-                unselectedLabelStyle: const TextStyle(fontSize: 12),
+                    fontSize: 13, fontWeight: FontWeight.w600),
+                unselectedLabelStyle: const TextStyle(fontSize: 13),
                 indicator: BoxDecoration(
                   color: AppColors.accent,
                   borderRadius: BorderRadius.circular(10),
@@ -90,26 +85,19 @@ class _ReportsTabState extends State<ReportsTab>
                 indicatorSize: TabBarIndicatorSize.tab,
                 dividerColor: Colors.transparent,
                 padding: const EdgeInsets.all(4),
-                labelPadding:
-                    const EdgeInsets.symmetric(horizontal: 14),
                 tabs: const [
-                  Tab(text: 'Trends'),
+                  Tab(text: 'Data Analysis'),
                   Tab(text: 'Predictive'),
-                  Tab(text: 'Heat Map'),
-                  Tab(text: 'Builder'),
                 ],
               ),
             ),
             const SizedBox(height: 8),
-            // Tab content
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: const [
-                  TrendAnalysisTab(),
+                  DataAnalysisTab(),
                   PredictiveTab(),
-                  HeatMapTab(),
-                  ReportBuilderTab(),
                 ],
               ),
             ),

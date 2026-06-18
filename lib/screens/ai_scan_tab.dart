@@ -20,6 +20,7 @@ import '../services/sync_service.dart';
 import '../services/pdf_export.dart';
 import '../widgets/hazard_annotated_image.dart';
 import '../widgets/universal_app_bar.dart';
+import '../widgets/voice_text_field.dart';
 import '../services/i18n.dart';
 
 class AIScanTab extends StatefulWidget {
@@ -51,6 +52,7 @@ class _AIScanTabState extends State<AIScanTab> {
   final Map<int, TextEditingController> _mitigationControllers = {};
   final Map<int, bool> _hazardClosed = {};
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _locationController = TextEditingController();
   final List<GlobalKey>  _hazardRowKeys    = [];
   int? _highlightedRow;
 
@@ -60,6 +62,7 @@ class _AIScanTabState extends State<AIScanTab> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _locationController.dispose();
     for (final c in _mitigationControllers.values) { c.dispose(); }
     super.dispose();
   }
@@ -1403,6 +1406,13 @@ class _AIScanTabState extends State<AIScanTab> {
           ])),
       ),
       const SizedBox(height: 12),
+      VoiceTextField(
+        controller: _locationController,
+        label: 'Location',
+        hint: 'e.g. BF-2 Cast House, Bay 4',
+        maxLines: 1,
+      ),
+      const SizedBox(height: 12),
       Row(children: [
         Expanded(child: ElevatedButton.icon(
           onPressed: () => _pickImage(ImageSource.camera),
@@ -1510,9 +1520,8 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
 
       if (_imageBytes != null) ...[
-        // ✅ FIX v17: Full image at natural aspect ratio — NO zoom/pan.
-        // The entire uploaded image is visible with hazard boxes overlaid.
         Container(
+          constraints: const BoxConstraints(maxHeight: 220),
           decoration: BoxDecoration(
             color: sl.isDark
                 ? const Color(0xFF1A1D2E)

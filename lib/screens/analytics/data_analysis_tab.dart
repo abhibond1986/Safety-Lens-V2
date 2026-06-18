@@ -1,0 +1,406 @@
+import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../../main.dart' show AppColors, SL;
+import '../../services/local_db.dart';
+
+class DataAnalysisTab extends StatefulWidget {
+  const DataAnalysisTab({super.key});
+
+  @override
+  State<DataAnalysisTab> createState() => _DataAnalysisTabState();
+}
+
+class _DataAnalysisTabState extends State<DataAnalysisTab> {
+  List<Map<String, dynamic>> _incidents = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final inc = await LocalDB.getIncidents();
+    if (mounted) setState(() { _incidents = inc; _loading = false; });
+  }
+
+  // Severity counts
+  Map<String, int> get _severityCounts {
+    final map = <String, int>{'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0};
+    for (final i in _incidents) {
+      final sev = (i['severity']?.toString() ?? 'MEDIUM').toUpperCase();
+      map[sev] = (map[sev] ?? 0) + 1;
+    }
+    return map;
+  }
+
+  // Plant-wise counts
+  Map<String, int> get _plantCounts {
+    final map = <String, int>{};
+    for (final i in _incidents) {
+      final plant = i['plant']?.toString() ?? 'Other';
+      map[plant] = (map[plant] ?? 0) + 1;
+    }
+    final sorted = map.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return Map.fromEntries(sorted);
+  }
+
+  // Category counts
+  Map<String, int> get _categoryCounts {
+    final map = <String, int>{};
+    for (final i in _incidents) {
+      final cat = i['wsaCategory']?.toString() ?? 'Other';
+      map[cat] = (map[cat] ?? 0) + 1;
+    }
+    final sorted = map.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return Map.fromEntries(sorted);
+  }
+
+  // Type counts
+  int get _aiScanCount => _incidents.where(
+      (i) => i['type']?.toString().toUpperCase() == 'AI_SCAN').length;
+  int get _nearMissCount => _incidents.where(
+      (i) => i['type']?.toString().toUpperCase() == 'NEAR_MISS').length;
+
+  @override
+  Widget build(BuildContext context) {
+    final sl = SL.of(context);
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_incidents.isEmpty) {
+      return Center(child: Text('No data recorded yet',
+          style: TextStyle(color: sl.text3, fontSize: 14)));
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Summary row
+          _summaryCards(sl),
+          const SizedBox(height: 20),
+          // Severity Pie Chart
+          _sectionTitle('Severity Distribution', sl),
+          const SizedBox(height: 12),
+          _severityPieChart(sl),
+          const SizedBox(height: 24),
+          // Type Pie Chart
+          _sectionTitle('Report Type Breakdown', sl),
+          const SizedBox(height: 12),
+          _typePieChart(sl),
+          const SizedBox(height: 24),
+          // Plant-wise Bar Chart
+          _sectionTitle('Incidents by Plant', sl),
+          const SizedBox(height: 12),
+          _plantBarChart(sl),
+          const SizedBox(height: 24),
+          // Category Bar Chart
+          _sectionTitle('WSA Category Breakdown', sl),
+          const SizedBox(height: 12),
+          _categoryBarChart(sl),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionTitle(String title, SL sl) {
+    return Text(title,
+        style: TextStyle(
+            fontSize: 15, fontWeight: FontWeight.w700, color: sl.text1));
+  }
+
+  Widget _summaryCards(SL sl) {
+    final total = _incidents.length;
+    final critical = _severityCounts['CRITICAL'] ?? 0;
+    final open = _incidents.where(
+        (i) => i['status']?.toString().toUpperCase() == 'OPEN').length;
+    return Row(
+      children: [
+        _miniCard(sl, 'Total', '$total', AppColors.accent),
+        const SizedBox(width: 8),
+        _miniCard(sl, 'Critical', '$critical', AppColors.crit),
+        const SizedBox(width: 8),
+        _miniCard(sl, 'Open', '$open', AppColors.amber),
+        const SizedBox(width: 8),
+        _miniCard(sl, 'AI Scans', '$_aiScanCount', AppColors.cyan),
+      ],
+    );
+  }
+
+  Widget _miniCard(SL sl, String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(children: [
+          Text(value, style: TextStyle(
+              fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(fontSize: 9, color: sl.text3)),
+        ]),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SEVERITY PIE CHART
+  // ═══════════════════════════════════════════════════════════════
+  Widget _severityPieChart(SL sl) {
+    final counts = _severityCounts;
+    final total = counts.values.fold<int>(0, (s, v) => s + v);
+    if (total == 0) return const SizedBox();
+
+    final sections = <PieChartSectionData>[
+      _pieSection(counts['CRITICAL']!, total, AppColors.crit, 'Critical'),
+      _pieSection(counts['HIGH']!, total, AppColors.red, 'High'),
+      _pieSection(counts['MEDIUM']!, total, AppColors.amber, 'Medium'),
+      _pieSection(counts['LOW']!, total, AppColors.green, 'Low'),
+    ];
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: sl.border.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 130, height: 130,
+            child: PieChart(PieChartData(
+              sections: sections,
+              centerSpaceRadius: 28,
+              sectionsSpace: 2,
+            )),
+          ),
+          const SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _legendRow('Critical', counts['CRITICAL']!, AppColors.crit, sl),
+              _legendRow('High', counts['HIGH']!, AppColors.red, sl),
+              _legendRow('Medium', counts['MEDIUM']!, AppColors.amber, sl),
+              _legendRow('Low', counts['LOW']!, AppColors.green, sl),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  PieChartSectionData _pieSection(int count, int total, Color color, String title) {
+    final pct = total > 0 ? (count / total * 100) : 0.0;
+    return PieChartSectionData(
+      value: count.toDouble(),
+      color: color,
+      radius: 24,
+      title: pct >= 5 ? '${pct.round()}%' : '',
+      titleStyle: const TextStyle(
+          fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white),
+    );
+  }
+
+  Widget _legendRow(String label, int count, Color color, SL sl) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        Container(width: 10, height: 10,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
+        const SizedBox(width: 6),
+        Text('$label: ', style: TextStyle(fontSize: 11, color: sl.text2)),
+        Text('$count', style: TextStyle(
+            fontSize: 12, fontWeight: FontWeight.w700, color: sl.text1)),
+      ]),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  TYPE PIE CHART
+  // ═══════════════════════════════════════════════════════════════
+  Widget _typePieChart(SL sl) {
+    final total = _incidents.length;
+    if (total == 0) return const SizedBox();
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: sl.border.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 130, height: 130,
+            child: PieChart(PieChartData(
+              sections: [
+                PieChartSectionData(
+                  value: _aiScanCount.toDouble(),
+                  color: AppColors.accent,
+                  radius: 24,
+                  title: _aiScanCount > 0
+                      ? '${(_aiScanCount / total * 100).round()}%' : '',
+                  titleStyle: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                PieChartSectionData(
+                  value: _nearMissCount.toDouble(),
+                  color: AppColors.amber,
+                  radius: 24,
+                  title: _nearMissCount > 0
+                      ? '${(_nearMissCount / total * 100).round()}%' : '',
+                  titleStyle: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+              ],
+              centerSpaceRadius: 28,
+              sectionsSpace: 2,
+            )),
+          ),
+          const SizedBox(width: 20),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _legendRow('AI Scan', _aiScanCount, AppColors.accent, sl),
+              _legendRow('Near Miss', _nearMissCount, AppColors.amber, sl),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  PLANT BAR CHART
+  // ═══════════════════════════════════════════════════════════════
+  Widget _plantBarChart(SL sl) {
+    final data = _plantCounts;
+    if (data.isEmpty) return const SizedBox();
+    final entries = data.entries.toList();
+    final maxVal = entries.first.value;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: sl.border.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: entries.map((e) {
+          final fraction = maxVal > 0 ? e.value / maxVal : 0.0;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              SizedBox(width: 80,
+                  child: Text(_shortPlant(e.key),
+                      style: TextStyle(fontSize: 11, color: sl.text2),
+                      overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: sl.border.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(5)),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: fraction.clamp(0.03, 1.0),
+                      child: Container(
+                        height: 20,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [AppColors.accent, AppColors.cyan]),
+                          borderRadius: BorderRadius.circular(5)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('${e.value}', style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w700, color: sl.text1)),
+            ]),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  CATEGORY BAR CHART
+  // ═══════════════════════════════════════════════════════════════
+  Widget _categoryBarChart(SL sl) {
+    final data = _categoryCounts;
+    if (data.isEmpty) return const SizedBox();
+    final entries = data.entries.take(8).toList();
+    final maxVal = entries.first.value;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: sl.border.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: entries.map((e) {
+          final fraction = maxVal > 0 ? e.value / maxVal : 0.0;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              SizedBox(width: 100,
+                  child: Text(e.key,
+                      style: TextStyle(fontSize: 10, color: sl.text2),
+                      overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: sl.border.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4)),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: fraction.clamp(0.03, 1.0),
+                      child: Container(
+                        height: 18,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [AppColors.amber, AppColors.red]),
+                          borderRadius: BorderRadius.circular(4)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('${e.value}', style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: sl.text1)),
+            ]),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _shortPlant(String plant) {
+    final parts = plant.split(' ');
+    return parts.first;
+  }
+}

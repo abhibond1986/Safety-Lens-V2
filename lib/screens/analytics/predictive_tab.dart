@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
-import '../../services/analytics_engine.dart';
 
 class PredictiveTab extends StatefulWidget {
   const PredictiveTab({super.key});
@@ -25,6 +25,25 @@ class _PredictiveTabState extends State<PredictiveTab> {
     if (mounted) setState(() { _incidents = inc; _loading = false; });
   }
 
+  /// Top 5 hazard categories per plant
+  Map<String, List<MapEntry<String, int>>> get _top5PerPlant {
+    final plantCats = <String, Map<String, int>>{};
+    for (final i in _incidents) {
+      final plant = i['plant']?.toString() ?? 'Unknown';
+      final cat = i['wsaCategory']?.toString() ?? 'Other';
+      plantCats.putIfAbsent(plant, () => <String, int>{});
+      plantCats[plant]![cat] = (plantCats[plant]![cat] ?? 0) + 1;
+    }
+
+    final result = <String, List<MapEntry<String, int>>>{};
+    for (final entry in plantCats.entries) {
+      final sorted = entry.value.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      result[entry.key] = sorted.take(5).toList();
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) {
     final sl = SL.of(context);
@@ -33,266 +52,159 @@ class _PredictiveTabState extends State<PredictiveTab> {
     }
     if (_incidents.isEmpty) {
       return Center(child: Text('No data available',
-          style: TextStyle(color: sl.text3)));
+          style: TextStyle(color: sl.text3, fontSize: 14)));
     }
 
-    final riskScores = AnalyticsEngine.computePlantRiskScores(_incidents);
-    final risingCats = AnalyticsEngine.detectRisingCategories(_incidents);
-    final hotSpots = AnalyticsEngine.predictHotSpots(_incidents);
-    final dataVolume = _incidents.length;
-    final confidence = dataVolume >= 50 ? 'High' : dataVolume >= 20 ? 'Medium' : 'Low';
+    final top5Data = _top5PerPlant;
+    final plants = top5Data.keys.toList()..sort();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _confidenceBanner(sl, confidence, dataVolume),
-          const SizedBox(height: 20),
-          _sectionTitle('Plant Risk Scores', sl),
-          const SizedBox(height: 12),
-          _riskScoreCards(sl, riskScores),
-          const SizedBox(height: 24),
-          _sectionTitle('Rising Risk Categories', sl),
-          const SizedBox(height: 12),
-          _risingRisksList(sl, risingCats),
-          const SizedBox(height: 24),
-          _sectionTitle('Predicted Hot Spots', sl),
-          const SizedBox(height: 12),
-          _hotSpotsList(sl, hotSpots),
+          Text('Top 5 Hazards per Plant',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700, color: sl.text1)),
+          const SizedBox(height: 4),
+          Text('Predicted high-risk categories based on recorded incidents',
+              style: TextStyle(fontSize: 11, color: sl.text3)),
+          const SizedBox(height: 16),
+          ...plants.map((plant) => _plantSection(sl, plant, top5Data[plant]!)),
         ],
       ),
     );
   }
 
-  Widget _confidenceBanner(SL sl, String confidence, int volume) {
-    final color = confidence == 'High'
-        ? AppColors.green
-        : confidence == 'Medium'
-            ? AppColors.amber
-            : AppColors.red;
+  Widget _plantSection(SL sl, String plant, List<MapEntry<String, int>> top5) {
+    if (top5.isEmpty) return const SizedBox();
+    final maxVal = top5.first.value;
+    final total = top5.fold<int>(0, (s, e) => s + e.value);
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.insights, size: 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Prediction confidence: $confidence ($volume data points)',
-              style: TextStyle(fontSize: 12, color: sl.text2, fontWeight: FontWeight.w500),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(confidence,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionTitle(String title, SL sl) {
-    return Text(title,
-        style: TextStyle(
-            fontSize: 16, fontWeight: FontWeight.w600, color: sl.text1));
-  }
-
-  Widget _riskScoreCards(SL sl, Map<String, double> scores) {
-    final sorted = scores.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    final maxScore = sorted.isNotEmpty ? sorted.first.value : 1.0;
-
-    return Column(
-      children: sorted.map((e) {
-        final normalized = maxScore > 0 ? e.value / maxScore : 0.0;
-        final riskLevel = normalized > 0.7
-            ? 'Critical'
-            : normalized > 0.4
-                ? 'High'
-                : normalized > 0.2
-                    ? 'Medium'
-                    : 'Low';
-        final riskColor = normalized > 0.7
-            ? AppColors.crit
-            : normalized > 0.4
-                ? AppColors.red
-                : normalized > 0.2
-                    ? AppColors.amber
-                    : AppColors.green;
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: sl.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: sl.border.withOpacity(0.3)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(e.key,
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600,
-                            color: sl.text1)),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: riskColor.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(riskLevel,
-                        style: TextStyle(
-                            fontSize: 10, fontWeight: FontWeight.w700,
-                            color: riskColor)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: normalized,
-                  minHeight: 6,
-                  backgroundColor: sl.border.withOpacity(0.2),
-                  valueColor: AlwaysStoppedAnimation(riskColor),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text('Score: ${e.value.toStringAsFixed(1)}',
-                  style: TextStyle(fontSize: 10, color: sl.text3)),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _risingRisksList(SL sl, List<Map<String, dynamic>> rising) {
-    if (rising.isEmpty) {
-      return _infoCard(sl, 'No rising risk categories detected', Icons.check_circle, AppColors.green);
-    }
-    return Column(
-      children: rising.take(5).map((r) {
-        final change = r['changePercent'] as int;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: sl.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.amber.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.trending_up, size: 20, color: AppColors.amber),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(r['category'].toString(),
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600,
-                            color: sl.text1)),
-                    Text('${r['recentCount']} incidents (last 30d) vs ${r['priorCount']} (prior 60d)',
-                        style: TextStyle(fontSize: 10, color: sl.text3)),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.red.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text('+$change%',
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700,
-                        color: AppColors.red)),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _hotSpotsList(SL sl, List<Map<String, dynamic>> hotSpots) {
-    if (hotSpots.isEmpty) {
-      return _infoCard(sl, 'No accelerating hot spots detected', Icons.shield, AppColors.green);
-    }
-    return Column(
-      children: hotSpots.take(5).map((h) {
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: sl.card,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.crit.withOpacity(0.3)),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.local_fire_department, size: 20, color: AppColors.crit),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(h['plant'].toString(),
-                        style: TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600,
-                            color: sl.text1)),
-                    Text('${h['recentCount']} incidents (last 30d) — accelerating',
-                        style: TextStyle(fontSize: 10, color: sl.text3)),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_upward, size: 16, color: AppColors.crit),
-              Text('${h['acceleration']}%',
-                  style: const TextStyle(
-                      fontSize: 11, fontWeight: FontWeight.w700,
-                      color: AppColors.crit)),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _infoCard(SL sl, String text, IconData icon, Color color) {
-    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: sl.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: sl.border.withOpacity(0.3)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(child: Text(text,
-              style: TextStyle(fontSize: 12, color: sl.text2))),
+          // Plant header
+          Row(children: [
+            Icon(Icons.factory_outlined, size: 16, color: AppColors.accent),
+            const SizedBox(width: 6),
+            Expanded(child: Text(plant,
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: sl.text1))),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6)),
+              child: Text('$total incidents',
+                  style: const TextStyle(
+                      fontSize: 10, fontWeight: FontWeight.w600,
+                      color: AppColors.accent)),
+            ),
+          ]),
+          const SizedBox(height: 14),
+
+          // Pie chart + legend row
+          Row(
+            children: [
+              SizedBox(
+                width: 90, height: 90,
+                child: PieChart(PieChartData(
+                  sections: List.generate(top5.length, (i) {
+                    return PieChartSectionData(
+                      value: top5[i].value.toDouble(),
+                      color: _barColors[i % _barColors.length],
+                      radius: 18,
+                      title: '',
+                    );
+                  }),
+                  centerSpaceRadius: 18,
+                  sectionsSpace: 1.5,
+                )),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: List.generate(top5.length, (i) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(children: [
+                        Container(width: 8, height: 8,
+                            decoration: BoxDecoration(
+                                color: _barColors[i % _barColors.length],
+                                borderRadius: BorderRadius.circular(2))),
+                        const SizedBox(width: 5),
+                        Expanded(child: Text(top5[i].key,
+                            style: TextStyle(fontSize: 10, color: sl.text2),
+                            overflow: TextOverflow.ellipsis)),
+                        Text('${top5[i].value}',
+                            style: TextStyle(fontSize: 10,
+                                fontWeight: FontWeight.w700, color: sl.text1)),
+                      ]),
+                    );
+                  }),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Bar chart
+          ...List.generate(top5.length, (i) {
+            final fraction = maxVal > 0 ? top5[i].value / maxVal : 0.0;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                SizedBox(width: 14,
+                    child: Text('${i + 1}',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
+                            color: _barColors[i % _barColors.length]))),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Stack(children: [
+                    Container(
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: sl.border.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(4)),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: fraction.clamp(0.05, 1.0),
+                      child: Container(
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: _barColors[i % _barColors.length],
+                          borderRadius: BorderRadius.circular(4)),
+                      ),
+                    ),
+                  ]),
+                ),
+                const SizedBox(width: 6),
+                Text('${top5[i].value}',
+                    style: TextStyle(fontSize: 10,
+                        fontWeight: FontWeight.w700, color: sl.text1)),
+              ]),
+            );
+          }),
         ],
       ),
     );
   }
+
+  static const _barColors = [
+    AppColors.crit,
+    AppColors.amber,
+    AppColors.accent,
+    AppColors.cyan,
+    AppColors.green,
+  ];
 }
