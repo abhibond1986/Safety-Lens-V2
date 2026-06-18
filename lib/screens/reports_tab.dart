@@ -2,7 +2,7 @@
 // ✅ Custom-painted pie chart + bar chart for Reports section.
 // No external dependency needed — uses CustomPainter.
 // Shows: Severity distribution (donut) + AI Scan vs Near Miss by plant (bar).
-
+import '../widgets/report_charts.dart'
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
