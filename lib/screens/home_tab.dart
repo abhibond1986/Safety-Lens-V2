@@ -16,7 +16,9 @@ import '../services/i18n.dart';
 import 'reports_tab.dart';
 import 'admin_screen.dart';
 import '../widgets/universal_app_bar.dart';
-
+import '../widgets/wsa_bar_chart.dart';
+// Then anywhere in your scroll view:
+const WsaBarChart(),
 class HomeTab extends StatefulWidget {
   final Map<String, dynamic>? user;
   final VoidCallback toggleTheme;
