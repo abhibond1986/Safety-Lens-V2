@@ -2,18 +2,13 @@
 // Shared header used at the top of Home / AI Scan / Near Miss / Reports.
 // Provides:
 //   • SAIL logo + screen title
-//   • User avatar (tap → profile menu: name, designation, plant, sign out)
+//   • User avatar (tap → profile menu)
 //   • Theme toggle (sun/moon)
-//   • Language toggle (EN ⇄ हिन्दी)
+//   • Language picker (EN / हिं / বাং / ଓ) — cycles through all 4 + popup
 //   • Export to Google Sheets button
 //
-// Usage:
-//   UniversalAppBar(
-//     title: I18n.t('home.dashboard'),
-//     user: currentUser,
-//     toggleTheme: () => setState(() => isDark = !isDark),
-//     onSignOut: _signOut,
-//   )
+// FIX: Language change now cycles through all 4 supported languages
+//      and triggers full app rebuild via I18n.instance notifyListeners()
 
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
@@ -29,11 +24,7 @@ class UniversalAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback? toggleTheme;
   final VoidCallback? onSignOut;
   final bool isDark;
-
-  /// Optional override — defaults to "export all incidents to Sheets"
   final Future<void> Function()? onExport;
-
-  /// Show export button (default true). Hide on tabs where it doesn't make sense.
   final bool showExport;
 
   const UniversalAppBar({
@@ -72,6 +63,97 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
 
   void _rebuild() { if (mounted) setState(() {}); }
 
+  // ── LANGUAGE PICKER ──────────────────────────────────────────
+  void _showLanguagePicker() {
+    final sl = SL.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: sl.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Container(width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: sl.border, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 18),
+            Text(I18n.t('settings.language'),
+              style: TextStyle(color: sl.text1, fontSize: 16,
+                fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            ...I18n.supportedCodes.map((code) {
+              final isSelected = I18n.currentLang == code;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  onTap: () async {
+                    await I18n.setLocale(code);
+                    if (mounted) setState(() {});
+                    if (Navigator.canPop(ctx)) Navigator.pop(ctx);
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                        ? AppColors.accent.withOpacity(0.15)
+                        : sl.card2,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                          ? AppColors.accent
+                          : sl.border,
+                        width: isSelected ? 1.5 : 1)),
+                    child: Row(children: [
+                      Text(_flagForCode(code),
+                        style: const TextStyle(fontSize: 20)),
+                      const SizedBox(width: 12),
+                      Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(I18n.langName(code),
+                            style: TextStyle(
+                              color: sl.text1, fontSize: 14,
+                              fontWeight: FontWeight.w600)),
+                          Text(_englishName(code),
+                            style: TextStyle(
+                              color: sl.text3, fontSize: 11)),
+                        ])),
+                      if (isSelected)
+                        const Icon(Icons.check_circle,
+                          color: AppColors.accent, size: 22),
+                    ]),
+                  ),
+                ),
+              );
+            }),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  String _flagForCode(String code) {
+    switch (code) {
+      case 'hi': return '🇮🇳';
+      case 'bn': return '🇮🇳';
+      case 'or': return '🇮🇳';
+      default:   return '🇬🇧';
+    }
+  }
+
+  String _englishName(String code) {
+    switch (code) {
+      case 'hi': return 'Hindi';
+      case 'bn': return 'Bengali';
+      case 'or': return 'Odia';
+      default:   return 'English';
+    }
+  }
+
   // ── EXPORT TO SHEETS ─────────────────────────────────────────
   Future<void> _doExport() async {
     if (widget.onExport != null) {
@@ -81,7 +163,6 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
       return;
     }
 
-    // Default: push all local incidents to Sheets
     setState(() => _exporting = true);
     try {
       final all = await LocalDB.getIncidents();
@@ -129,19 +210,17 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            // Drag handle
             Container(width: 40, height: 4,
               decoration: BoxDecoration(
                 color: sl.border, borderRadius: BorderRadius.circular(2))),
             const SizedBox(height: 18),
 
-            // Avatar + name
             Row(children: [
               Container(
                 width: 56, height: 56,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     colors: [AppColors.accent, Color(0xFF6F45D9)])),
                 child: Center(child: Text(
                   (u['name']?.toString().isNotEmpty == true
@@ -181,7 +260,6 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
 
             const Divider(height: 28),
 
-            // Theme + language toggles
             _menuRow(
               icon: widget.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
               label: widget.isDark ? I18n.t('settings.darkMode') : I18n.t('settings.lightMode'),
@@ -199,10 +277,9 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
               icon: Icons.language_rounded,
               label: I18n.t('settings.language'),
               trailing: GestureDetector(
-                onTap: () async {
-                  await I18n.toggle();
-                  if (mounted) setState(() {});
-                  if (Navigator.canPop(ctx)) Navigator.pop(ctx);
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showLanguagePicker();
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -211,7 +288,7 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppColors.amber.withOpacity(0.4))),
                   child: Text(
-                    I18n.currentLang == 'en' ? 'EN  →  हिं' : 'हिं  →  EN',
+                    I18n.langName(I18n.currentLang),
                     style: const TextStyle(color: AppColors.amber,
                         fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
@@ -229,7 +306,6 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
 
             const Divider(height: 24),
 
-            // Sign out
             if (widget.onSignOut != null)
               GestureDetector(
                 onTap: () { Navigator.pop(ctx); widget.onSignOut!(); },
@@ -278,6 +354,15 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
     final initial = (widget.user?['name']?.toString().isNotEmpty == true
         ? widget.user!['name'].toString()[0] : '?').toUpperCase();
 
+    // Short label for current language
+    String langLabel;
+    switch (I18n.currentLang) {
+      case 'hi': langLabel = 'हिं'; break;
+      case 'bn': langLabel = 'বাং'; break;
+      case 'or': langLabel = 'ଓ'; break;
+      default:   langLabel = 'EN'; break;
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: sl.bg2,
@@ -287,11 +372,9 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
           child: Row(children: [
-            // SAIL logo
             SailLogo.widget(size: 36),
             const SizedBox(width: 10),
 
-            // Title + subtitle
             Expanded(child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -306,12 +389,18 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
                       maxLines: 1, overflow: TextOverflow.ellipsis),
               ])),
 
-            // Language quick toggle
-            _IconBtn(
-              icon: Icons.translate_rounded,
-              label: I18n.currentLang.toUpperCase(),
-              color: AppColors.amber,
-              onTap: () async { await I18n.toggle(); if (mounted) setState(() {}); },
+            // Language quick toggle (tap = cycle, long press = picker)
+            GestureDetector(
+              onLongPress: _showLanguagePicker,
+              child: _IconBtn(
+                icon: Icons.translate_rounded,
+                label: langLabel,
+                color: AppColors.amber,
+                onTap: () async {
+                  await I18n.toggle();
+                  if (mounted) setState(() {});
+                },
+              ),
             ),
             const SizedBox(width: 4),
 
@@ -350,9 +439,9 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
               child: Container(
                 margin: const EdgeInsets.only(left: 4),
                 width: 34, height: 34,
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     colors: [AppColors.accent, Color(0xFF6F45D9)])),
                 child: Center(child: Text(initial,
                     style: const TextStyle(
