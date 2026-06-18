@@ -96,6 +96,21 @@ class SafetyLensApp extends StatefulWidget {
 }
 class _SafetyLensAppState extends State<SafetyLensApp> {
   // ✅ FIX: Default to LIGHT mode instead of dark
+ @override
+void initState() {
+  super.initState();
+  I18n.instance.addListener(_onLocaleChanged);  // ADD
+}
+
+@override
+void dispose() {
+  I18n.instance.removeListener(_onLocaleChanged);  // ADD
+  super.dispose();
+}
+
+void _onLocaleChanged() {  // ADD
+  if (mounted) setState(() {});
+}
   ThemeMode _mode = ThemeMode.light;
   void toggleTheme() =>
       setState(() => _mode = _mode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
