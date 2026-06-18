@@ -4,6 +4,7 @@
 // ✅ Removed LanguageFab (language toggle already in UniversalAppBar)
 // ✅ Everything else preserved
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
@@ -102,16 +103,24 @@ class _HomeScreenState extends State<HomeScreen>
     ];
 
     return Scaffold(
-      backgroundColor: sl.bg,
-      body: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 250),
-        child: KeyedSubtree(
-          key: ValueKey(_tabIndex),
-          child: tabs[_tabIndex],
+      extendBody: true,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: sl.bgGradient,
+          ),
+        ),
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 250),
+          child: KeyedSubtree(
+            key: ValueKey(_tabIndex),
+            child: tabs[_tabIndex],
+          ),
         ),
       ),
       bottomNavigationBar: _bottomNav(sl),
-      // ✅ REMOVED: LanguageFab — language toggle is already in UniversalAppBar
     );
   }
 
@@ -124,67 +133,64 @@ class _HomeScreenState extends State<HomeScreen>
       _NavItem(Icons.bar_chart_outlined,        Icons.bar_chart_rounded,        'Reports'),
     ];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: sl.bg2,
-        border: Border(
-          top: BorderSide(
-              color: sl.border.withOpacity(0.5), width: 1),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(sl.isDark ? 0.3 : 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
+          decoration: BoxDecoration(
+            color: sl.glassColor,
+            border: Border(
+              top: BorderSide(color: sl.glassBorder, width: 0.5),
+            ),
           ),
-        ],
-      ),
-      child: SafeArea(
-        child: SizedBox(
-          height: 60,
-          child: Row(
-            children: List.generate(items.length, (i) {
-              final sel  = _tabIndex == i;
-              final item = items[i];
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () => setState(() => _tabIndex = i),
-                  behavior: HitTestBehavior.opaque,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: sel
-                              ? AppColors.accent.withOpacity(0.15)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Icon(
-                          sel ? item.activeIcon : item.icon,
-                          size: 22,
-                          color: sel ? AppColors.accent : sl.text4,
-                        ),
+          child: SafeArea(
+            child: SizedBox(
+              height: 60,
+              child: Row(
+                children: List.generate(items.length, (i) {
+                  final sel  = _tabIndex == i;
+                  final item = items[i];
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _tabIndex = i),
+                      behavior: HitTestBehavior.opaque,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: sel
+                                  ? AppColors.accent.withOpacity(0.15)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Icon(
+                              sel ? item.activeIcon : item.icon,
+                              size: 22,
+                              color: sel ? AppColors.accent : sl.text4,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            item.label,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: sel
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: sel ? AppColors.accent : sl.text4,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        item.label,
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: sel
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: sel ? AppColors.accent : sl.text4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }),
+                    ),
+                  );
+                }),
+              ),
+            ),
           ),
         ),
       ),

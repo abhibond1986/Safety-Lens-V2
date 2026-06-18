@@ -1343,7 +1343,7 @@ class _AIScanTabState extends State<AIScanTab> {
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Container(
-      color: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF5F6FA),
+      color: Colors.transparent,
       child: SafeArea(child: Column(children: [
         UniversalAppBar(
           title: I18n.t('aiScan.title'),

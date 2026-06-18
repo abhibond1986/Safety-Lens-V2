@@ -1,16 +1,9 @@
-// lib/screens/login_screen.dart
-//
-// FIXES:
-// ✅ After registration, auto-login and go to HomeScreen (no re-login needed)
-// ✅ Plant dropdown: 14 SAIL units + "Others"
-// ✅ "Contractor Access" button (skip login → AI Scan + Near Miss only)
-// ✅ Logo uses assets/images/app_icon.png
-// ✅ Uses I18n.t() for translatable strings
-
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/i18n.dart';
+import '../widgets/glass_card.dart';
 import 'home_screen.dart';
 import 'contractor_home_screen.dart';
 
@@ -120,8 +113,6 @@ class _LoginScreenState extends State<LoginScreen> {
         'pno': _regPnoCtrl.text.trim()});
       if (!mounted) return;
       if (ok != null) {
-        // ✅ FIX: Auto-login after registration — go directly to HomeScreen
-        // LocalDB.register() already saves user as current_user in SharedPreferences
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${I18n.t('common.success')}! Welcome, $name'),
           backgroundColor: Colors.green,
@@ -154,157 +145,183 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Scaffold(
-      backgroundColor: sl.bg,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 28, vertical: 24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // ── SAIL Logo — clean, no backdrop ────────────────
-                Image.asset(
-                  'assets/images/app_icon.png',
-                  width: 80, height: 80,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Image.asset(
-                    'assets/images/sail_logo.png',
-                    width: 80, height: 80,
-                    fit: BoxFit.contain),
-                ),
-                const SizedBox(height: 18),
-                const BrandTitle(size: 24),
-                const SizedBox(height: 6),
-                Text(I18n.t('app.tagline'),
-                  style: TextStyle(
-                    color: sl.text4, fontSize: 12,
-                    letterSpacing: 1.2)),
-                const SizedBox(height: 32),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: sl.bgGradient,
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24, vertical: 24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/app_icon.png',
+                    width: 72, height: 72,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Image.asset(
+                      'assets/images/sail_logo.png',
+                      width: 72, height: 72,
+                      fit: BoxFit.contain),
+                  ),
+                  const SizedBox(height: 14),
+                  const BrandTitle(size: 22),
+                  const SizedBox(height: 6),
+                  Text(I18n.t('app.tagline'),
+                    style: TextStyle(
+                      color: sl.text4, fontSize: 12,
+                      letterSpacing: 1.2)),
+                  const SizedBox(height: 28),
 
-                Container(
-                  decoration: BoxDecoration(
-                    color: sl.card2,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: sl.border)),
-                  padding: const EdgeInsets.all(4),
-                  child: Row(children: [
-                    _tab('Login', _isLogin, () =>
-                        setState(() { _isLogin = true; _err = ''; })),
-                    _tab('Register', !_isLogin, () =>
-                        setState(() { _isLogin = false; _err = ''; })),
-                  ])),
-                const SizedBox(height: 24),
+                  GlassCard(
+                    padding: const EdgeInsets.all(20),
+                    borderRadius: 20,
+                    child: Column(
+                      children: [
+                        // Tab toggle
+                        Container(
+                          decoration: BoxDecoration(
+                            color: sl.isDark
+                                ? Colors.white.withOpacity(0.05)
+                                : Colors.white.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.all(4),
+                          child: Row(children: [
+                            _tab('Login', _isLogin, () =>
+                                setState(() { _isLogin = true; _err = ''; })),
+                            _tab('Register', !_isLogin, () =>
+                                setState(() { _isLogin = false; _err = ''; })),
+                          ]),
+                        ),
+                        const SizedBox(height: 20),
 
-                if (_isLogin) ..._loginFields(sl)
-                else ..._registerFields(sl),
+                        if (_isLogin) ..._loginFields(sl)
+                        else ..._registerFields(sl),
 
-                if (_err.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: AppColors.crit.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: AppColors.crit.withOpacity(0.4))),
-                    child: Row(children: [
-                      const Icon(Icons.error_outline,
-                        color: AppColors.crit, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(_err,
-                        style: const TextStyle(
-                          color: AppColors.crit, fontSize: 12))),
-                    ])),
-                ],
+                        if (_err.isNotEmpty) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppColors.crit.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: AppColors.crit.withOpacity(0.4))),
+                            child: Row(children: [
+                              const Icon(Icons.error_outline,
+                                color: AppColors.crit, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(_err,
+                                style: const TextStyle(
+                                  color: AppColors.crit, fontSize: 12))),
+                            ])),
+                        ],
 
-                const SizedBox(height: 20),
+                        const SizedBox(height: 20),
 
-                SizedBox(
-                  width: double.infinity,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: _loading
-                        ? [sl.card2, sl.card2]
-                        : [AppColors.accent, AppColors.cyan]),
+                        // Login/Register button
+                        SizedBox(
+                          width: double.infinity,
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(colors: _loading
+                                ? [sl.card2, sl.card2]
+                                : [AppColors.accent, AppColors.cyan]),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: _loading ? [] : [BoxShadow(
+                                color: AppColors.accent.withOpacity(0.3),
+                                blurRadius: 12, offset: const Offset(0, 4))]),
+                            child: ElevatedButton(
+                              onPressed: _loading
+                                ? null
+                                : (_isLogin ? _login : _register),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(vertical: 15),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12))),
+                              child: _loading
+                                ? const SizedBox(
+                                    width: 20, height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white))
+                                : Text(
+                                    _isLogin ? 'Login' : 'Create Account',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700))))),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      boxShadow: _loading ? [] : [BoxShadow(
-                        color: AppColors.accent.withOpacity(0.3),
-                        blurRadius: 12, offset: const Offset(0, 4))]),
-                    child: ElevatedButton(
-                      onPressed: _loading
-                        ? null
-                        : (_isLogin ? _login : _register),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12))),
-                      child: _loading
-                        ? const SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white))
-                        : Text(
-                            _isLogin ? 'Login' : 'Create Account',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700))))),
-
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _contractorAccess,
-                    icon: const Icon(Icons.engineering_outlined, size: 18),
-                    label: const Text('Contractor Access'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.cyan,
-                      side: BorderSide(
-                        color: AppColors.cyan.withOpacity(0.5),
-                        width: 1.5,
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: _contractorAccess,
+                          icon: const Icon(Icons.engineering_outlined, size: 18),
+                          label: const Text('Contractor Access'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.cyan,
+                            side: BorderSide(
+                              color: AppColors.cyan.withOpacity(0.5),
+                              width: 1.5,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'No login required — AI Scan & Near Miss only',
-                  style: TextStyle(
-                    color: sl.text4,
-                    fontSize: 10,
-                    fontStyle: FontStyle.italic,
+                  const SizedBox(height: 4),
+                  Text(
+                    'No login required — AI Scan & Near Miss only',
+                    style: TextStyle(
+                      color: sl.text4,
+                      fontSize: 10,
+                      fontStyle: FontStyle.italic,
+                    ),
                   ),
-                ),
 
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(sl.isDark
-                      ? Icons.light_mode_outlined
-                      : Icons.dark_mode_outlined,
-                      color: sl.text4, size: 16),
-                    const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: widget.toggleTheme,
-                      child: Text(
-                        sl.isDark ? 'Switch to Light Mode'
-                                  : 'Switch to Dark Mode',
-                        style: TextStyle(
-                          color: sl.text4, fontSize: 11,
-                          decoration: TextDecoration.underline))),
-                  ]),
-              ],
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(sl.isDark
+                        ? Icons.light_mode_outlined
+                        : Icons.dark_mode_outlined,
+                        color: sl.text4, size: 16),
+                      const SizedBox(width: 6),
+                      GestureDetector(
+                        onTap: widget.toggleTheme,
+                        child: Text(
+                          sl.isDark ? 'Switch to Light Mode'
+                                    : 'Switch to Dark Mode',
+                          style: TextStyle(
+                            color: sl.text4, fontSize: 11,
+                            decoration: TextDecoration.underline))),
+                    ]),
+                ],
+              ),
             ),
           ),
         ),
@@ -341,9 +358,11 @@ class _LoginScreenState extends State<LoginScreen> {
         const SizedBox(height: 6),
         Container(
           decoration: BoxDecoration(
-            color: sl.card2,
+            color: sl.isDark
+                ? Colors.white.withOpacity(0.06)
+                : Colors.white.withOpacity(0.5),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: sl.border)),
+            border: Border.all(color: sl.glassBorder)),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
@@ -414,15 +433,17 @@ class _LoginScreenState extends State<LoginScreen> {
             hintText: hint,
             hintStyle: TextStyle(color: sl.text4, fontSize: 11),
             filled: true,
-            fillColor: sl.card2,
+            fillColor: sl.isDark
+                ? Colors.white.withOpacity(0.06)
+                : Colors.white.withOpacity(0.5),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 14, vertical: 12),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: sl.border)),
+              borderSide: BorderSide(color: sl.glassBorder)),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: sl.border)),
+              borderSide: BorderSide(color: sl.glassBorder)),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(

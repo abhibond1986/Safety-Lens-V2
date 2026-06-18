@@ -1,11 +1,8 @@
-// lib/screens/splash_screen.dart
-//
-// FIX: Removed blue backdrop around SAIL logo — minimalist, clean design.
-// Logo is just the raw app_icon.png image, no container decoration.
-
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
+import '../widgets/glass_card.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
 
@@ -57,46 +54,57 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Scaffold(
-      backgroundColor: sl.bg,
-      body: FadeTransition(
-        opacity: _fade,
-        child: ScaleTransition(
-          scale: _scale,
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // ── SAIL Logo — clean, no backdrop ────────────────
-                Image.asset(
-                  'assets/images/app_icon.png',
-                  width: 100, height: 100,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, __, ___) => Image.asset(
-                    'assets/images/sail_logo.png',
-                    width: 100, height: 100,
-                    fit: BoxFit.contain),
-                ),
-                const SizedBox(height: 24),
-                const BrandTitle(size: 28),
-                const SizedBox(height: 8),
-                Text('AI Safety Platform',
-                  style: TextStyle(
-                    color: sl.text3,
-                    fontSize: 13,
-                    letterSpacing: 1.5,
-                    fontWeight: FontWeight.w500)),
-                const SizedBox(height: 48),
-                SizedBox(
-                  width: 24, height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.accent.withOpacity(0.7)))),
-                const SizedBox(height: 12),
-                Text('Initialising safety platform...',
-                  style: TextStyle(
-                    color: sl.text4, fontSize: 11)),
-              ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: sl.bgGradient,
+          ),
+        ),
+        child: FadeTransition(
+          opacity: _fade,
+          child: ScaleTransition(
+            scale: _scale,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GlassCard(
+                    padding: const EdgeInsets.all(24),
+                    borderRadius: 24,
+                    child: Image.asset(
+                      'assets/images/app_icon.png',
+                      width: 90, height: 90,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Image.asset(
+                        'assets/images/sail_logo.png',
+                        width: 90, height: 90,
+                        fit: BoxFit.contain),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  const BrandTitle(size: 28),
+                  const SizedBox(height: 8),
+                  Text('AI Safety Platform',
+                    style: TextStyle(
+                      color: sl.text3,
+                      fontSize: 13,
+                      letterSpacing: 1.5,
+                      fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 48),
+                  SizedBox(
+                    width: 24, height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.accent.withOpacity(0.7)))),
+                  const SizedBox(height: 12),
+                  Text('Initialising safety platform...',
+                    style: TextStyle(
+                      color: sl.text4, fontSize: 11)),
+                ],
+              ),
             ),
           ),
         ),

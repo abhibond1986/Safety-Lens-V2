@@ -42,13 +42,13 @@ class AppColors {
   static const amber = Color(0xFFFFAB00);
   static const green = Color(0xFF00E676);
 
-  // Dark mode — Image 3 style: true dark grey (not deep purple/blue)
-  static const darkBg     = Color(0xFF121212);   // Material dark baseline
-  static const darkBg2    = Color(0xFF1E1E1E);   // slightly lighter
-  static const darkCard   = Color(0xFF242424);   // card surface
-  static const darkCard2  = Color(0xFF2D2D2D);   // elevated card
-  static const darkCard3  = Color(0xFF373737);   // top-most surface
-  static const darkBorder = Color(0xFF424242);   // subtle separator
+  // Dark mode — Glassmorphism deep purple-blue base
+  static const darkBg     = Color(0xFF0F0C29);   // deep purple-black
+  static const darkBg2    = Color(0xFF1A1735);   // slightly lighter
+  static const darkCard   = Color(0xFF1E1B3A);   // glass card base
+  static const darkCard2  = Color(0xFF272450);   // elevated glass
+  static const darkCard3  = Color(0xFF302B63);   // top-most surface
+  static const darkBorder = Color(0xFF3D3870);   // subtle purple separator
 
   // Light mode — clean white with very subtle tint
   static const lightBg     = Color(0xFFF8F8F8);  // near-white, no tint
@@ -78,17 +78,32 @@ class SL {
   Color get text4  => isDark ? const Color(0xFF64748B) : const Color(0xFF777777);
   Color get surface => isDark ? AppColors.darkCard  : Colors.white;
 
+  // Glassmorphism properties
+  Color get glassColor => isDark
+      ? Colors.white.withOpacity(0.06)
+      : Colors.white.withOpacity(0.55);
+  Color get glassBorder => isDark
+      ? Colors.white.withOpacity(0.12)
+      : Colors.white.withOpacity(0.6);
+  LinearGradient get meshGradient => isDark
+      ? const LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E)])
+      : const LinearGradient(
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFFE8EAF6), Color(0xFFF3E5F5), Color(0xFFEDE7F6)]);
+
   List<Color> get bgGradient => isDark
-      ? [const Color(0xFF121212), const Color(0xFF1E1E1E)]
-      : [const Color(0xFFF8F8F8), const Color(0xFFEFEFEF)];
+      ? [const Color(0xFF0F0C29), const Color(0xFF302B63), const Color(0xFF24243E)]
+      : [const Color(0xFFE8EAF6), const Color(0xFFF3E5F5), const Color(0xFFEDE7F6)];
 
   Gradient get cardGradient => isDark
       ? LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [AppColors.darkCard, AppColors.darkCard2])
+          colors: [Colors.white.withOpacity(0.08), Colors.white.withOpacity(0.03)])
       : LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Colors.white, const Color(0xFFF5F4FF)]);
+          colors: [Colors.white.withOpacity(0.7), Colors.white.withOpacity(0.4)]);
 
   BoxShadow get cardShadow => BoxShadow(
       color: isDark

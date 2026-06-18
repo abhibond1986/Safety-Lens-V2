@@ -5,6 +5,7 @@
 // ✅ Language picker with 4 languages (EN/HI/BN/OR)
 // ✅ Export to Google Sheets
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
 import '../services/i18n.dart';
@@ -389,15 +390,18 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
       default:   langLabel = 'EN'; break;
     }
 
-    return Container(
-      decoration: BoxDecoration(
-        color: sl.bg2,
-        border: Border(bottom: BorderSide(color: sl.border, width: 0.5))),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
-          child: Row(children: [
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          decoration: BoxDecoration(
+            color: sl.glassColor,
+            border: Border(bottom: BorderSide(color: sl.glassBorder, width: 0.5))),
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
+              child: Row(children: [
             SailLogo.widget(size: 36),
             const SizedBox(width: 10),
 
@@ -477,6 +481,8 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
               ),
             ),
           ]),
+        ),
+      ),
         ),
       ),
     );

@@ -960,7 +960,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Container(
-      color: sl.bg,
+      color: Colors.transparent,
       child: SafeArea(
         child: Column(children: [
           UniversalAppBar(

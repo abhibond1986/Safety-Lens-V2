@@ -85,9 +85,9 @@ class _PredictiveTabState extends State<PredictiveTab> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: sl.card,
+        color: sl.glassColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: sl.border.withOpacity(0.3)),
+        border: Border.all(color: sl.glassBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

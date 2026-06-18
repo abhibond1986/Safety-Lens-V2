@@ -564,8 +564,8 @@ class _ChatTabState extends State<ChatTab> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            color: sl.bg2,
-            border: Border(bottom: BorderSide(color: sl.border, width: 0.5))),
+            color: sl.glassColor,
+            border: Border(bottom: BorderSide(color: sl.glassBorder, width: 0.5))),
           child: Row(children: [
             Container(
               width: 36, height: 36,

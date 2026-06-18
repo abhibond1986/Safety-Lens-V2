@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../main.dart' show AppColors, SL;
@@ -135,19 +136,25 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
 
   Widget _miniCard(SL sl, String label, String value, Color color) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.3)),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withOpacity(0.3)),
+            ),
+            child: Column(children: [
+              Text(value, style: TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.w800, color: color)),
+              const SizedBox(height: 2),
+              Text(label, style: TextStyle(fontSize: 9, color: sl.text3)),
+            ]),
+          ),
         ),
-        child: Column(children: [
-          Text(value, style: TextStyle(
-              fontSize: 18, fontWeight: FontWeight.w800, color: color)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(fontSize: 9, color: sl.text3)),
-        ]),
       ),
     );
   }
@@ -170,9 +177,9 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: sl.card,
+        color: sl.glassColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: sl.border.withOpacity(0.3)),
+        border: Border.all(color: sl.glassBorder),
       ),
       child: Row(
         children: [
@@ -235,9 +242,9 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: sl.card,
+        color: sl.glassColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: sl.border.withOpacity(0.3)),
+        border: Border.all(color: sl.glassBorder),
       ),
       child: Row(
         children: [
@@ -293,9 +300,9 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: sl.card,
+        color: sl.glassColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: sl.border.withOpacity(0.3)),
+        border: Border.all(color: sl.glassBorder),
       ),
       child: Column(
         children: entries.map((e) {
@@ -352,9 +359,9 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: sl.card,
+        color: sl.glassColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: sl.border.withOpacity(0.3)),
+        border: Border.all(color: sl.glassBorder),
       ),
       child: Column(
         children: entries.map((e) {

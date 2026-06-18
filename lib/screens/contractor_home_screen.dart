@@ -4,6 +4,7 @@
 // Only provides access to AI Scan and Near Miss sections.
 // No login required. No LanguageFab (language is in UniversalAppBar).
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import 'login_screen.dart';
@@ -66,9 +67,19 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
     ];
 
     return Scaffold(
-      backgroundColor: sl.bg,
+      extendBody: true,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: sl.bgGradient,
+          ),
+        ),
+        child: Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: sl.bg2,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: sl.text1),
@@ -128,7 +139,8 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         ),
       ),
       bottomNavigationBar: _bottomNav(sl),
-      // No LanguageFab — language toggle is in UniversalAppBar within each tab
+    ),
+      ),
     );
   }
 
@@ -140,20 +152,15 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
           Icons.warning_amber_rounded, 'Near Miss'),
     ];
 
-    return Container(
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+        child: Container(
       decoration: BoxDecoration(
-        color: sl.bg2,
+        color: sl.glassColor,
         border: Border(
-          top: BorderSide(
-              color: sl.border.withOpacity(0.5), width: 1),
+          top: BorderSide(color: sl.glassBorder, width: 0.5),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(sl.isDark ? 0.3 : 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
       ),
       child: SafeArea(
         child: SizedBox(
@@ -201,6 +208,8 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
               );
             }),
           ),
+        ),
+      ),
         ),
       ),
     );

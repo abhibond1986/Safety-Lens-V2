@@ -196,7 +196,7 @@ class _HomeTabState extends State<HomeTab> {
     final firstName = (widget.user?['name']?.toString() ?? 'User').split(' ').first;
 
     return Scaffold(
-      backgroundColor: sl.bg,
+      backgroundColor: Colors.transparent,
       appBar: UniversalAppBar(
         title: I18n.t('app.name'),
         subtitle: I18n.t('app.tagline'),

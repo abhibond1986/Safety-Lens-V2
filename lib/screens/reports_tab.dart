@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
 import 'analytics/data_analysis_tab.dart';
@@ -44,7 +45,7 @@ class _ReportsTabState extends State<ReportsTab>
   Widget build(BuildContext context) {
     final sl = SL.of(context);
     return Scaffold(
-      backgroundColor: sl.bg,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Column(
           children: [
@@ -64,12 +65,16 @@ class _ReportsTabState extends State<ReportsTab>
               ),
             ),
             const SizedBox(height: 12),
-            Container(
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 12),
               decoration: BoxDecoration(
-                color: sl.card,
+                color: sl.glassColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: sl.border.withOpacity(0.3)),
+                border: Border.all(color: sl.glassBorder),
               ),
               child: TabBar(
                 controller: _tabController,
@@ -89,6 +94,8 @@ class _ReportsTabState extends State<ReportsTab>
                   Tab(text: 'Data Analysis'),
                   Tab(text: 'Predictive'),
                 ],
+              ),
+            ),
               ),
             ),
             const SizedBox(height: 8),
