@@ -1,14 +1,9 @@
 // lib/widgets/universal_app_bar.dart
-// Shared header used at the top of Home / AI Scan / Near Miss / Reports.
-// Provides:
-//   • SAIL logo + screen title
-//   • User avatar (tap → profile menu)
-//   • Theme toggle (sun/moon)
-//   • Language picker (EN / हिं / বাং / ଓ) — cycles through all 4 + popup
-//   • Export to Google Sheets button
-//
-// FIX: Language change now cycles through all 4 supported languages
-//      and triggers full app rebuild via I18n.instance notifyListeners()
+// v17 — Shared header for Home / AI Scan / Near Miss / Reports.
+// ✅ FIX: Profile sheet Sign Out no longer hidden behind bottom nav bar
+// ✅ UI: Polished profile sheet with better spacing, scrollable content
+// ✅ Language picker with 4 languages (EN/HI/BN/OR)
+// ✅ Export to Google Sheets
 
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
@@ -188,7 +183,7 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
 
   void _snack(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: const TextStyle(color: Colors.white)),
+      content: Text(msg, style: const TextStyle(color: Colors.white, fontSize: 12)),
       backgroundColor: color,
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -198,134 +193,160 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
   }
 
   // ── PROFILE MENU ─────────────────────────────────────────────
+  // ✅ FIX v17: Made scrollable + added bottom padding so Sign Out
+  //    is visible above the bottom navigation bar
   void _showProfileMenu() {
     final sl = SL.of(context);
     final u  = widget.user ?? {};
     showModalBottomSheet(
       context: context,
       backgroundColor: sl.card,
+      isScrollControlled: true, // ✅ Allows sheet to size properly
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(width: 40, height: 4,
-              decoration: BoxDecoration(
-                color: sl.border, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(height: 18),
-
-            Row(children: [
-              Container(
-                width: 56, height: 56,
-                decoration: const BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [AppColors.accent, Color(0xFF6F45D9)])),
-                child: Center(child: Text(
-                  (u['name']?.toString().isNotEmpty == true
-                      ? u['name'].toString()[0] : '?').toUpperCase(),
-                  style: const TextStyle(color: Colors.white,
-                      fontSize: 22, fontWeight: FontWeight.w800))),
-              ),
-              const SizedBox(width: 14),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(u['name']?.toString() ?? 'User',
-                    style: TextStyle(color: sl.text1, fontSize: 16,
-                        fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
-                Text(u['designation']?.toString() ?? '—',
-                    style: TextStyle(color: sl.text3, fontSize: 12)),
-                if ((u['pno']?.toString() ?? '').isNotEmpty)
-                  Text('${I18n.t('settings.pno')}: ${u['pno']}',
-                      style: TextStyle(color: sl.text4, fontSize: 11)),
-              ])),
-            ]),
-            const SizedBox(height: 8),
-            if ((u['plant']?.toString() ?? '').isNotEmpty)
-              Container(
-                margin: const EdgeInsets.only(top: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(20)),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.factory_outlined, color: AppColors.accent, size: 12),
-                  const SizedBox(width: 5),
-                  Text(u['plant'].toString(),
-                      style: const TextStyle(color: AppColors.accent,
-                          fontSize: 11, fontWeight: FontWeight.w600)),
-                ])),
-
-            const Divider(height: 28),
-
-            _menuRow(
-              icon: widget.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-              label: widget.isDark ? I18n.t('settings.darkMode') : I18n.t('settings.lightMode'),
-              trailing: Switch(
-                value: widget.isDark,
-                activeColor: AppColors.accent,
-                onChanged: (_) {
-                  if (widget.toggleTheme != null) widget.toggleTheme!();
-                  Navigator.pop(ctx);
-                },
-              ),
-              sl: sl,
-            ),
-            _menuRow(
-              icon: Icons.language_rounded,
-              label: I18n.t('settings.language'),
-              trailing: GestureDetector(
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showLanguagePicker();
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) {
+        // Get bottom padding (nav bar height + safe area)
+        final bottomPad = MediaQuery.of(ctx).viewPadding.bottom + 80;
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, bottomPad),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                // Drag handle
+                Container(width: 40, height: 4,
                   decoration: BoxDecoration(
-                    color: AppColors.amber.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppColors.amber.withOpacity(0.4))),
-                  child: Text(
-                    I18n.langName(I18n.currentLang),
-                    style: const TextStyle(color: AppColors.amber,
-                        fontSize: 12, fontWeight: FontWeight.w700)),
+                    color: sl.border, borderRadius: BorderRadius.circular(2))),
+                const SizedBox(height: 20),
+
+                // ── USER INFO SECTION ──
+                Row(children: [
+                  Container(
+                    width: 60, height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft, end: Alignment.bottomRight,
+                        colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)])),
+                    child: Center(child: Text(
+                      (u['name']?.toString().isNotEmpty == true
+                          ? u['name'].toString()[0] : '?').toUpperCase(),
+                      style: const TextStyle(color: Colors.white,
+                          fontSize: 24, fontWeight: FontWeight.w800))),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(u['name']?.toString() ?? 'User',
+                        style: TextStyle(color: sl.text1, fontSize: 18,
+                            fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 2),
+                    Text(u['designation']?.toString() ?? '—',
+                        style: TextStyle(color: sl.text3, fontSize: 13)),
+                    if ((u['pno']?.toString() ?? '').isNotEmpty)
+                      Text('PNO: ${u['pno']}',
+                          style: TextStyle(color: sl.text4, fontSize: 11)),
+                  ])),
+                ]),
+
+                const SizedBox(height: 12),
+
+                // Plant chip
+                if ((u['plant']?.toString() ?? '').isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.accent.withOpacity(0.3))),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.factory_outlined, color: AppColors.accent, size: 14),
+                      const SizedBox(width: 6),
+                      Text('${u['plant']}',
+                          style: const TextStyle(color: AppColors.accent,
+                              fontSize: 12, fontWeight: FontWeight.w600)),
+                    ])),
+
+                const SizedBox(height: 16),
+                Divider(color: sl.border, height: 1),
+                const SizedBox(height: 12),
+
+                // ── SETTINGS ROWS ──
+                _menuRow(
+                  icon: widget.isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  label: widget.isDark ? I18n.t('settings.darkMode') : I18n.t('settings.lightMode'),
+                  trailing: Switch(
+                    value: widget.isDark,
+                    activeColor: AppColors.accent,
+                    onChanged: (_) {
+                      if (widget.toggleTheme != null) widget.toggleTheme!();
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                  sl: sl,
                 ),
-              ),
-              sl: sl,
-            ),
-            _menuRow(
-              icon: Icons.cloud_upload_rounded,
-              label: I18n.t('settings.exportData'),
-              trailing: const Icon(Icons.chevron_right_rounded,
-                  color: AppColors.text3),
-              onTap: () { Navigator.pop(ctx); _doExport(); },
-              sl: sl,
-            ),
+                const SizedBox(height: 4),
+                _menuRow(
+                  icon: Icons.language_rounded,
+                  label: I18n.t('settings.language'),
+                  trailing: GestureDetector(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showLanguagePicker();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: AppColors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppColors.amber.withOpacity(0.4))),
+                      child: Text(
+                        I18n.langName(I18n.currentLang),
+                        style: const TextStyle(color: AppColors.amber,
+                            fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+                  sl: sl,
+                ),
+                const SizedBox(height: 4),
+                _menuRow(
+                  icon: Icons.cloud_upload_rounded,
+                  label: I18n.t('settings.exportData'),
+                  trailing: const Icon(Icons.chevron_right_rounded,
+                      color: AppColors.text3, size: 20),
+                  onTap: () { Navigator.pop(ctx); _doExport(); },
+                  sl: sl,
+                ),
 
-            const Divider(height: 24),
+                const SizedBox(height: 16),
+                Divider(color: sl.border, height: 1),
+                const SizedBox(height: 16),
 
-            if (widget.onSignOut != null)
-              GestureDetector(
-                onTap: () { Navigator.pop(ctx); widget.onSignOut!(); },
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    color: AppColors.red.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.red.withOpacity(0.3))),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    const Icon(Icons.logout_rounded, color: AppColors.red, size: 18),
-                    const SizedBox(width: 8),
-                    Text(I18n.t('settings.signOut'),
-                        style: const TextStyle(color: AppColors.red,
-                            fontSize: 13, fontWeight: FontWeight.w700)),
-                  ]))),
-          ]),
-        ),
-      ),
+                // ── SIGN OUT — visible above nav bar ──
+                if (widget.onSignOut != null)
+                  GestureDetector(
+                    onTap: () { Navigator.pop(ctx); widget.onSignOut!(); },
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppColors.red.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.red.withOpacity(0.3))),
+                      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                        const Icon(Icons.logout_rounded, color: AppColors.red, size: 18),
+                        const SizedBox(width: 8),
+                        Text(I18n.t('settings.signOut'),
+                            style: const TextStyle(color: AppColors.red,
+                                fontSize: 14, fontWeight: FontWeight.w700)),
+                      ]))),
+
+                // ✅ Extra bottom spacing to clear bottom nav bar
+                const SizedBox(height: 20),
+              ]),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -334,14 +355,19 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
     Widget? trailing, VoidCallback? onTap, required SL sl,
   }) => InkWell(
     onTap: onTap,
-    borderRadius: BorderRadius.circular(8),
+    borderRadius: BorderRadius.circular(10),
     child: Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
       child: Row(children: [
-        Icon(icon, color: sl.text2, size: 18),
+        Container(
+          width: 34, height: 34,
+          decoration: BoxDecoration(
+            color: sl.isDark ? Colors.white.withOpacity(0.06) : Colors.grey.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, color: sl.text2, size: 18)),
         const SizedBox(width: 12),
         Expanded(child: Text(label,
-            style: TextStyle(color: sl.text1, fontSize: 13,
+            style: TextStyle(color: sl.text1, fontSize: 14,
                 fontWeight: FontWeight.w600))),
         if (trailing != null) trailing,
       ]),
@@ -442,7 +468,8 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
-                    colors: [AppColors.accent, Color(0xFF6F45D9)])),
+                    begin: Alignment.topLeft, end: Alignment.bottomRight,
+                    colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)])),
                 child: Center(child: Text(initial,
                     style: const TextStyle(
                         color: Colors.white,
