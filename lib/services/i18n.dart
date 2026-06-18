@@ -1,11 +1,9 @@
 // lib/services/i18n.dart
-// Lightweight i18n for SAIL Safety Lens
+// Lightweight i18n for SAIL Safety Lens — supports EN, HI, BN, OR
 // Usage:
 //   String x = I18n.t('home.welcome');
-//   I18n.setLocale(Locale('hi'));
+//   I18n.setLocale('hi');
 //   listen to I18n.instance to rebuild on language change
-//
-// Wrap any text: Text(I18n.t('key'))
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +13,7 @@ class I18n extends ChangeNotifier {
   I18n._();
 
   static const _kLocaleKey = 'app_locale_lang';
+  static const List<String> supportedCodes = ['en', 'hi', 'bn', 'or'];
 
   Locale _locale = const Locale('en');
   Locale get locale => _locale;
@@ -25,14 +24,14 @@ class I18n extends ChangeNotifier {
   static Future<void> init() async {
     final p = await SharedPreferences.getInstance();
     final saved = p.getString(_kLocaleKey);
-    if (saved == 'hi' || saved == 'en') {
-      instance._locale = Locale(saved!);
+    if (saved != null && supportedCodes.contains(saved)) {
+      instance._locale = Locale(saved);
     }
   }
 
   /// Switch language and persist
   static Future<void> setLocale(String code) async {
-    if (code != 'hi' && code != 'en') return;
+    if (!supportedCodes.contains(code)) return;
     if (instance._locale.languageCode == code) return;
     instance._locale = Locale(code);
     final p = await SharedPreferences.getInstance();
@@ -40,14 +39,32 @@ class I18n extends ChangeNotifier {
     instance.notifyListeners();
   }
 
-  /// Toggle between hi and en
+  /// Cycle through languages: en→hi→bn→or→en
   static Future<void> toggle() async {
-    await setLocale(currentLang == 'en' ? 'hi' : 'en');
+    final idx = supportedCodes.indexOf(currentLang);
+    final next = supportedCodes[(idx + 1) % supportedCodes.length];
+    await setLocale(next);
   }
 
-  /// Lookup translation by dot-notation key; falls back to key itself if missing.
+  /// Get language display name
+  static String langName(String code) {
+    switch (code) {
+      case 'hi': return 'हिंदी';
+      case 'bn': return 'বাংলা';
+      case 'or': return 'ଓଡ଼ିଆ';
+      default:   return 'English';
+    }
+  }
+
+  /// Lookup translation by dot-notation key; falls back to EN then key itself.
   static String t(String key, {Map<String, String>? args}) {
-    final table = currentLang == 'hi' ? _hi : _en;
+    final Map<String, String> table;
+    switch (currentLang) {
+      case 'hi': table = _hi; break;
+      case 'bn': table = _bn; break;
+      case 'or': table = _or; break;
+      default:   table = _en; break;
+    }
     var value = table[key] ?? _en[key] ?? key;
     if (args != null) {
       args.forEach((k, v) => value = value.replaceAll('{$k}', v));
@@ -59,11 +76,9 @@ class I18n extends ChangeNotifier {
   //  ENGLISH STRINGS
   // ──────────────────────────────────────────────────────────────
   static const Map<String, String> _en = {
-    // App
     'app.name'             : 'SAIL Safety Lens',
     'app.tagline'          : 'AI Safety Platform',
 
-    // Common
     'common.save'          : 'Save',
     'common.cancel'        : 'Cancel',
     'common.close'         : 'Close',
@@ -87,14 +102,12 @@ class I18n extends ChangeNotifier {
     'common.continue'      : 'Continue',
     'common.retry'         : 'Retry',
 
-    // Bottom tabs
     'tab.home'             : 'Home',
     'tab.aiScan'           : 'AI Scan',
     'tab.nearMiss'         : 'Near Miss',
     'tab.askAi'            : 'Ask AI',
     'tab.reports'          : 'Reports',
 
-    // Home screen
     'home.welcome'         : 'Welcome',
     'home.dashboard'       : 'Safety Dashboard',
     'home.totalCases'      : 'Total Cases',
@@ -123,7 +136,6 @@ class I18n extends ChangeNotifier {
     'home.weeklyTrend'     : 'Weekly Trend',
     'home.topHazards'      : 'Top Hazards',
 
-    // AI Scan
     'aiScan.title'         : 'AI Hazard Scan',
     'aiScan.subtitle'      : 'Gemini Vision · IS 14489 · WSA 13 · Factories Act',
     'aiScan.capture'       : 'Capture',
@@ -145,7 +157,6 @@ class I18n extends ChangeNotifier {
     'aiScan.pdf'           : 'PDF',
     'aiScan.howItWorks'    : 'How AI Hazard Scan works',
 
-    // Near Miss
     'nearMiss.title'       : 'Near Miss / Unsafe Condition',
     'nearMiss.brief'       : 'Brief description',
     'nearMiss.briefHint'   : 'What happened? (Voice or text)',
@@ -162,7 +173,6 @@ class I18n extends ChangeNotifier {
     'nearMiss.recording'   : 'Listening…',
     'nearMiss.tapToTalk'   : 'Tap mic to dictate',
 
-    // Reports
     'reports.title'        : 'Reports',
     'reports.all'          : 'All',
     'reports.open'         : 'Open',
@@ -183,7 +193,6 @@ class I18n extends ChangeNotifier {
     'reports.score'        : 'Risk Score',
     'reports.status'       : 'Status',
 
-    // Settings / user menu
     'settings.title'       : 'Settings',
     'settings.profile'     : 'Profile',
     'settings.language'    : 'Language',
@@ -197,7 +206,6 @@ class I18n extends ChangeNotifier {
     'settings.pno'         : 'P. No.',
     'settings.changePass'  : 'Change Password',
 
-    // Status / severity
     'status.open'          : 'OPEN',
     'status.investigating' : 'INVESTIGATING',
     'status.actionTaken'   : 'ACTION TAKEN',
@@ -207,17 +215,37 @@ class I18n extends ChangeNotifier {
     'severity.medium'      : 'MEDIUM',
     'severity.low'         : 'LOW',
 
-    // Messages
     'msg.savedLocal'       : 'Saved locally',
     'msg.savedSheets'      : '✓ Synced to Google Sheets',
     'msg.willSync'         : 'Will sync when online',
     'msg.exportSuccess'    : 'Exported successfully',
     'msg.networkError'     : 'Network error — try again',
     'msg.permissionDenied' : 'Permission denied',
+
+    // WSA-13 categories
+    'wsa.fallFromHeight'   : 'Fall from Height',
+    'wsa.slipFall'         : 'Slip / Fall',
+    'wsa.hitCaughtPressed' : 'Hit / Caught / Pressed',
+    'wsa.hotMetalSlag'     : 'Hot Metal / Slag',
+    'wsa.electrical'       : 'Electrical',
+    'wsa.gas'              : 'Gas',
+    'wsa.explosion'        : 'Explosion',
+    'wsa.machinery'        : 'Machinery',
+    'wsa.transport'        : 'Transport',
+    'wsa.confinedSpace'    : 'Confined Space',
+    'wsa.chemical'         : 'Chemical',
+    'wsa.ergonomic'        : 'Ergonomic',
+    'wsa.other'            : 'Other',
+
+    // Dashboard WSA chart
+    'dashboard.wsaChart'       : 'WSA-13 Cases',
+    'dashboard.entireSail'     : 'Entire SAIL',
+    'dashboard.selectPlant'    : 'Select Plant',
+    'dashboard.wsaCategories'  : 'WSA Categories',
   };
 
   // ──────────────────────────────────────────────────────────────
-  //  HINDI STRINGS (देवनागरी)
+  //  HINDI (हिंदी)
   // ──────────────────────────────────────────────────────────────
   static const Map<String, String> _hi = {
     'app.name'             : 'सेल सेफ्टी लेंस',
@@ -365,5 +393,367 @@ class I18n extends ChangeNotifier {
     'msg.exportSuccess'    : 'निर्यात सफल',
     'msg.networkError'     : 'नेटवर्क त्रुटि — पुनः प्रयास',
     'msg.permissionDenied' : 'अनुमति अस्वीकृत',
+
+    // WSA-13 categories
+    'wsa.fallFromHeight'   : 'ऊँचाई से गिरना',
+    'wsa.slipFall'         : 'फिसलना / गिरना',
+    'wsa.hitCaughtPressed' : 'दबना / टकराना',
+    'wsa.hotMetalSlag'     : 'गर्म धातु / स्लैग',
+    'wsa.electrical'       : 'विद्युत',
+    'wsa.gas'              : 'गैस',
+    'wsa.explosion'        : 'विस्फोट',
+    'wsa.machinery'        : 'मशीनरी',
+    'wsa.transport'        : 'परिवहन',
+    'wsa.confinedSpace'    : 'सीमित स्थान',
+    'wsa.chemical'         : 'रासायनिक',
+    'wsa.ergonomic'        : 'शारीरिक मुद्रा',
+    'wsa.other'            : 'अन्य',
+
+    'dashboard.wsaChart'       : 'WSA-13 मामले',
+    'dashboard.entireSail'     : 'सम्पूर्ण SAIL',
+    'dashboard.selectPlant'    : 'संयंत्र चुनें',
+    'dashboard.wsaCategories'  : 'WSA श्रेणियाँ',
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  //  BENGALI (বাংলা)
+  // ──────────────────────────────────────────────────────────────
+  static const Map<String, String> _bn = {
+    'app.name'             : 'SAIL সেফটি লেন্স',
+    'app.tagline'          : 'AI সুরক্ষা প্ল্যাটফর্ম',
+
+    'common.save'          : 'সংরক্ষণ',
+    'common.cancel'        : 'বাতিল',
+    'common.close'         : 'বন্ধ',
+    'common.delete'        : 'মুছুন',
+    'common.edit'          : 'সম্পাদনা',
+    'common.add'           : 'যোগ করুন',
+    'common.submit'        : 'জমা দিন',
+    'common.export'        : 'রপ্তানি',
+    'common.search'        : 'অনুসন্ধান',
+    'common.filter'        : 'ফিল্টার',
+    'common.refresh'       : 'রিফ্রেশ',
+    'common.sync'          : 'সিঙ্ক',
+    'common.loading'       : 'লোড হচ্ছে…',
+    'common.success'       : 'সফল',
+    'common.failed'        : 'ব্যর্থ',
+    'common.yes'           : 'হ্যাঁ',
+    'common.no'            : 'না',
+    'common.ok'            : 'ঠিক আছে',
+    'common.back'          : 'পিছনে',
+    'common.next'          : 'পরবর্তী',
+    'common.continue'      : 'চালিয়ে যান',
+    'common.retry'         : 'পুনরায় চেষ্টা',
+
+    'tab.home'             : 'হোম',
+    'tab.aiScan'           : 'AI স্ক্যান',
+    'tab.nearMiss'         : 'নিয়ার মিস',
+    'tab.askAi'            : 'AI জিজ্ঞাসা',
+    'tab.reports'          : 'রিপোর্ট',
+
+    'home.welcome'         : 'স্বাগতম',
+    'home.dashboard'       : 'সুরক্ষা ড্যাশবোর্ড',
+    'home.totalCases'      : 'মোট ঘটনা',
+    'home.openCases'       : 'খোলা',
+    'home.closedCases'     : 'বন্ধ',
+    'home.criticalCases'   : 'গুরুতর',
+    'home.thisMonth'       : 'এই মাসে',
+    'home.thisWeek'        : 'এই সপ্তাহে',
+    'home.today'           : 'আজ',
+    'home.quickActions'    : 'দ্রুত কার্য',
+    'home.recentActivity'  : 'সাম্প্রতিক কার্যকলাপ',
+    'home.safetyStats'     : 'সুরক্ষা পরিসংখ্যান',
+    'home.byPlant'         : 'কারখানা অনুযায়ী',
+    'home.bySeverity'      : 'গুরুত্ব অনুযায়ী',
+    'home.daysSinceLti'    : 'LTI থেকে দিন',
+    'home.safetyScore'     : 'সুরক্ষা স্কোর',
+    'home.viewAll'         : 'সব দেখুন',
+    'home.noData'          : 'এখনও কোনো ঘটনা নেই',
+    'home.startScan'       : 'AI স্ক্যান শুরু করুন',
+    'home.reportNearMiss'  : 'নিয়ার মিস রিপোর্ট',
+    'home.viewReports'     : 'রিপোর্ট দেখুন',
+    'home.askExpert'       : 'বিশেষজ্ঞকে জিজ্ঞাসা',
+    'home.greeting.morning': 'সুপ্রভাত',
+    'home.greeting.afternoon': 'শুভ অপরাহ্ণ',
+    'home.greeting.evening': 'শুভ সন্ধ্যা',
+    'home.weeklyTrend'     : 'সাপ্তাহিক প্রবণতা',
+    'home.topHazards'      : 'প্রধান ঝুঁকি',
+
+    'aiScan.title'         : 'AI ঝুঁকি স্ক্যান',
+    'aiScan.subtitle'      : 'জেমিনি ভিশন · IS 14489 · WSA 13',
+    'aiScan.capture'       : 'ছবি তুলুন',
+    'aiScan.aiScan'        : 'AI স্ক্যান',
+    'aiScan.review'        : 'পর্যালোচনা',
+    'aiScan.save'          : 'সংরক্ষণ',
+    'aiScan.mitigate'      : 'প্রতিকার',
+    'aiScan.takePhoto'     : 'কর্মস্থলের ছবি তুলুন',
+    'aiScan.aiDetects'     : 'AI ঝুঁকি সনাক্ত করে ছবিতে চিহ্নিত করে',
+    'aiScan.camera'        : 'ক্যামেরা',
+    'aiScan.gallery'       : 'গ্যালারি',
+    'aiScan.analyzing'     : 'ছবি বিশ্লেষণ হচ্ছে…',
+    'aiScan.summary'       : 'সারাংশ',
+    'aiScan.hazardAnalysis': 'ঝুঁকি বিশ্লেষণ',
+    'aiScan.overallRisk'   : 'সামগ্রিক ঝুঁকি',
+    'aiScan.confidence'    : 'আত্মবিশ্বাস',
+    'aiScan.savedToSheets' : 'গুগল শীটে সংরক্ষিত',
+    'aiScan.newScan'       : 'নতুন',
+    'aiScan.pdf'           : 'PDF',
+    'aiScan.howItWorks'    : 'AI স্ক্যান কিভাবে কাজ করে',
+
+    'nearMiss.title'       : 'নিয়ার মিস / অনিরাপদ অবস্থা',
+    'nearMiss.brief'       : 'সংক্ষিপ্ত বিবরণ',
+    'nearMiss.briefHint'   : 'কী হয়েছিল? (কণ্ঠ বা টাইপ)',
+    'nearMiss.plant'       : 'কারখানা',
+    'nearMiss.dept'        : 'বিভাগ',
+    'nearMiss.location'    : 'স্থান',
+    'nearMiss.severity'    : 'গুরুত্ব',
+    'nearMiss.people'      : 'জড়িত ব্যক্তি সংখ্যা',
+    'nearMiss.description' : 'বিস্তারিত বিবরণ',
+    'nearMiss.action'      : 'তাৎক্ষণিক পদক্ষেপ',
+    'nearMiss.uploadImage' : 'ছবি আপলোড',
+    'nearMiss.submit'      : 'রিপোর্ট জমা দিন',
+    'nearMiss.submitExport': 'জমা + PDF',
+    'nearMiss.recording'   : 'শুনছি…',
+    'nearMiss.tapToTalk'   : 'বলতে মাইক চাপুন',
+
+    'reports.title'        : 'রিপোর্ট',
+    'reports.all'          : 'সব',
+    'reports.open'         : 'খোলা',
+    'reports.closed'       : 'বন্ধ',
+    'reports.critical'     : 'গুরুতর',
+    'reports.high'         : 'উচ্চ',
+    'reports.medium'       : 'মাঝারি',
+    'reports.low'          : 'নিম্ন',
+    'reports.plant'        : 'কারখানা / ইউনিট',
+    'reports.byPlant'      : 'কারখানা অনুযায়ী ফিল্টার',
+    'reports.allPlants'    : 'সব কারখানা',
+    'reports.export'       : 'PDF রপ্তানি',
+    'reports.exportSheets' : 'শীটে খুলুন',
+    'reports.noReports'    : 'কোনো রিপোর্ট নেই',
+    'reports.sortBy'       : 'সাজান',
+    'reports.date'         : 'তারিখ',
+    'reports.severity'     : 'গুরুত্ব',
+    'reports.score'        : 'ঝুঁকি স্কোর',
+    'reports.status'       : 'অবস্থা',
+
+    'settings.title'       : 'সেটিংস',
+    'settings.profile'     : 'প্রোফাইল',
+    'settings.language'    : 'ভাষা',
+    'settings.theme'       : 'থিম',
+    'settings.darkMode'    : 'ডার্ক মোড',
+    'settings.lightMode'   : 'লাইট মোড',
+    'settings.signOut'     : 'সাইন আউট',
+    'settings.exportData'  : 'শীটে রপ্তানি',
+    'settings.account'     : 'অ্যাকাউন্ট',
+    'settings.designation' : 'পদবি',
+    'settings.pno'         : 'পি. নং.',
+    'settings.changePass'  : 'পাসওয়ার্ড পরিবর্তন',
+
+    'status.open'          : 'খোলা',
+    'status.investigating' : 'তদন্ত',
+    'status.actionTaken'   : 'পদক্ষেপ নেওয়া',
+    'status.closed'        : 'বন্ধ',
+    'severity.critical'    : 'গুরুতর',
+    'severity.high'        : 'উচ্চ',
+    'severity.medium'      : 'মাঝারি',
+    'severity.low'         : 'নিম্ন',
+
+    'msg.savedLocal'       : 'স্থানীয়ভাবে সংরক্ষিত',
+    'msg.savedSheets'      : '✓ গুগল শীটে সিঙ্ক',
+    'msg.willSync'         : 'অনলাইনে সিঙ্ক হবে',
+    'msg.exportSuccess'    : 'রপ্তানি সফল',
+    'msg.networkError'     : 'নেটওয়ার্ক ত্রুটি — আবার চেষ্টা করুন',
+    'msg.permissionDenied' : 'অনুমতি প্রত্যাখ্যাত',
+
+    // WSA-13 categories
+    'wsa.fallFromHeight'   : 'উচ্চতা থেকে পড়া',
+    'wsa.slipFall'         : 'পিছলে পড়া',
+    'wsa.hitCaughtPressed' : 'আঘাত / চাপা পড়া',
+    'wsa.hotMetalSlag'     : 'গরম ধাতু / স্ল্যাগ',
+    'wsa.electrical'       : 'বৈদ্যুতিক',
+    'wsa.gas'              : 'গ্যাস',
+    'wsa.explosion'        : 'বিস্ফোরণ',
+    'wsa.machinery'        : 'যন্ত্রপাতি',
+    'wsa.transport'        : 'পরিবহন',
+    'wsa.confinedSpace'    : 'সীমাবদ্ধ স্থান',
+    'wsa.chemical'         : 'রাসায়নিক',
+    'wsa.ergonomic'        : 'কর্মদক্ষতা সংক্রান্ত',
+    'wsa.other'            : 'অন্যান্য',
+
+    'dashboard.wsaChart'       : 'WSA-13 ঘটনা',
+    'dashboard.entireSail'     : 'সম্পূর্ণ SAIL',
+    'dashboard.selectPlant'    : 'কারখানা নির্বাচন',
+    'dashboard.wsaCategories'  : 'WSA বিভাগ',
+  };
+
+  // ──────────────────────────────────────────────────────────────
+  //  ODIA (ଓଡ଼ିଆ)
+  // ──────────────────────────────────────────────────────────────
+  static const Map<String, String> _or = {
+    'app.name'             : 'SAIL ସେଫ୍ଟି ଲେନ୍ସ',
+    'app.tagline'          : 'AI ସୁରକ୍ଷା ପ୍ଲାଟଫର୍ମ',
+
+    'common.save'          : 'ସଞ୍ଚୟ',
+    'common.cancel'        : 'ବାତିଲ',
+    'common.close'         : 'ବନ୍ଦ',
+    'common.delete'        : 'ବିଲୋପ',
+    'common.edit'          : 'ସମ୍ପାଦନା',
+    'common.add'           : 'ଯୋଗ କରନ୍ତୁ',
+    'common.submit'        : 'ଦାଖଲ କରନ୍ତୁ',
+    'common.export'        : 'ରପ୍ତାନି',
+    'common.search'        : 'ଖୋଜନ୍ତୁ',
+    'common.filter'        : 'ଫିଲ୍ଟର',
+    'common.refresh'       : 'ରିଫ୍ରେସ',
+    'common.sync'          : 'ସିଙ୍କ',
+    'common.loading'       : 'ଲୋଡ ହେଉଛି…',
+    'common.success'       : 'ସଫଳ',
+    'common.failed'        : 'ବିଫଳ',
+    'common.yes'           : 'ହଁ',
+    'common.no'            : 'ନା',
+    'common.ok'            : 'ଠିକ ଅଛି',
+    'common.back'          : 'ପଛକୁ',
+    'common.next'          : 'ପରବର୍ତ୍ତୀ',
+    'common.continue'      : 'ଜାରି ରଖନ୍ତୁ',
+    'common.retry'         : 'ପୁନଃଚେଷ୍ଟା',
+
+    'tab.home'             : 'ହୋମ',
+    'tab.aiScan'           : 'AI ସ୍କାନ',
+    'tab.nearMiss'         : 'ନିୟର ମିସ',
+    'tab.askAi'            : 'AI ପଚାରନ୍ତୁ',
+    'tab.reports'          : 'ରିପୋର୍ଟ',
+
+    'home.welcome'         : 'ସ୍ୱାଗତ',
+    'home.dashboard'       : 'ସୁରକ୍ଷା ଡ୍ୟାସବୋର୍ଡ',
+    'home.totalCases'      : 'ମୋଟ ଘଟଣା',
+    'home.openCases'       : 'ଖୋଲା',
+    'home.closedCases'     : 'ବନ୍ଦ',
+    'home.criticalCases'   : 'ଗୁରୁତର',
+    'home.thisMonth'       : 'ଏହି ମାସ',
+    'home.thisWeek'        : 'ଏହି ସପ୍ତାହ',
+    'home.today'           : 'ଆଜି',
+    'home.quickActions'    : 'ଦ୍ରୁତ କାର୍ଯ୍ୟ',
+    'home.recentActivity'  : 'ସାମ୍ପ୍ରତିକ କାର୍ଯ୍ୟକଳାପ',
+    'home.safetyStats'     : 'ସୁରକ୍ଷା ପରିସଂଖ୍ୟାନ',
+    'home.byPlant'         : 'କାରଖାନା ଅନୁସାରେ',
+    'home.bySeverity'      : 'ଗୁରୁତ୍ୱ ଅନୁସାରେ',
+    'home.daysSinceLti'    : 'LTI ପରେ ଦିନ',
+    'home.safetyScore'     : 'ସୁରକ୍ଷା ସ୍କୋର',
+    'home.viewAll'         : 'ସବୁ ଦେଖନ୍ତୁ',
+    'home.noData'          : 'ଏପର୍ଯ୍ୟନ୍ତ କୌଣସି ଘଟଣା ନାହିଁ',
+    'home.startScan'       : 'AI ସ୍କାନ ଆରମ୍ଭ',
+    'home.reportNearMiss'  : 'ନିୟର ମିସ ରିପୋର୍ଟ',
+    'home.viewReports'     : 'ରିପୋର୍ଟ ଦେଖନ୍ତୁ',
+    'home.askExpert'       : 'ବିଶେଷଜ୍ଞଙ୍କୁ ପଚାରନ୍ତୁ',
+    'home.greeting.morning': 'ସୁପ୍ରଭାତ',
+    'home.greeting.afternoon': 'ଶୁଭ ଅପରାହ୍ନ',
+    'home.greeting.evening': 'ଶୁଭ ସନ୍ଧ୍ୟା',
+    'home.weeklyTrend'     : 'ସାପ୍ତାହିକ ଧାରା',
+    'home.topHazards'      : 'ପ୍ରମୁଖ ବିପଦ',
+
+    'aiScan.title'         : 'AI ବିପଦ ସ୍କାନ',
+    'aiScan.subtitle'      : 'ଜେମିନି ଭିଜନ · IS 14489 · WSA 13',
+    'aiScan.capture'       : 'ଫଟୋ',
+    'aiScan.aiScan'        : 'AI ସ୍କାନ',
+    'aiScan.review'        : 'ସମୀକ୍ଷା',
+    'aiScan.save'          : 'ସଞ୍ଚୟ',
+    'aiScan.mitigate'      : 'ପ୍ରତିକାର',
+    'aiScan.takePhoto'     : 'କର୍ମସ୍ଥଳର ଫଟୋ ନିଅନ୍ତୁ',
+    'aiScan.aiDetects'     : 'AI ବିପଦ ଚିହ୍ନଟ କରି ଫଟୋରେ ଚିହ୍ନିତ କରେ',
+    'aiScan.camera'        : 'କ୍ୟାମେରା',
+    'aiScan.gallery'       : 'ଗ୍ୟାଲେରୀ',
+    'aiScan.analyzing'     : 'ଫଟୋ ବିଶ୍ଳେଷଣ ହେଉଛି…',
+    'aiScan.summary'       : 'ସାରାଂଶ',
+    'aiScan.hazardAnalysis': 'ବିପଦ ବିଶ୍ଳେଷଣ',
+    'aiScan.overallRisk'   : 'ସାମଗ୍ରିକ ଝୁଁକି',
+    'aiScan.confidence'    : 'ବିଶ୍ୱାସ',
+    'aiScan.savedToSheets' : 'ଗୁଗଲ ସିଟରେ ସଞ୍ଚୟ',
+    'aiScan.newScan'       : 'ନୂଆ',
+    'aiScan.pdf'           : 'PDF',
+    'aiScan.howItWorks'    : 'AI ସ୍କାନ କିପରି କାମ କରେ',
+
+    'nearMiss.title'       : 'ନିୟର ମିସ / ଅସୁରକ୍ଷିତ ଅବସ୍ଥା',
+    'nearMiss.brief'       : 'ସଂକ୍ଷିପ୍ତ ବିବରଣ',
+    'nearMiss.briefHint'   : 'କ\'ଣ ହୋଇଥିଲା? (ସ୍ୱର କିମ୍ବା ଟାଇପ)',
+    'nearMiss.plant'       : 'କାରଖାନା',
+    'nearMiss.dept'        : 'ବିଭାଗ',
+    'nearMiss.location'    : 'ସ୍ଥାନ',
+    'nearMiss.severity'    : 'ଗୁରୁତ୍ୱ',
+    'nearMiss.people'      : 'ଜଡ଼ିତ ବ୍ୟକ୍ତି ସଂଖ୍ୟା',
+    'nearMiss.description' : 'ବିସ୍ତୃତ ବିବରଣ',
+    'nearMiss.action'      : 'ତୁରନ୍ତ ପଦକ୍ଷେପ',
+    'nearMiss.uploadImage' : 'ଫଟୋ ଅପଲୋଡ',
+    'nearMiss.submit'      : 'ରିପୋର୍ଟ ଦାଖଲ',
+    'nearMiss.submitExport': 'ଦାଖଲ + PDF',
+    'nearMiss.recording'   : 'ଶୁଣୁଛି…',
+    'nearMiss.tapToTalk'   : 'କହିବାକୁ ମାଇକ ଦବାନ୍ତୁ',
+
+    'reports.title'        : 'ରିପୋର୍ଟ',
+    'reports.all'          : 'ସବୁ',
+    'reports.open'         : 'ଖୋଲା',
+    'reports.closed'       : 'ବନ୍ଦ',
+    'reports.critical'     : 'ଗୁରୁତର',
+    'reports.high'         : 'ଉଚ୍ଚ',
+    'reports.medium'       : 'ମଧ୍ୟମ',
+    'reports.low'          : 'ନିମ୍ନ',
+    'reports.plant'        : 'କାରଖାନା / ୟୁନିଟ',
+    'reports.byPlant'      : 'କାରଖାନା ଅନୁସାରେ ଫିଲ୍ଟର',
+    'reports.allPlants'    : 'ସବୁ କାରଖାନା',
+    'reports.export'       : 'PDF ରପ୍ତାନି',
+    'reports.exportSheets' : 'ସିଟରେ ଖୋଲନ୍ତୁ',
+    'reports.noReports'    : 'କୌଣସି ରିପୋର୍ଟ ନାହିଁ',
+    'reports.sortBy'       : 'କ୍ରମାନୁସାରେ',
+    'reports.date'         : 'ତାରିଖ',
+    'reports.severity'     : 'ଗୁରୁତ୍ୱ',
+    'reports.score'        : 'ଝୁଁକି ସ୍କୋର',
+    'reports.status'       : 'ଅବସ୍ଥା',
+
+    'settings.title'       : 'ସେଟିଂସ',
+    'settings.profile'     : 'ପ୍ରୋଫାଇଲ',
+    'settings.language'    : 'ଭାଷା',
+    'settings.theme'       : 'ଥିମ',
+    'settings.darkMode'    : 'ଡାର୍କ ମୋଡ',
+    'settings.lightMode'   : 'ଲାଇଟ ମୋଡ',
+    'settings.signOut'     : 'ସାଇନ ଆଉଟ',
+    'settings.exportData'  : 'ସିଟକୁ ରପ୍ତାନି',
+    'settings.account'     : 'ଆକାଉଣ୍ଟ',
+    'settings.designation' : 'ପଦବୀ',
+    'settings.pno'         : 'ପି. ନଂ.',
+    'settings.changePass'  : 'ପାସୱାର୍ଡ ବଦଳାନ୍ତୁ',
+
+    'status.open'          : 'ଖୋଲା',
+    'status.investigating' : 'ତଦନ୍ତ',
+    'status.actionTaken'   : 'ପଦକ୍ଷେପ ନିଆଯାଇଛି',
+    'status.closed'        : 'ବନ୍ଦ',
+    'severity.critical'    : 'ଗୁରୁତର',
+    'severity.high'        : 'ଉଚ୍ଚ',
+    'severity.medium'      : 'ମଧ୍ୟମ',
+    'severity.low'         : 'ନିମ୍ନ',
+
+    'msg.savedLocal'       : 'ସ୍ଥାନୀୟଭାବେ ସଞ୍ଚୟ',
+    'msg.savedSheets'      : '✓ ଗୁଗଲ ସିଟରେ ସିଙ୍କ',
+    'msg.willSync'         : 'ଅନଲାଇନରେ ସିଙ୍କ ହେବ',
+    'msg.exportSuccess'    : 'ରପ୍ତାନି ସଫଳ',
+    'msg.networkError'     : 'ନେଟୱାର୍କ ତ୍ରୁଟି — ପୁନଃଚେଷ୍ଟା କରନ୍ତୁ',
+    'msg.permissionDenied' : 'ଅନୁମତି ପ୍ରତ୍ୟାଖ୍ୟାତ',
+
+    // WSA-13 categories
+    'wsa.fallFromHeight'   : 'ଉଚ୍ଚତାରୁ ଖସିବା',
+    'wsa.slipFall'         : 'ଘସିଯିବା / ପଡ଼ିଯିବା',
+    'wsa.hitCaughtPressed' : 'ଧକ୍କା / ଚାପି ହେବା',
+    'wsa.hotMetalSlag'     : 'ଗରମ ଧାତୁ / ସ୍ଲ୍ୟାଗ',
+    'wsa.electrical'       : 'ବୈଦ୍ୟୁତିକ',
+    'wsa.gas'              : 'ଗ୍ୟାସ',
+    'wsa.explosion'        : 'ବିସ୍ଫୋରଣ',
+    'wsa.machinery'        : 'ଯନ୍ତ୍ରପାତି',
+    'wsa.transport'        : 'ପରିବହନ',
+    'wsa.confinedSpace'    : 'ସୀମିତ ସ୍ଥାନ',
+    'wsa.chemical'         : 'ରାସାୟନିକ',
+    'wsa.ergonomic'        : 'ଶାରୀରିକ ମୁଦ୍ରା',
+    'wsa.other'            : 'ଅନ୍ୟ',
+
+    'dashboard.wsaChart'       : 'WSA-13 ଘଟଣା',
+    'dashboard.entireSail'     : 'ସମ୍ପୂର୍ଣ୍ଣ SAIL',
+    'dashboard.selectPlant'    : 'କାରଖାନା ଚୟନ',
+    'dashboard.wsaCategories'  : 'WSA ଶ୍ରେଣୀ',
   };
 }
