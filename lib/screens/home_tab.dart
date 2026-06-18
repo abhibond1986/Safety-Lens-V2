@@ -6,6 +6,7 @@
 //    (SAIL theme) with a soft red glow + subtle text shadow for legibility.
 // ✅ Admin shield pill in the hero top-right opens the Command Centre.
 //    Visible only when widget.user?['isAdmin'] is true.
+// ✅ WSA-13 Bar Chart added to dashboard
 
 import 'dart:math' as math;
 import 'dart:ui';
@@ -17,8 +18,7 @@ import 'reports_tab.dart';
 import 'admin_screen.dart';
 import '../widgets/universal_app_bar.dart';
 import '../widgets/wsa_bar_chart.dart';
-// Then anywhere in your scroll view:
-const WsaBarChart(),
+
 class HomeTab extends StatefulWidget {
   final Map<String, dynamic>? user;
   final VoidCallback toggleTheme;
@@ -219,6 +219,9 @@ class _HomeTabState extends State<HomeTab> {
                 _statsGrid(sl),
                 const SizedBox(height: 18),
                 _safetyScoreCard(sl),
+                const SizedBox(height: 18),
+                // ✅ WSA-13 Bar Chart with plant filter
+                const WsaBarChart(),
                 const SizedBox(height: 18),
                 _quickActionsGrid(sl),
                 const SizedBox(height: 18),
