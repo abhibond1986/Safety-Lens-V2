@@ -70,12 +70,18 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   late AnimationController _micPulseCtrl;
   late Animation<double> _micPulse;
 
+  // ✅ FIX v17: Use I18n.currentLang directly (not LocaleService which may lag)
+  // Locale IDs follow BCP-47 format recognized by both Android and Chrome Web Speech API
   static const Map<String, String> _voiceLocaleMap = {
-    'en': 'en-IN', 'hi': 'hi-IN', 'bn': 'bn-IN', 'or': 'or-IN',
+    'en': 'en-IN',
+    'hi': 'hi-IN',   // Devanagari output
+    'bn': 'bn-IN',   // Bengali script output
+    'or': 'or-IN',   // Odia script output
   };
 
   String get _voiceLocaleId {
-    final lang = LocaleService().locale.languageCode;
+    // ✅ Use I18n.currentLang which is always in sync with user's selection
+    final lang = I18n.currentLang;
     return _voiceLocaleMap[lang] ?? 'en-IN';
   }
 
@@ -198,6 +204,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
     final baseText = targetField.text;
     _activeMicField = targetField;
+    debugPrint('Speech: Starting with locale=${_voiceLocaleId} (I18n.currentLang=${I18n.currentLang})');
     try {
       setState(() => _isListening = true);
       await _speech.listen(
