@@ -322,41 +322,6 @@ class SailLogoTile extends StatelessWidget {
         errorBuilder: (_, __, ___) => Image.asset('assets/images/sail_logo.png', fit: BoxFit.contain)));
 }
 
-// ─── GLASSMORPHISM CARD ───────────────────────────────────────────────────────
-class GlassCard extends StatelessWidget {
-  final Widget child;
-  final EdgeInsetsGeometry? padding;
-  final BorderRadius? radius;
-  final double opacity;
-  final List<BoxShadow>? shadows;
-  final Gradient? gradient;
-  final Border? border;
-  const GlassCard({
-    super.key,
-    required this.child,
-    this.padding,
-    this.radius,
-    this.opacity = 0.06,
-    this.shadows,
-    this.gradient,
-    this.border,
-  });
-  @override
-  Widget build(BuildContext context) {
-    final sl = SL.of(context);
-    return Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        gradient: gradient ?? sl.cardGradient,
-        borderRadius: radius ?? BorderRadius.circular(16),
-        border: border ??
-            Border.all(color: sl.border.withOpacity(0.6), width: 1),
-        boxShadow: shadows ?? [sl.cardShadow],
-      ),
-      child: child,
-    );
-  }
-}
 
 // ─── SEVERITY BADGE ───────────────────────────────────────────────────────────
 class SeverityBadge extends StatelessWidget {
