@@ -104,6 +104,16 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
           _sectionTitle('WSA Category Breakdown', sl),
           const SizedBox(height: 12),
           _categoryBarChart(sl),
+          const SizedBox(height: 24),
+          // Department Bar Chart
+          _sectionTitle('Top Departments', sl),
+          const SizedBox(height: 12),
+          _departmentBarChart(sl),
+          const SizedBox(height: 24),
+          // Response Time Analysis
+          _sectionTitle('Response Time', sl),
+          const SizedBox(height: 12),
+          _responseTimeCards(sl),
           const SizedBox(height: 20),
         ],
       ),
@@ -409,5 +419,156 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   String _shortPlant(String plant) {
     final parts = plant.split(' ');
     return parts.first;
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  DEPARTMENT BAR CHART
+  // ═══════════════════════════════════════════════════════════════
+  Map<String, int> get _deptCounts {
+    final map = <String, int>{};
+    for (final i in _incidents) {
+      final dept = i['dept']?.toString() ?? '';
+      if (dept.isEmpty) continue;
+      map[dept] = (map[dept] ?? 0) + 1;
+    }
+    final sorted = map.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return Map.fromEntries(sorted.take(8));
+  }
+
+  Widget _departmentBarChart(SL sl) {
+    final data = _deptCounts;
+    if (data.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: sl.glassColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: sl.glassBorder),
+        ),
+        child: Center(child: Text('No department data',
+            style: TextStyle(color: sl.text4, fontSize: 12))),
+      );
+    }
+    final entries = data.entries.toList();
+    final maxVal = entries.first.value;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.glassColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: sl.glassBorder),
+      ),
+      child: Column(
+        children: entries.map((e) {
+          final fraction = maxVal > 0 ? e.value / maxVal : 0.0;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              SizedBox(width: 100,
+                  child: Text(e.key,
+                      style: TextStyle(fontSize: 10, color: sl.text2),
+                      overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 18,
+                      decoration: BoxDecoration(
+                        color: sl.border.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(4)),
+                    ),
+                    FractionallySizedBox(
+                      widthFactor: fraction.clamp(0.03, 1.0),
+                      child: Container(
+                        height: 18,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                              colors: [Color(0xFF8B5CF6), AppColors.accent]),
+                          borderRadius: BorderRadius.circular(4)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('${e.value}', style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: sl.text1)),
+            ]),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  RESPONSE TIME ANALYSIS
+  // ═══════════════════════════════════════════════════════════════
+  Widget _responseTimeCards(SL sl) {
+    // Compute average days for each transition
+    double avgToInvestigation = 0;
+    double avgToAction = 0;
+    double avgToClosed = 0;
+    int countInv = 0, countAct = 0, countClose = 0;
+
+    for (final i in _incidents) {
+      final opened = DateTime.tryParse(i['date']?.toString() ?? '');
+      if (opened == null) continue;
+
+      final invAt = DateTime.tryParse(i['investigationStartedAt']?.toString() ?? '');
+      final actAt = DateTime.tryParse(i['actionTakenAt']?.toString() ?? '');
+      final closedAt = DateTime.tryParse(i['closedAt']?.toString() ?? '');
+
+      if (invAt != null) {
+        avgToInvestigation += invAt.difference(opened).inHours.abs();
+        countInv++;
+      }
+      if (actAt != null && invAt != null) {
+        avgToAction += actAt.difference(invAt).inHours.abs();
+        countAct++;
+      }
+      if (closedAt != null && actAt != null) {
+        avgToClosed += closedAt.difference(actAt).inHours.abs();
+        countClose++;
+      }
+    }
+
+    final invDays = countInv > 0 ? (avgToInvestigation / countInv / 24) : 0.0;
+    final actDays = countAct > 0 ? (avgToAction / countAct / 24) : 0.0;
+    final closeDays = countClose > 0 ? (avgToClosed / countClose / 24) : 0.0;
+
+    return Row(children: [
+      _responseCard(sl, 'To Investigation', invDays, AppColors.cyan),
+      const SizedBox(width: 8),
+      _responseCard(sl, 'To Action', actDays, const Color(0xFF8B5CF6)),
+      const SizedBox(width: 8),
+      _responseCard(sl, 'To Closure', closeDays, AppColors.green),
+    ]);
+  }
+
+  Widget _responseCard(SL sl, String label, double days, Color color) {
+    final display = days < 1 ? '< 1d' : '${days.toStringAsFixed(1)}d';
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(children: [
+          Icon(Icons.timer_outlined, color: color, size: 18),
+          const SizedBox(height: 6),
+          Text(display, style: TextStyle(
+              color: color, fontSize: 16, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 2),
+          Text(label, style: TextStyle(
+              color: sl.text3, fontSize: 9, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center),
+        ]),
+      ),
+    );
   }
 }

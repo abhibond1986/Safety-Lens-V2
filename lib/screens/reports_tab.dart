@@ -1,8 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
+import 'analytics/overview_tab.dart';
+import 'analytics/incident_log_tab.dart';
 import 'analytics/data_analysis_tab.dart';
-import 'analytics/predictive_tab.dart';
+import 'analytics/plant_wise_tab.dart';
 
 class ReportsTab extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -32,7 +34,7 @@ class _ReportsTabState extends State<ReportsTab>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -70,32 +72,35 @@ class _ReportsTabState extends State<ReportsTab>
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                 child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: sl.glassColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: sl.glassBorder),
-              ),
-              child: TabBar(
-                controller: _tabController,
-                labelColor: Colors.white,
-                unselectedLabelColor: sl.text3,
-                labelStyle: const TextStyle(
-                    fontSize: 13, fontWeight: FontWeight.w600),
-                unselectedLabelStyle: const TextStyle(fontSize: 13),
-                indicator: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(10),
+                  margin: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: sl.glassColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: sl.glassBorder),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: sl.text3,
+                    labelStyle: const TextStyle(
+                        fontSize: 11, fontWeight: FontWeight.w700),
+                    unselectedLabelStyle: const TextStyle(fontSize: 11),
+                    indicator: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    isScrollable: false,
+                    padding: const EdgeInsets.all(3),
+                    tabs: const [
+                      Tab(text: 'Overview'),
+                      Tab(text: 'Log'),
+                      Tab(text: 'Analysis'),
+                      Tab(text: 'Plant Wise'),
+                    ],
+                  ),
                 ),
-                indicatorSize: TabBarIndicatorSize.tab,
-                dividerColor: Colors.transparent,
-                padding: const EdgeInsets.all(4),
-                tabs: const [
-                  Tab(text: 'Data Analysis'),
-                  Tab(text: 'Predictive'),
-                ],
-              ),
-            ),
               ),
             ),
             const SizedBox(height: 8),
@@ -103,8 +108,10 @@ class _ReportsTabState extends State<ReportsTab>
               child: TabBarView(
                 controller: _tabController,
                 children: const [
+                  OverviewTab(),
+                  IncidentLogTab(),
                   DataAnalysisTab(),
-                  PredictiveTab(),
+                  PlantWiseTab(),
                 ],
               ),
             ),
