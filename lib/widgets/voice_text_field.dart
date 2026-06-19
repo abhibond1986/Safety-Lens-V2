@@ -40,6 +40,7 @@ class VoiceTextField extends StatefulWidget {
 }
 
 class _VoiceTextFieldState extends State<VoiceTextField> {
+  static bool _micPermissionGranted = false;
   final stt.SpeechToText _speech = stt.SpeechToText();
   bool _isListening = false;
   bool _speechAvailable = false;
@@ -51,9 +52,11 @@ class _VoiceTextFieldState extends State<VoiceTextField> {
   }
 
   Future<void> _initSpeech() async {
-    // Request microphone permission first
-    final status = await Permission.microphone.request();
-    if (status != PermissionStatus.granted) return;
+    if (!_micPermissionGranted) {
+      final status = await Permission.microphone.request();
+      if (status != PermissionStatus.granted) return;
+      _micPermissionGranted = true;
+    }
 
     _speechAvailable = await _speech.initialize(
       onError: (e) {
@@ -111,6 +114,8 @@ class _VoiceTextFieldState extends State<VoiceTextField> {
         },
         localeId: _getSpeechLocale(),
         listenMode: stt.ListenMode.dictation,
+        listenFor: const Duration(minutes: 3),
+        pauseFor: const Duration(seconds: 10),
         cancelOnError: true,
         partialResults: true,
       );

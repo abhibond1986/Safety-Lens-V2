@@ -333,7 +333,82 @@ class _LoginScreenState extends State<LoginScreen> {
     _field('Username', _userCtrl, sl),
     const SizedBox(height: 12),
     _field('Password', _passCtrl, sl, obscure: true),
+    const SizedBox(height: 8),
+    Align(
+      alignment: Alignment.centerRight,
+      child: GestureDetector(
+        onTap: _showForgotPassword,
+        child: Text('Forgot Password?',
+            style: TextStyle(
+              color: AppColors.accent,
+              fontSize: 12,
+              fontWeight: FontWeight.w600)),
+      ),
+    ),
   ];
+
+  void _showForgotPassword() {
+    final ctrl = TextEditingController();
+    final sl = SL.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Reset Password',
+            style: TextStyle(color: sl.text1, fontSize: 16, fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text('Enter your username to reset password.',
+              style: TextStyle(color: sl.text3, fontSize: 12)),
+          const SizedBox(height: 14),
+          TextField(
+            controller: ctrl,
+            style: TextStyle(color: sl.text1, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Username',
+              hintStyle: TextStyle(color: sl.text4),
+              filled: true,
+              fillColor: sl.glassColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: sl.glassBorder)),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide(color: sl.glassBorder)),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: sl.text3)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            onPressed: () async {
+              final username = ctrl.text.trim();
+              if (username.isEmpty) return;
+              Navigator.pop(ctx);
+              final success = await LocalDB.resetPassword(username);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(success
+                    ? 'Password reset to sail@123. Please change after login.'
+                    : 'Username not found. Contact your admin.',
+                    style: const TextStyle(fontSize: 12)),
+                backgroundColor: success ? AppColors.green : AppColors.crit,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ));
+            },
+            child: const Text('Reset', style: TextStyle(color: Colors.white, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
 
   List<Widget> _registerFields(SL sl) => [
     _field('Full Name', _regNameCtrl, sl, hint: 'e.g. Rajesh Kumar'),

@@ -93,7 +93,12 @@ class _HomeScreenState extends State<HomeScreen>
         onSignOut: _signOut,
         isDark: isDark,
       ),
-      const ChatTab(),
+      ChatTab(
+        user: _user,
+        toggleTheme: widget.toggleTheme,
+        onSignOut: _signOut,
+        isDark: isDark,
+      ),
       ReportsTab(
         user: _user,
         toggleTheme: widget.toggleTheme,

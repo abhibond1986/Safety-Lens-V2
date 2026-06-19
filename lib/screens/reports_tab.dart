@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
+import '../widgets/universal_app_bar.dart';
 import 'analytics/overview_tab.dart';
 import 'analytics/incident_log_tab.dart';
 import 'analytics/data_analysis_tab.dart';
@@ -51,22 +52,15 @@ class _ReportsTabState extends State<ReportsTab>
       body: SafeArea(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-              child: Row(
-                children: [
-                  Icon(Icons.analytics_rounded, size: 22, color: AppColors.accent),
-                  const SizedBox(width: 8),
-                  Text('Analytics & Reports',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: sl.text1,
-                      )),
-                ],
-              ),
+            UniversalAppBar(
+              title: 'Analytics & Reports',
+              user: widget.user,
+              toggleTheme: widget.toggleTheme,
+              onSignOut: widget.onSignOut,
+              isDark: widget.isDark,
+              showExport: false,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: BackdropFilter(

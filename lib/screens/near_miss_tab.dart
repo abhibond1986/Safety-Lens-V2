@@ -96,17 +96,18 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     _initSpeech();
   }
 
-  // ✅ FIX v17: Improved speech init with web support
+  static bool _micPermissionGranted = false;
+
   Future<void> _initSpeech() async {
     try {
-      // Only request permission on native platforms (not web)
-      if (!kIsWeb) {
+      if (!kIsWeb && !_micPermissionGranted) {
         final status = await Permission.microphone.request();
         if (!status.isGranted) {
           debugPrint('Speech: Microphone permission denied (status: $status)');
           if (mounted) setState(() => _speechAvailable = false);
           return;
         }
+        _micPermissionGranted = true;
         debugPrint('Speech: Microphone permission granted');
       }
 
@@ -157,8 +158,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           });
         },
         localeId:     _voiceLocaleId,
-        listenFor:    const Duration(minutes: 5),
-        pauseFor:     const Duration(seconds: 15),
+        listenFor:    const Duration(minutes: 3),
+        pauseFor:     const Duration(seconds: 10),
         partialResults: true,
         cancelOnError:  false,
         listenMode:   stt.ListenMode.dictation,
@@ -220,8 +221,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           });
         },
         localeId:       _voiceLocaleId,
-        listenFor:      const Duration(minutes: 5),
-        pauseFor:       const Duration(seconds: 15),
+        listenFor:      const Duration(minutes: 3),
+        pauseFor:       const Duration(seconds: 10),
         partialResults: true,
         cancelOnError:  false,
         listenMode:     stt.ListenMode.dictation,

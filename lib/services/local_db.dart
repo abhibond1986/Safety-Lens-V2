@@ -218,6 +218,25 @@ class LocalDB {
     return userData;
   }
 
+  static Future<bool> resetPassword(String username) async {
+    if (username == 'admin') return true;
+    final users = await getUsers();
+    bool found = false;
+    for (int i = 0; i < users.length; i++) {
+      if (users[i]['username']?.toString() == username ||
+          users[i]['email']?.toString() == username) {
+        users[i]['password'] = 'sail@123';
+        users[i]['passwordHash'] = 'sail@123';
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      await _prefs.setString(_kUsers, jsonEncode(users));
+    }
+    return found;
+  }
+
   static Future<void> signOut() async {
     await _prefs.remove(_kCurrentUser);
   }

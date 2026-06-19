@@ -188,35 +188,45 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  PLANT KPI CARDS
+  //  PLANT KPI CARDS (tappable)
   // ═══════════════════════════════════════════════════════════════
   Widget _plantKpis(SL sl) {
     return Row(children: [
-      _miniKpi(sl, 'Total', '$_pTotal', const Color(0xFF6366F1)),
+      _miniKpi(sl, 'Total', '$_pTotal', const Color(0xFF6366F1),
+          () => _showIncidentsSheet('All — $_selectedPlant', _plantIncidents)),
       const SizedBox(width: 8),
-      _miniKpi(sl, 'Open', '$_pOpen', AppColors.amber),
+      _miniKpi(sl, 'Open', '$_pOpen', AppColors.amber,
+          () => _showIncidentsSheet('Open — $_selectedPlant',
+              _plantIncidents.where((i) => (i['status']?.toString().toUpperCase() ?? 'OPEN') != 'CLOSED').toList())),
       const SizedBox(width: 8),
-      _miniKpi(sl, 'Critical', '$_pCritical', AppColors.crit),
+      _miniKpi(sl, 'Critical', '$_pCritical', AppColors.crit,
+          () => _showIncidentsSheet('Critical — $_selectedPlant',
+              _plantIncidents.where((i) => i['severity']?.toString().toUpperCase() == 'CRITICAL').toList())),
       const SizedBox(width: 8),
-      _miniKpi(sl, 'Closed %', '${_pClosureRate.toStringAsFixed(0)}%', AppColors.green),
+      _miniKpi(sl, 'Closed %', '${_pClosureRate.toStringAsFixed(0)}%', AppColors.green,
+          () => _showIncidentsSheet('Closed — $_selectedPlant',
+              _plantIncidents.where((i) => i['status']?.toString().toUpperCase() == 'CLOSED').toList())),
     ]);
   }
 
-  Widget _miniKpi(SL sl, String label, String value, Color color) {
+  Widget _miniKpi(SL sl, String label, String value, Color color, [VoidCallback? onTap]) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withOpacity(0.3)),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(children: [
+            Text(value, style: TextStyle(
+                color: color, fontSize: 18, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(color: sl.text3, fontSize: 9)),
+          ]),
         ),
-        child: Column(children: [
-          Text(value, style: TextStyle(
-              color: color, fontSize: 18, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(color: sl.text3, fontSize: 9)),
-        ]),
       ),
     );
   }
@@ -250,13 +260,19 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
             const SizedBox(height: 10),
             Row(children: stages.map((s) {
               final (label, count, color) = s;
-              return Expanded(child: Column(children: [
-                Text('$count', style: TextStyle(
-                    color: color, fontSize: 18, fontWeight: FontWeight.w800)),
-                const SizedBox(height: 2),
-                Text(label, style: TextStyle(
-                    color: sl.text3, fontSize: 9), textAlign: TextAlign.center),
-              ]));
+              final statusKey = label == 'Open' ? 'OPEN' : label == 'Investigating' ? 'INVESTIGATING'
+                  : label == 'Action Taken' ? 'ACTION TAKEN' : 'CLOSED';
+              return Expanded(child: GestureDetector(
+                onTap: () => _showIncidentsSheet('$label — $_selectedPlant',
+                    _plantIncidents.where((i) => (i['status']?.toString().toUpperCase() ?? 'OPEN') == statusKey).toList()),
+                child: Column(children: [
+                  Text('$count', style: TextStyle(
+                      color: color, fontSize: 18, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 2),
+                  Text(label, style: TextStyle(
+                      color: sl.text3, fontSize: 9), textAlign: TextAlign.center),
+                ]),
+              ));
             }).toList()),
           ]),
         ),
@@ -484,5 +500,111 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
         );
       }),
     ]);
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  BOTTOM SHEET — tappable number detail view
+  // ═══════════════════════════════════════════════════════════════
+  void _showIncidentsSheet(String title, List<Map<String, dynamic>> incidents) {
+    final sl = SL.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: sl.card,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.55,
+        maxChildSize: 0.85,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (ctx, scrollCtrl) => Column(children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Row(children: [
+              Container(width: 36, height: 4,
+                  decoration: BoxDecoration(color: sl.border,
+                      borderRadius: BorderRadius.circular(2))),
+              const Spacer(),
+              Text(title, style: TextStyle(color: sl.text1, fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Text('${incidents.length}', style: TextStyle(
+                  color: AppColors.accent, fontSize: 14, fontWeight: FontWeight.w800)),
+            ]),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: incidents.isEmpty
+                ? Center(child: Text('No incidents', style: TextStyle(color: sl.text3)))
+                : ListView.builder(
+                    controller: scrollCtrl,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: incidents.length,
+                    itemBuilder: (_, i) {
+                      final inc = incidents[i];
+                      final sev = inc['severity']?.toString().toUpperCase() ?? 'MEDIUM';
+                      Color sevColor;
+                      switch (sev) {
+                        case 'CRITICAL': sevColor = AppColors.crit; break;
+                        case 'HIGH': sevColor = AppColors.red; break;
+                        case 'MEDIUM': sevColor = AppColors.amber; break;
+                        default: sevColor = AppColors.green;
+                      }
+                      final date = inc['date']?.toString() ?? '';
+                      final dateStr = date.length >= 10 ? date.substring(0, 10) : date;
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                            Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => IncidentDetailScreen(
+                                  incident: inc, onStatusChanged: _load)));
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: sl.glassColor,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border(
+                                left: BorderSide(color: sevColor, width: 3),
+                                top: BorderSide(color: sl.glassBorder),
+                                right: BorderSide(color: sl.glassBorder),
+                                bottom: BorderSide(color: sl.glassBorder),
+                              ),
+                            ),
+                            child: Row(children: [
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(inc['title']?.toString() ?? 'Untitled',
+                                      style: TextStyle(color: sl.text1, fontSize: 12,
+                                          fontWeight: FontWeight.w600),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  const SizedBox(height: 3),
+                                  Text('${inc['dept'] ?? '—'} · $dateStr',
+                                      style: TextStyle(color: sl.text4, fontSize: 9)),
+                                ],
+                              )),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                    color: sevColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(4)),
+                                child: Text(sev, style: TextStyle(
+                                    color: sevColor, fontSize: 8, fontWeight: FontWeight.w800)),
+                              ),
+                            ]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ]),
+      ),
+    );
   }
 }

@@ -17,9 +17,21 @@ import 'package:http/http.dart' as http;
 import '../main.dart';
 import '../services/local_ai.dart';
 import '../services/local_db.dart';
+import '../widgets/universal_app_bar.dart';
 
 class ChatTab extends StatefulWidget {
-  const ChatTab({super.key});
+  final Map<String, dynamic>? user;
+  final VoidCallback? toggleTheme;
+  final VoidCallback? onSignOut;
+  final bool isDark;
+
+  const ChatTab({
+    super.key,
+    this.user,
+    this.toggleTheme,
+    this.onSignOut,
+    this.isDark = true,
+  });
   @override
   State<ChatTab> createState() => _ChatTabState();
 }
@@ -561,62 +573,14 @@ class _ChatTabState extends State<ChatTab> {
     return SafeArea(
       child: Column(children: [
         // ── Header ────────────────────────────────────────────────
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: sl.glassColor,
-            border: Border(bottom: BorderSide(color: sl.glassBorder, width: 0.5))),
-          child: Row(children: [
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                    colors: [AppColors.amber, Color(0xFFFF8C00)]),
-                boxShadow: [BoxShadow(
-                    color: AppColors.amber.withOpacity(0.3), blurRadius: 8)]),
-              child: const Icon(Icons.shield_outlined,
-                  color: Colors.white, size: 18)),
-            const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('SAIL Suraksha Saathi',
-                  style: TextStyle(color: sl.text1, fontSize: 14, fontWeight: FontWeight.w700)),
-              Text('आपका सुरक्षा साथी · SG/01–SG/41 · FA 1948 · SMPV 2016',
-                  style: TextStyle(color: sl.text4, fontSize: 9)),
-            ])),
-            // Online indicator
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.green.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: AppColors.green.withOpacity(0.3))),
-              child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.circle, color: AppColors.green, size: 6),
-                SizedBox(width: 3),
-                Text('AI', style: TextStyle(color: AppColors.green,
-                    fontSize: 9, fontWeight: FontWeight.w700)),
-              ])),
-            const SizedBox(width: 4),
-            if (_isAdmin)
-              IconButton(
-                tooltip: 'Manage knowledge base (admin)',
-                onPressed: _showKnowledgeManager,
-                icon: Stack(children: [
-                  const Icon(Icons.library_books_outlined,
-                      color: AppColors.amber, size: 20),
-                  if (_kbDocCount > 0)
-                    Positioned(right: 0, top: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                            color: AppColors.green, shape: BoxShape.circle),
-                        constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
-                        child: Text('$_kbDocCount', style: const TextStyle(
-                            color: Colors.white, fontSize: 8, fontWeight: FontWeight.w700),
-                            textAlign: TextAlign.center))),
-                ])),
-          ]),
+        UniversalAppBar(
+          title: 'Suraksha Saathi',
+          subtitle: 'AI Safety Assistant',
+          user: widget.user ?? _user,
+          toggleTheme: widget.toggleTheme,
+          onSignOut: widget.onSignOut,
+          isDark: widget.isDark,
+          showExport: false,
         ),
 
         // ── Messages ──────────────────────────────────────────────
