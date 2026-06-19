@@ -6,7 +6,7 @@
     "background_color": "#0A0E1A",
     "theme_color": "#0D47A1",
     "description": "AI-powered industrial safety for SAIL by IS 14489 standards",
-    "orientation": "portrait-primary",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {
