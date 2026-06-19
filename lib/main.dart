@@ -319,7 +319,12 @@ class SailLogoTile extends StatelessWidget {
       width: size,
       height: size,
       child: Image.asset('assets/images/app_icon.png', fit: BoxFit.contain,
-        errorBuilder: (_, __, ___) => Image.asset('assets/images/sail_logo.png', fit: BoxFit.contain)));
+        errorBuilder: (_, __, ___) => Container(
+          width: size, height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.accent),
+          child: Icon(Icons.shield, color: Colors.white, size: size * 0.5))));
 }
 
 

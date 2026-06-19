@@ -77,10 +77,12 @@ class _SplashScreenState extends State<SplashScreen>
                       'assets/images/app_icon.png',
                       width: 90, height: 90,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Image.asset(
-                        'assets/images/sail_logo.png',
+                      errorBuilder: (_, __, ___) => Container(
                         width: 90, height: 90,
-                        fit: BoxFit.contain),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.accent),
+                        child: const Icon(Icons.shield, color: Colors.white, size: 45)),
                     ),
                   ),
                   const SizedBox(height: 28),

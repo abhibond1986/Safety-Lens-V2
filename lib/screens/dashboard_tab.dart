@@ -246,7 +246,7 @@ class _DashboardTabState extends State<DashboardTab> {
           border: Border.all(color: AppColors.accent.withOpacity(0.3))),
         child: Padding(
           padding: const EdgeInsets.all(5),
-          child: Image.asset('assets/images/sail_logo.png',
+          child: Image.asset('assets/images/app_icon.png',
             fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => const Icon(
                 Icons.shield_outlined, size: 18, color: AppColors.accent)))),

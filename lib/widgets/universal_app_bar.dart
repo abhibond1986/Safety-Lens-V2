@@ -402,7 +402,21 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
               child: Row(children: [
-            SailLogo.widget(size: 36),
+            // SAIL Safety Lens badge icon
+            Container(
+              width: 36, height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(
+                  color: AppColors.accent.withOpacity(0.2),
+                  blurRadius: 8, spreadRadius: 1)]),
+              child: ClipOval(
+                child: Image.asset('assets/images/app_icon.png',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: AppColors.accent,
+                    child: const Icon(Icons.shield, color: Colors.white, size: 20)))),
+            ),
             const SizedBox(width: 10),
 
             Expanded(child: Column(
