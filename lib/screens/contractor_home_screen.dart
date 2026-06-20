@@ -92,9 +92,12 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
               'assets/images/app_icon.png',
               width: 28,
               height: 28,
-              errorBuilder: (_, __, ___) => Image.asset(
-                'assets/images/sail_logo.png',
-                width: 28, height: 28),
+              errorBuilder: (_, __, ___) => Container(
+                width: 28, height: 28,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent),
+                child: const Icon(Icons.shield, color: Colors.white, size: 14)),
             ),
             const SizedBox(width: 10),
             Column(

@@ -165,10 +165,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     'assets/images/app_icon.png',
                     width: 72, height: 72,
                     fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Image.asset(
-                      'assets/images/sail_logo.png',
+                    errorBuilder: (_, __, ___) => Container(
                       width: 72, height: 72,
-                      fit: BoxFit.contain),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.accent),
+                      child: const Icon(Icons.shield, color: Colors.white, size: 36)),
                   ),
                   const SizedBox(height: 14),
                   const BrandTitle(size: 22),

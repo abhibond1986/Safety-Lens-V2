@@ -892,14 +892,16 @@ class LocalAI {
 
   // ══════════════════════════════════════════════════════════════════
   //  OFFLINE IMAGE FALLBACK (used by GeminiVision when AI unavailable)
+  //  NOTE: This returns example scenarios for demonstration purposes.
+  //  For true offline AI analysis, integrate TensorFlow Lite model.
   // ══════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>> analyseImage(File imageFile) async {
     final scenarios = [
       {
         'riskScore': 72, 'severity': 'HIGH',
         'hazardType': 'PPE Non-Compliance',
-        'summary': 'Critical PPE violations detected. Worker without IS 2925 helmet in crane operation zone. Floor contamination creates slip hazard. Immediate supervisor intervention required per FA 1948 S35.',
-        'confidence': 91,
+        'summary': '⚠️ OFFLINE MODE: Showing example scenario. This is NOT analysis of your photo. AI requires internet connection. Example: Critical PPE violations - Worker without IS 2925 helmet in crane zone.',
+        'confidence': 0,  // Set to 0 to indicate this is example data
         'hazards': [
           {'name': 'Missing Safety Helmet', 'severity': 'CRITICAL',
            'desc': 'Worker without ISI-marked helmet — FA 1948 S35, IS 2925:1984',
@@ -922,8 +924,8 @@ class LocalAI {
       {
         'riskScore': 88, 'severity': 'CRITICAL',
         'hazardType': 'Working at Height — Fall Risk',
-        'summary': 'Worker at elevation >1.8m without full-body harness or anchor — FA 1948 S32(c) violation. Unguarded edge creates immediate fall risk. WAH permit not obtained per SG/02.',
-        'confidence': 92,
+        'summary': '⚠️ OFFLINE MODE: Showing example scenario. This is NOT analysis of your photo. AI requires internet connection. Example: Worker >1.8m without harness - FA 1948 S32(c) violation.',
+        'confidence': 0,  // Set to 0 to indicate this is example data
         'hazards': [
           {'name': 'No Fall Arrest at Height', 'severity': 'CRITICAL',
            'desc': 'Worker >1.8m without IS 3521 harness — FA 1948 S32(c)',
@@ -947,8 +949,8 @@ class LocalAI {
       {
         'riskScore': 82, 'severity': 'CRITICAL',
         'hazardType': 'Gas Cylinder — SMPV Violation',
-        'summary': 'Gas cylinders unsecured and O2/acetylene stored within 6m — SMPV Rule 10 and Rule 14 Table-3 violated. Valve protection caps missing. Immediate explosion and fire risk.',
-        'confidence': 89,
+        'summary': '⚠️ OFFLINE MODE: Showing example scenario. This is NOT analysis of your photo. AI requires internet connection. Example: Gas cylinders unsecured, O2/acetylene <6m apart - SMPV violation.',
+        'confidence': 0,  // Set to 0 to indicate this is example data
         'hazards': [
           {'name': 'Cylinders Not Chained', 'severity': 'CRITICAL',
            'desc': 'Cylinders not chained upright — SMPV Rule 10(1), IS 15222',
@@ -974,7 +976,11 @@ class LocalAI {
       },
     ];
     final idx = DateTime.now().second % scenarios.length;
-    return scenarios[idx];
+    final result = Map<String, dynamic>.from(scenarios[idx]);
+    result['_source'] = 'offline_demo';
+    result['_isOffline'] = true;
+    result['_note'] = 'This is an example scenario shown in offline mode. For real AI analysis of your photo, please connect to the internet.';
+    return result;
   }
 
   // ══════════════════════════════════════════════════════════════════

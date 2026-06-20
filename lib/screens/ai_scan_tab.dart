@@ -155,6 +155,12 @@ class _AIScanTabState extends State<AIScanTab> {
           _analyzing   = false;
           _currentStep = 3;
         });
+
+        // Show offline mode notification if applicable
+        if (result?['_isOffline'] == true || result?['_source'] == 'offline_demo') {
+          _snack('⚠️ OFFLINE MODE: Showing example scenario (not your photo analysis)',
+                 AppColors.amber);
+        }
       }
     } catch (e) {
       if (mounted) {
