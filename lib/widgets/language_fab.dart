@@ -28,9 +28,9 @@ class _LanguageFabState extends State<LanguageFab>
 
   static const _langs = [
     {'code': 'en', 'label': 'EN', 'name': 'English'},
-    {'code': 'hi', 'label': 'हि', 'name': 'हिंदी'},
-    {'code': 'bn', 'label': 'বা', 'name': 'বাংলা'},
-    {'code': 'or', 'label': 'ଓ', 'name': 'ଓଡ଼ିଆ'},
+    {'code': 'hi', 'label': 'HI', 'name': 'Hindi'},
+    {'code': 'bn', 'label': 'BN', 'name': 'Bengali'},
+    {'code': 'or', 'label': 'OR', 'name': 'Odia'},
   ];
 
   @override
@@ -161,20 +161,9 @@ class _LanguageFabState extends State<LanguageFab>
                 offset: const Offset(0, 4))]),
             child: Center(child: _open
               ? Icon(Icons.close_rounded,
-                  color: sl.text1, size: 20)
-              : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.language_rounded,
-                      color: Colors.white, size: 18),
-                    Text(
-                      current.toUpperCase(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 8,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2)),
-                  ])),
+                  color: sl.text1, size: 22)
+              : const Icon(Icons.language_rounded,
+                  color: Colors.white, size: 24)),
           ),
         ),
       ],

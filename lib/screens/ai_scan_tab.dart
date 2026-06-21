@@ -107,16 +107,25 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    // Step 1: Capture GPS location first (if taking photo with camera)
+    // ✅ Step 1: Capture GPS location (NON-BLOCKING - continues even if GPS fails)
     LocationData? location;
     if (source == ImageSource.camera) {
       setState(() => _capturingLocation = true);
       _snack('📍 Capturing GPS location...', AppColors.accent);
-      location = await GeoService.getCurrentLocation();
+
+      try {
+        location = await GeoService.getCurrentLocation().timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => LocationData(error: 'GPS timeout - continuing without location'),
+        );
+      } catch (e) {
+        location = LocationData(error: 'GPS unavailable');
+      }
+
       setState(() => _capturingLocation = false);
 
       if (location?.error != null) {
-        _snack('⚠️ GPS: ${location!.error}', AppColors.amber);
+        _snack('⚠️ ${location!.error} - Photo will be saved without GPS', AppColors.amber);
       } else if (location?.isValid == true) {
         _snack('✅ GPS locked (±${location!.accuracy?.toStringAsFixed(1) ?? '?'}m)', AppColors.green);
       }
@@ -181,15 +190,35 @@ class _AIScanTabState extends State<AIScanTab> {
     try {
       setState(() => _step = steps.last);
       Map<String, dynamic>? result;
+      bool failedDueToInternet = false;
+
       try {
         result = kIsWeb
             ? await GeminiVision.analyseImageBytes(_imageBytes!)
             : await GeminiVision.analyseImage(File(_pickedFile!.path));
       } catch (e) {
-        result = kIsWeb
-            ? LocalAI.demoAnalysis()
-            : await LocalAI.analyseImage(File(_pickedFile!.path));
+        // ✅ FIX: Check if it's a network/connectivity error
+        final errorStr = e.toString().toLowerCase();
+        if (errorStr.contains('socket') ||
+            errorStr.contains('network') ||
+            errorStr.contains('connection') ||
+            errorStr.contains('timeout') ||
+            errorStr.contains('failed host lookup')) {
+          failedDueToInternet = true;
+        }
+
+        // Show error and stop - don't fall back to demo
+        if (mounted) {
+          setState(() { _analyzing = false; _currentStep = 1; });
+          if (failedDueToInternet) {
+            _snack('⚠️ Poor internet connectivity. Please try again later.', AppColors.red);
+          } else {
+            _snack('⚠️ Analysis failed: ${e.toString()}', AppColors.red);
+          }
+        }
+        return; // Stop here, don't continue
       }
+
       if (mounted) {
         final hazards = (result?['hazards'] as List?) ?? [];
         _buildHazardKeys(hazards.length);
@@ -198,12 +227,6 @@ class _AIScanTabState extends State<AIScanTab> {
           _analyzing   = false;
           _currentStep = 3;
         });
-
-        // Show offline mode notification if applicable
-        if (result?['_isOffline'] == true || result?['_source'] == 'offline_demo') {
-          _snack('⚠️ OFFLINE MODE: Showing example scenario (not your photo analysis)',
-                 AppColors.amber);
-        }
       }
     } catch (e) {
       if (mounted) {
