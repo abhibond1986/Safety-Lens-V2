@@ -1,16 +1,19 @@
 // lib/services/network_checker.dart
-// Network connectivity checker — FIXED for Android
+// Network connectivity checker — FIXED for Android + Web
 //
 // Previous bugs:
 //   ❌ Used http.head() for Apps Script — Apps Script only supports GET/POST
 //   ❌ connectivity_plus v5 returns List<ConnectivityResult>, not single value
-//   Result: Backend always appeared "unreachable" → permanent offline mode on Android
+//   ❌ On web: connectivity_plus unreliable + google.com CORS blocked → always offline
+//   Result: Backend always appeared "unreachable" → permanent offline mode
 //
 // Fixes:
 //   ✅ Uses GET with lightweight ping to Google (fast, reliable)
 //   ✅ Backend check uses GET with action=ping (Apps Script responds to GET)
 //   ✅ connectivity_plus v5 List<ConnectivityResult> handled correctly
+//   ✅ Web: always returns online (browser handles connectivity natively)
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:http/http.dart' as http;
 
@@ -93,6 +96,19 @@ class NetworkChecker {
   /// and let the actual API call handle failures with retry logic.
   /// This prevents the overly-aggressive "offline fallback" on Android.
   static Future<Map<String, bool>> getNetworkStatus() async {
+    // ✅ WEB FIX: On web, always report online.
+    // connectivity_plus uses Navigator.onLine which is unreliable, and
+    // _canReachInternet() fails due to CORS (can't fetch google.com from browser).
+    // The browser handles connectivity natively — if network is truly down,
+    // the actual Cloudinary/Apps Script calls will fail with their own retry logic.
+    if (kIsWeb) {
+      return {
+        'hasInternet': true,
+        'backendReachable': true,
+        'isOnline': true,
+      };
+    }
+
     final hasNet = await hasInternet();
 
     // If connectivity_plus says no internet, do a real check

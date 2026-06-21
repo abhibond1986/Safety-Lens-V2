@@ -71,15 +71,20 @@ class GeminiVision {
       print('GeminiVision: Cloudinary URL = $imageUrl');
 
       // Step 2: Send URL to Apps Script with enhanced SAIL prompt
-      // ✅ Sends full prompt from app — backend uses 'prompt' field if present,
-      //    otherwise falls back to 'promptMode' server-side prompt.
-      //    This gives us control to refine AI knowledge without backend changes.
-      final body = jsonEncode({
+      // ✅ On mobile: send full prompt from app for enhanced analysis
+      // ✅ On web: skip sending large prompt to avoid CORS/body-size issues
+      //    with cross-origin Apps Script redirects. Backend v14 has the same
+      //    pipe/wire rules built into its server-side prompt.
+      final Map<String, dynamic> requestBody = {
         'action': 'analyzeUrl',
         'imageUrl': imageUrl,
         'promptMode': 'sail_full',
-        'prompt': _sailAnalysisPrompt,
-      });
+      };
+      // Only send the large prompt on mobile — web uses backend's built-in prompt
+      if (!kIsWeb) {
+        requestBody['prompt'] = _sailAnalysisPrompt;
+      }
+      final body = jsonEncode(requestBody);
 
       final response = await http
           .post(
@@ -90,9 +95,34 @@ class GeminiVision {
           .timeout(const Duration(seconds: timeoutSeconds));
 
       print('GeminiVision: Apps Script status = ${response.statusCode}');
+      print('GeminiVision: Response length = ${response.body.length}, first 100 chars = ${response.body.substring(0, response.body.length > 100 ? 100 : response.body.length)}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        // ✅ FIX: Check if response is actually JSON (not HTML error page)
+        final bodyTrimmed = response.body.trim();
+        if (bodyTrimmed.isEmpty || bodyTrimmed.startsWith('<!') || bodyTrimmed.startsWith('<html')) {
+          print('GeminiVision: Got HTML response instead of JSON — likely Auth/CORS redirect issue');
+          if (retryCount < maxRetries) {
+            await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+            return analyseImageBytes(bytes, retryCount: retryCount + 1);
+          }
+          return _offlineFallback(bytes,
+              reason: 'Backend returned HTML instead of JSON');
+        }
+
+        dynamic data;
+        try {
+          data = jsonDecode(bodyTrimmed);
+        } catch (jsonErr) {
+          print('GeminiVision: JSON parse error: $jsonErr');
+          print('GeminiVision: Raw body (first 300): ${response.body.substring(0, response.body.length > 300 ? 300 : response.body.length)}');
+          if (retryCount < maxRetries) {
+            await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+            return analyseImageBytes(bytes, retryCount: retryCount + 1);
+          }
+          return _offlineFallback(bytes,
+              reason: 'Invalid JSON response from backend');
+        }
 
         if (data is Map && data['error'] != null) {
           print('GeminiVision: Apps Script error = ${data['error']}');
@@ -115,7 +145,7 @@ class GeminiVision {
         }
 
         print(
-            'GeminiVision: Unexpected response format = ${response.body.substring(0, 200)}');
+            'GeminiVision: Unexpected response format = ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
         return _offlineFallback(bytes,
             reason: 'Unexpected response from AI backend');
       }
