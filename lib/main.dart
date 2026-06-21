@@ -1,4 +1,5 @@
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,8 @@ import 'services/sync_service.dart';
 import 'services/app_updater.dart';
 import 'services/i18n.dart';  // ← ADDED: fixes "I18n not defined" error
 import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -239,10 +242,55 @@ class _SafetyLensAppState extends State<SafetyLensApp> {
           themeMode: _mode,
           theme: _buildTheme(false),
           darkTheme: _buildTheme(true),
-          home: SplashScreen(toggleTheme: toggleTheme),
+          // ✅ On web, skip Flutter splash — HTML splash (index.html) already
+          // shows branding while Flutter loads. Going straight to login/home
+          // avoids the double-splash (blue logo → badge logo → app).
+          home: kIsWeb
+              ? _WebEntry(toggleTheme: toggleTheme)
+              : SplashScreen(toggleTheme: toggleTheme),
         );
       },
     );
+  }
+}
+
+// ─── WEB ENTRY (skips splash on web) ──────────────────────────────────────────
+class _WebEntry extends StatefulWidget {
+  final VoidCallback toggleTheme;
+  const _WebEntry({required this.toggleTheme});
+  @override
+  State<_WebEntry> createState() => _WebEntryState();
+}
+
+class _WebEntryState extends State<_WebEntry> {
+  Widget? _destination;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveDestination();
+  }
+
+  Future<void> _resolveDestination() async {
+    final user = await LocalDB.getCurrentUser();
+    if (!mounted) return;
+    setState(() {
+      _destination = user != null
+          ? HomeScreen(toggleTheme: widget.toggleTheme)
+          : LoginScreen(toggleTheme: widget.toggleTheme);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Show a minimal container (same bg as HTML splash) until DB check finishes
+    if (_destination == null) {
+      return const Scaffold(
+        backgroundColor: Color(0xFF0A0E1A),
+        body: SizedBox.shrink(),
+      );
+    }
+    return _destination!;
   }
 }
 
