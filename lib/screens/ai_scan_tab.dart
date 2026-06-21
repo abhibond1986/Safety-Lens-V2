@@ -18,6 +18,7 @@ import '../services/local_ai.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_export.dart';
+import '../services/geo_service.dart';
 import '../widgets/hazard_annotated_image.dart';
 import '../widgets/universal_app_bar.dart';
 import '../widgets/voice_text_field.dart';
@@ -55,6 +56,10 @@ class _AIScanTabState extends State<AIScanTab> {
   final TextEditingController _locationController = TextEditingController();
   final List<GlobalKey>  _hazardRowKeys    = [];
   int? _highlightedRow;
+
+  // GPS geo-tagging
+  LocationData? _capturedLocation;
+  bool _capturingLocation = false;
 
   static const String _sheetUrl =
       'https://docs.google.com/spreadsheets/d/1gkN0Kxy5tulHN9oCbvliI5bota7S1UpK6gusftWUZgI/edit';
@@ -102,6 +107,22 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
+    // Step 1: Capture GPS location first (if taking photo with camera)
+    LocationData? location;
+    if (source == ImageSource.camera) {
+      setState(() => _capturingLocation = true);
+      _snack('📍 Capturing GPS location...', AppColors.accent);
+      location = await GeoService.getCurrentLocation();
+      setState(() => _capturingLocation = false);
+
+      if (location?.error != null) {
+        _snack('⚠️ GPS: ${location!.error}', AppColors.amber);
+      } else if (location?.isValid == true) {
+        _snack('✅ GPS locked (±${location!.accuracy?.toStringAsFixed(1) ?? '?'}m)', AppColors.green);
+      }
+    }
+
+    // Step 2: Pick/capture image
     final picker = ImagePicker();
     // ✅ FIX: 1600×1600 @ q=85 gives the AI enough visual detail to actually
     // read equipment tags, spot corrosion, identify hazards reliably.
@@ -112,10 +133,24 @@ class _AIScanTabState extends State<AIScanTab> {
         source: source, imageQuality: 85,
         maxWidth: 1600, maxHeight: 1600);
     if (picked == null) return;
-    final bytes = await picked.readAsBytes();
+
+    // Step 3: Read image bytes
+    Uint8List bytes = await picked.readAsBytes();
+
+    // Step 4: Add watermark with timestamp + GPS (if captured)
+    if (location != null) {
+      final watermarked = await GeoService.addWatermarkToImage(bytes, location);
+      if (watermarked != null) {
+        bytes = watermarked;
+        _snack('✅ Timestamp + GPS watermark added', AppColors.green);
+      }
+    }
+
+    // Step 5: Update state with location data
     setState(() {
       _pickedFile     = picked;
       _imageBytes     = bytes;
+      _capturedLocation = location;
       _analyzing      = true;
       _result         = null;
       _isSaved        = false;
@@ -123,7 +158,15 @@ class _AIScanTabState extends State<AIScanTab> {
       _hazardRowKeys.clear();
       _highlightedRow = null;
       _currentStep    = 2;
+
+      // Set location text if we have valid GPS
+      if (location?.isValid == true) {
+        _locationController.text = GeoService.getDisplayAddress(location!);
+      } else if (location?.error != null) {
+        _locationController.text = 'GPS unavailable - manual entry required';
+      }
     });
+
     await _analyze();
   }
 
@@ -376,6 +419,10 @@ class _AIScanTabState extends State<AIScanTab> {
                   children: [
                     // ✅ NEW: hint banner is the first item
                     hintBanner,
+
+                    // ── GPS Location Card ──────────────────
+                    if (_capturedLocation != null && _capturedLocation!.isValid)
+                      _locationCard(sl),
 
                     // ── Editable summary ──────────────────
                     Container(
@@ -1983,4 +2030,203 @@ class _AIScanTabState extends State<AIScanTab> {
       Expanded(child: Text(text, style: TextStyle(
           color: sl.text2, fontSize: 11, height: 1.4))),
     ]));
+
+  // ── GPS Location Card ──────────────────────────────────────
+  Widget _locationCard(SL sl) {
+    if (_capturedLocation == null || !_capturedLocation!.isValid) {
+      return const SizedBox.shrink();
+    }
+
+    final loc = _capturedLocation!;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(0, 0, 0, 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.location_on, color: AppColors.accent, size: 18),
+              const SizedBox(width: 8),
+              Text('GPS Location', style: TextStyle(
+                color: sl.text1,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              )),
+              const Spacer(),
+              // Edit button
+              GestureDetector(
+                onTap: _editLocation,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.edit, size: 14, color: AppColors.accent),
+                      const SizedBox(width: 4),
+                      const Text('Edit', style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      )),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // GPS Coordinates
+          if (loc.latitude != null && loc.longitude != null) ...[
+            _locationRow(Icons.gps_fixed,
+              '${loc.latitude!.toStringAsFixed(6)}, ${loc.longitude!.toStringAsFixed(6)}', sl),
+            if (loc.accuracy != null)
+              _locationRow(Icons.my_location,
+                'Accuracy: ±${loc.accuracy!.toStringAsFixed(1)}m', sl),
+          ],
+
+          // Address
+          if (loc.address != null && loc.address!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            _locationRow(Icons.place, loc.address!, sl),
+          ],
+
+          // Timestamp
+          const SizedBox(height: 4),
+          _locationRow(Icons.access_time,
+            'Captured: ${_formatLocationTimestamp(loc.timestamp)}', sl),
+
+          // Google Maps link
+          if (loc.latitude != null && loc.longitude != null) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: () => _openInMaps(loc.latitude!, loc.longitude!),
+              child: Row(
+                children: [
+                  const Icon(Icons.map, size: 14, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  const Text('View on Google Maps',
+                    style: TextStyle(color: AppColors.accent, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _locationRow(IconData icon, String text, SL sl) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 14, color: sl.text3),
+          const SizedBox(width: 8),
+          Expanded(child: Text(text,
+            style: TextStyle(color: sl.text2, fontSize: 11.5))),
+        ],
+      ),
+    );
+  }
+
+  String _formatLocationTimestamp(DateTime dt) {
+    return '${dt.day.toString().padLeft(2, '0')}/${dt.month.toString().padLeft(2, '0')}/${dt.year} '
+        '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _editLocation() {
+    final latCtrl = TextEditingController(
+      text: _capturedLocation?.latitude?.toString() ?? '',
+    );
+    final lonCtrl = TextEditingController(
+      text: _capturedLocation?.longitude?.toString() ?? '',
+    );
+    final addrCtrl = TextEditingController(
+      text: _capturedLocation?.address ?? '',
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit Location'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: latCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Latitude',
+                hintText: 'e.g., 23.456789',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: lonCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Longitude',
+                hintText: 'e.g., 78.123456',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true, signed: true),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: addrCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Address (optional)',
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final lat = double.tryParse(latCtrl.text);
+              final lon = double.tryParse(lonCtrl.text);
+              if (lat != null && lon != null) {
+                setState(() {
+                  _capturedLocation = LocationData(
+                    latitude: lat,
+                    longitude: lon,
+                    address: addrCtrl.text.isEmpty ? null : addrCtrl.text,
+                    accuracy: _capturedLocation?.accuracy,
+                    timestamp: _capturedLocation?.timestamp ?? DateTime.now(),
+                  );
+                  _locationController.text = GeoService.getDisplayAddress(_capturedLocation!);
+                });
+                _snack('✅ Location updated', AppColors.green);
+              } else {
+                _snack('⚠️ Invalid coordinates', AppColors.red);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openInMaps(double lat, double lon) async {
+    final url = Uri.parse(GeoService.getGoogleMapsUrl(lat, lon));
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
 }
