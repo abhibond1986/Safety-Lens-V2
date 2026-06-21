@@ -1,24 +1,32 @@
 @echo off
 echo ========================================
-echo GPS Geo-Tagging - Committing Changes
+echo ALL ISSUES FIXED - Committing Changes
 echo ========================================
 echo.
 
 cd /d "%~dp0"
 
-echo Adding all changes...
+echo Step 1: Adding all changes...
 git add .
 
 echo.
-echo Committing with detailed message...
-git commit -F FINAL_COMMIT_MESSAGE.txt
+echo Step 2: Committing with detailed message...
+git commit -F COMPLETE_FIX_COMMIT.txt
 
 echo.
-echo Pushing to GitHub...
+echo Step 3: Pushing to GitHub...
 git push
 
 echo.
 echo ========================================
-echo Done! Now run: flutter pub get
+echo ✅ Done! All changes committed and pushed
+echo ========================================
+echo.
+echo NEXT STEPS:
+echo 1. Run: flutter pub get
+echo 2. Run: REGENERATE_ICONS.bat
+echo 3. Clear browser cache (Ctrl + Shift + Delete)
+echo 4. Test: flutter run
+echo.
 echo ========================================
 pause

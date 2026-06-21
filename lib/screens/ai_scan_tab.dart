@@ -1295,7 +1295,9 @@ class _AIScanTabState extends State<AIScanTab> {
     final firstHazardMap = hazards.isNotEmpty
         ? Map<String, dynamic>.from(hazards.first as Map)
         : <String, dynamic>{};
-    return {
+
+    // Build base incident
+    final incident = {
       'id':              DateTime.now().millisecondsSinceEpoch.toString(),
       'title':           'AI Hazard Scan: ${firstHazard.toString()}',
       'plant':           user['plant']?.toString() ?? 'SAIL Safety Organisation',
@@ -1320,6 +1322,17 @@ class _AIScanTabState extends State<AIScanTab> {
       'imageBase64':     _imageBytes != null
                          ? base64Encode(_imageBytes!) : null,
     };
+
+    // ✅ Add GPS location data if available
+    if (_capturedLocation != null && _capturedLocation!.isValid) {
+      incident['latitude'] = _capturedLocation!.latitude;
+      incident['longitude'] = _capturedLocation!.longitude;
+      incident['locationAccuracy'] = _capturedLocation!.accuracy;
+      incident['locationAddress'] = _capturedLocation!.address;
+      incident['locationTimestamp'] = _capturedLocation!.timestamp.toIso8601String();
+    }
+
+    return incident;
   }
 
   Future<void> _uploadPdfBackground(

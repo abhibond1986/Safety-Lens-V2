@@ -381,6 +381,13 @@ class LocalDB {
     incident['reporterPno'] ??= user?['pno']  ?? '';
     incident['status']      ??= 'OPEN';
 
+    // ✅ GPS Location fields (optional - may be null if GPS unavailable)
+    // incident['latitude']        - GPS latitude
+    // incident['longitude']       - GPS longitude
+    // incident['locationAccuracy'] - GPS accuracy in meters
+    // incident['locationAddress']  - Human-readable address
+    // incident['locationTimestamp'] - When GPS was captured
+
     final existingIdx = all.indexWhere(
         (i) => i['id']?.toString() == incident['id']?.toString());
     if (existingIdx >= 0) {

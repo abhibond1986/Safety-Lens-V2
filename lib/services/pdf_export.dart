@@ -92,6 +92,14 @@ class PdfExport {
           w.add(_riskScoreBar(riskScore, severity));
           w.add(pw.SizedBox(height: 14));
         }
+        // ✅ Add GPS location section if available
+        final gpsSection = _gpsLocationSection(incident);
+        if (gpsSection != null) {
+          w.add(_sectionTitle('GPS LOCATION'));
+          w.add(pw.SizedBox(height: 5));
+          w.add(gpsSection);
+          w.add(pw.SizedBox(height: 14));
+        }
         w.add(_twoCol(incident));
         w.add(pw.SizedBox(height: 14));
         w.add(_signOff(reporterName, reporterPno));
@@ -642,6 +650,62 @@ class PdfExport {
       color: PdfColor.fromHex('#FAFAFA')),
     child: pw.Text(summary.isEmpty ? 'No summary provided.' : summary,
       style: pw.TextStyle(fontSize: 9, color: _textDark, lineSpacing: 1.6)));
+
+  // ✅ GPS LOCATION SECTION (if available)
+  static pw.Widget? _gpsLocationSection(Map<String, dynamic> inc) {
+    final lat = inc['latitude'];
+    final lon = inc['longitude'];
+
+    if (lat == null || lon == null) return null; // No GPS data
+
+    final acc = inc['locationAccuracy'];
+    final addr = inc['locationAddress']?.toString() ?? '';
+    final timestamp = inc['locationTimestamp']?.toString() ?? '';
+
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: _divider, width: 0.5),
+        color: PdfColor.fromHex('#E0F7FA')),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(children: [
+            pw.Text('📍 GPS LOCATION', style: pw.TextStyle(
+              fontSize: 8.5, color: _textDark,
+              fontWeight: pw.FontWeight.bold)),
+          ]),
+          pw.SizedBox(height: 6),
+          pw.Text('Coordinates: ${lat.toStringAsFixed(6)}, ${lon.toStringAsFixed(6)}',
+            style: pw.TextStyle(fontSize: 8.5, color: _textDark)),
+          if (acc != null)
+            pw.Text('Accuracy: ±${acc.toStringAsFixed(1)}m',
+              style: pw.TextStyle(fontSize: 8, color: _textMed)),
+          if (addr.isNotEmpty) ...[
+            pw.SizedBox(height: 3),
+            pw.Text('Address: $addr',
+              style: pw.TextStyle(fontSize: 8, color: _textMed)),
+          ],
+          if (timestamp.isNotEmpty) ...[
+            pw.SizedBox(height: 3),
+            pw.Text('Captured: ${_formatGpsTimestamp(timestamp)}',
+              style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
+          ],
+          pw.SizedBox(height: 4),
+          pw.Text('Google Maps: https://www.google.com/maps?q=$lat,$lon',
+            style: pw.TextStyle(fontSize: 7.5, color: PdfColor.fromHex('#0D47A1'),
+              decoration: pw.TextDecoration.underline)),
+        ]));
+  }
+
+  static String _formatGpsTimestamp(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      return DateFormat('dd MMM yyyy, HH:mm:ss').format(dt);
+    } catch (_) {
+      return iso;
+    }
+  }
 
   static pw.Widget _twoCol(Map<String, dynamic> inc) => pw.Row(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
