@@ -85,7 +85,7 @@ class NetworkChecker {
   }
 
   /// Get network status stream
-  static Stream<List<ConnectivityResult>> get connectivityStream =>
+  static Stream<ConnectivityResult> get connectivityStream =>
       _connectivity.onConnectivityChanged;
 
   /// Summary of current network state

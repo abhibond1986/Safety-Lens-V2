@@ -70,7 +70,7 @@ class GeoService {
         longitude: position.longitude,
         accuracy: position.accuracy,
         altitude: position.altitude,
-        timestamp: position.timestamp ?? DateTime.now(),
+        timestamp: position.timestamp,
         address: address,
       );
     } catch (e) {
