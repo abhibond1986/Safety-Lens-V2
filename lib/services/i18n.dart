@@ -46,12 +46,12 @@ class I18n extends ChangeNotifier {
     await setLocale(next);
   }
 
-  /// Get language display name
+  /// Get language display name (English names for universal understanding)
   static String langName(String code) {
     switch (code) {
-      case 'hi': return 'हिंदी';
-      case 'bn': return 'বাংলা';
-      case 'or': return 'ଓଡ଼ିଆ';
+      case 'hi': return 'Hindi';
+      case 'bn': return 'Bengali';
+      case 'or': return 'Odia';
       default:   return 'English';
     }
   }

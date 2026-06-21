@@ -381,12 +381,12 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
     final initial = (widget.user?['name']?.toString().isNotEmpty == true
         ? widget.user!['name'].toString()[0] : '?').toUpperCase();
 
-    // Short label for current language
+    // Short label for current language (ISO codes only)
     String langLabel;
     switch (I18n.currentLang) {
-      case 'hi': langLabel = 'हिं'; break;
-      case 'bn': langLabel = 'বাং'; break;
-      case 'or': langLabel = 'ଓ'; break;
+      case 'hi': langLabel = 'HI'; break;
+      case 'bn': langLabel = 'BN'; break;
+      case 'or': langLabel = 'OR'; break;
       default:   langLabel = 'EN'; break;
     }
 
