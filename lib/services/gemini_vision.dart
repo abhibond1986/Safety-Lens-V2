@@ -125,15 +125,37 @@ class GeminiVision {
         }
 
         if (data is Map && data['error'] != null) {
-          print('GeminiVision: Apps Script error = ${data['error']}');
-          if (retryCount < maxRetries) {
+          final errorMsg = data['error'].toString();
+          print('GeminiVision: Apps Script error = $errorMsg');
+
+          // ✅ FIX: Don't retry permanent provider failures (key issues won't self-heal)
+          final isPermanent = errorMsg.contains('All AI providers failed') ||
+              errorMsg.contains('key invalid') ||
+              errorMsg.contains('no GOOGLE_AI_KEY');
+
+          if (!isPermanent && retryCount < maxRetries) {
             print(
                 'GeminiVision: Retrying after API error (attempt ${retryCount + 2}/${maxRetries + 1})…');
             await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
             return analyseImageBytes(bytes, retryCount: retryCount + 1);
           }
+
+          // ✅ FIX: Return backend response as-is when it has the expected shape
+          // (it includes hazards:[], overallRisk, etc.) — mark as online but failed
+          // so the UI shows "AI Error" not misleading "Offline Mode"
+          if (data['hazards'] != null) {
+            data['_source'] = 'backend_error';
+            data['_isOnline'] = true; // network IS working, AI just failed
+            data['summary'] = '⚠️ **AI Analysis Unavailable**\n'
+                'The backend received your image but AI providers could not process it.\n'
+                'Error: $errorMsg\n\n'
+                'This usually means the AI API key needs to be refreshed in Apps Script.\n'
+                'Form submission still works — fill in details manually.';
+            return Map<String, dynamic>.from(data);
+          }
+
           return _offlineFallback(bytes,
-              reason: 'AI analysis error: ${data['error']}');
+              reason: 'AI analysis error: $errorMsg');
         }
 
         if (data is Map && data['hazards'] != null) {
