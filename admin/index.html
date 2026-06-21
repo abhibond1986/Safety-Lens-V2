@@ -508,6 +508,7 @@ uid | name | designation | plant | department | pno | mobile | email | isAdmin |
 
     <div style="display:flex;gap:8px;margin-top:6px">
       <button class="bsm b-gh" style="flex:1;justify-content:center;padding:10px" onclick="closeM('m-user')">Cancel</button>
+      <button class="bsm b-dn" id="m-delete-btn" style="flex:1;justify-content:center;padding:10px;font-size:13px;display:none" onclick="confirmDeleteFromModal()">🗑️ Delete</button>
       <button class="bsm b-ac" style="flex:2;justify-content:center;padding:10px;font-size:13px" id="m-save-btn" onclick="saveUser()">Save User</button>
     </div>
   </div>
@@ -819,6 +820,7 @@ function openAddModal(){
   document.getElementById('m-plant').selectedIndex=0;
   document.getElementById('m-role').value='FALSE';
   document.getElementById('m-status').value='active';
+  document.getElementById('m-delete-btn').style.display='none'; // Hide delete button when adding
   openM('m-user');
 }
 
@@ -844,6 +846,10 @@ function editUser(username){
   // Plant
   const ps=document.getElementById('m-plant');
   for(let i=0;i<ps.options.length;i++){ if(ps.options[i].text.trim()===u.plant||ps.options[i].value===u.plant){ps.selectedIndex=i;break;} }
+
+  // Show delete button in edit mode
+  document.getElementById('m-delete-btn').style.display='flex';
+
   openM('m-user');
 }
 
@@ -931,6 +937,13 @@ async function toggleStatus(username){
     const resp=await gasPost({action:'updateStatus',username,status:ns});
     toast(resp.offline?`⚠️ Status updated locally`:`✅ @${username} ${ns}`);
   });
+}
+
+function confirmDeleteFromModal(){
+  const username = document.getElementById('m-edit-un').value;
+  if(!username){ toast('⚠️ No user selected'); return; }
+  closeM('m-user'); // Close edit modal first
+  deleteUser(username); // Then call delete with confirmation
 }
 
 async function deleteUser(username){
