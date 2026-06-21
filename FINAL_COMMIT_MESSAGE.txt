@@ -1,0 +1,51 @@
+Fix: Replace blue logo with SAIL badge on web loading screen + Add icon regeneration
+
+Logo Fixes:
+- Update web/index.html loading screen to use app_icon.png (SAIL badge) instead of sail_logo.png (blue logo)
+- Add web icon generation config to pubspec.yaml
+- Ensure favicon and all web icons use the SAIL Safety Lens badge
+
+GPS Geo-Tagging (Complete):
+✅ Phase 1 - Core Services:
+- Add geolocator, geocoding, image packages
+- Create GeoService with high-accuracy GPS capture (±5-10m)
+- Implement automatic address lookup
+- Add image watermarking with timestamp + GPS + accuracy
+- Complete error handling
+
+✅ Phase 2A - AI Scan Integration:
+- Integrate GPS capture into photo workflow
+- Auto-capture GPS when taking photos
+- Add watermark to images (timestamp, GPS, accuracy)
+- Display GPS location card in review UI
+- Implement edit location dialog
+- Add Google Maps link
+- Show real-time GPS feedback
+
+Admin Dashboard:
+- Add delete button in edit modal
+- Improve action button visibility
+
+Documentation:
+- GPS_GEOTAGGING_IMPLEMENTATION.md - Full implementation plan
+- GPS_INTEGRATION_PROGRESS.md - Progress tracker
+- WHATS_BEEN_DONE.md - Complete feature summary
+- FIX_LOGO_ISSUE.md - Logo fix guide
+- REGENERATE_ICONS.bat - Icon regeneration script
+- COMMIT_AND_PUSH.bat - Easy commit helper
+
+Files Modified:
+- pubspec.yaml (GPS dependencies + web icon config)
+- lib/services/geo_service.dart (NEW - GPS service)
+- lib/screens/ai_scan_tab.dart (GPS integration + UI)
+- web/index.html (badge logo on loading screen)
+- admin/index.html (delete button)
+
+Next Steps for User:
+1. Run: flutter pub get
+2. Run: dart run flutter_launcher_icons (regenerates web icons)
+3. Test: flutter run -d chrome (verify badge logo shows)
+4. Complete Phase 2B: Database schema, PDF export, permissions
+
+Status: GPS 75% complete, Logo fix applied (needs icon regeneration)
+Testing: Web logo fix testable immediately, GPS needs real device

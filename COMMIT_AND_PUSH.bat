@@ -11,7 +11,7 @@ git add .
 
 echo.
 echo Committing with detailed message...
-git commit -F COMMIT_MESSAGE.txt
+git commit -F FINAL_COMMIT_MESSAGE.txt
 
 echo.
 echo Pushing to GitHub...
