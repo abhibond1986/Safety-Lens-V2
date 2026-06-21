@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/local_db.dart';
 import 'services/sync_service.dart';
+import 'services/app_updater.dart';
 import 'services/i18n.dart';  // ← ADDED: fixes "I18n not defined" error
 import 'screens/splash_screen.dart';
 
@@ -13,6 +14,8 @@ void main() async {
   await LocalDB.init();
   await SyncService.init();
   SyncService.drainPendingQueue().catchError((_) => 0);
+  // Check for app updates silently in background (every 2 days)
+  AppUpdater.init();
   runApp(const SafetyLensApp());
 }
 

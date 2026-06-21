@@ -8,6 +8,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
+import '../services/app_updater.dart';
 import 'login_screen.dart';
 import 'home_tab.dart';
 import 'ai_scan_tab.dart';
@@ -46,6 +47,10 @@ class _HomeScreenState extends State<HomeScreen>
   Future<void> _loadUser() async {
     final u = await LocalDB.getCurrentUser();
     if (mounted) setState(() => _user = u);
+    // Show update dialog if an update was found during background check
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) AppUpdater.showUpdateDialogIfAvailable(context);
+    });
   }
 
   Future<void> _signOut() async {

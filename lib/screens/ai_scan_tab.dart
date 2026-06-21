@@ -107,59 +107,21 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    // ✅ Step 1: Capture GPS location (NON-BLOCKING - continues even if GPS fails)
-    LocationData? location;
-    if (source == ImageSource.camera) {
-      setState(() => _capturingLocation = true);
-      _snack('📍 Capturing GPS location...', AppColors.accent);
-
-      try {
-        location = await GeoService.getCurrentLocation().timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => LocationData(error: 'GPS timeout - continuing without location'),
-        );
-      } catch (e) {
-        location = LocationData(error: 'GPS unavailable');
-      }
-
-      setState(() => _capturingLocation = false);
-
-      if (location?.error != null) {
-        _snack('⚠️ ${location!.error} - Photo will be saved without GPS', AppColors.amber);
-      } else if (location?.isValid == true) {
-        _snack('✅ GPS locked (±${location!.accuracy?.toStringAsFixed(1) ?? '?'}m)', AppColors.green);
-      }
-    }
-
-    // Step 2: Pick/capture image
+    // ✅ Step 1: Open camera/gallery IMMEDIATELY — no GPS blocking
     final picker = ImagePicker();
-    // ✅ FIX: 1600×1600 @ q=85 gives the AI enough visual detail to actually
-    // read equipment tags, spot corrosion, identify hazards reliably.
-    // Previously 500×500 @ q=20 produced WhatsApp-thumbnail-quality images
-    // that no AI model could analyse meaningfully (~30 KB upload size).
-    // New settings → ~300–500 KB per image (still fast over mobile data).
     final picked = await picker.pickImage(
         source: source, imageQuality: 85,
         maxWidth: 1600, maxHeight: 1600);
     if (picked == null) return;
 
-    // Step 3: Read image bytes
+    // Step 2: Read image bytes
     Uint8List bytes = await picked.readAsBytes();
 
-    // Step 4: Add watermark with timestamp + GPS (if captured)
-    if (location != null) {
-      final watermarked = await GeoService.addWatermarkToImage(bytes, location);
-      if (watermarked != null) {
-        bytes = watermarked;
-        _snack('✅ Timestamp + GPS watermark added', AppColors.green);
-      }
-    }
-
-    // Step 5: Update state with location data
+    // Step 3: Update state immediately — start AI analysis
     setState(() {
       _pickedFile     = picked;
       _imageBytes     = bytes;
-      _capturedLocation = location;
+      _capturedLocation = null;
       _analyzing      = true;
       _result         = null;
       _isSaved        = false;
@@ -167,16 +129,47 @@ class _AIScanTabState extends State<AIScanTab> {
       _hazardRowKeys.clear();
       _highlightedRow = null;
       _currentStep    = 2;
+    });
 
-      // Set location text if we have valid GPS
+    // Step 4: Capture GPS silently in background (non-blocking)
+    if (source == ImageSource.camera) {
+      _captureGpsInBackground(bytes);
+    }
+
+    await _analyze();
+  }
+
+  /// Captures GPS location silently in background without showing any UI to user
+  Future<void> _captureGpsInBackground(Uint8List originalBytes) async {
+    LocationData? location;
+    try {
+      location = await GeoService.getCurrentLocation().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => LocationData(error: 'GPS timeout'),
+      );
+    } catch (e) {
+      location = LocationData(error: 'GPS unavailable');
+    }
+
+    if (!mounted) return;
+
+    // Update state silently with location data
+    setState(() {
+      _capturedLocation = location;
       if (location?.isValid == true) {
         _locationController.text = GeoService.getDisplayAddress(location!);
-      } else if (location?.error != null) {
-        _locationController.text = 'GPS unavailable - manual entry required';
       }
     });
 
-    await _analyze();
+    // Add watermark silently if GPS was captured successfully
+    if (location != null && location.isValid) {
+      final watermarked = await GeoService.addWatermarkToImage(originalBytes, location);
+      if (watermarked != null && mounted) {
+        setState(() {
+          _imageBytes = watermarked;
+        });
+      }
+    }
   }
 
   Future<void> _analyze() async {

@@ -53,9 +53,23 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.debug
+            // ✅ Shrink & minify for smaller APK (faster install)
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
             signingConfig signingConfigs.debug
+        }
+    }
+
+    // ✅ Split APK per CPU architecture — each APK is ~40% smaller
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86_64"
+            universalApk true  // Also build a universal APK as fallback
         }
     }
 }

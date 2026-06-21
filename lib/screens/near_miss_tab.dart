@@ -318,9 +318,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       return;
     }
 
-    if (!networkStatus['backendReachable']!) {
-      _snack('AI server unavailable - Using knowledge-based analysis', const Color(0xFFD97706));
-    }
+    // ✅ FIXED: Removed backend reachability pre-check that always failed on Android
+    // The actual GeminiVision call has its own retry logic and will fallback if needed
 
     final steps = ['Uploaded', 'Analyzing image...', 'Classifying hazard...', 'Pre-filling form...'];
     for (var i = 0; i < steps.length - 1; i++) {

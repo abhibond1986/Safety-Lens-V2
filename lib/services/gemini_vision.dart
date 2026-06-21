@@ -39,19 +39,17 @@ class GeminiVision {
       print(
           'GeminiVision: [Attempt ${retryCount + 1}/${maxRetries + 1}] image size = ${bytes.length} bytes');
 
-      // ✅ NEW: Check network BEFORE attempting
+      // ✅ FIXED: Only check basic internet — don't pre-check backend
+      // The actual Cloudinary upload + API call will fail with retry if truly offline.
+      // Previous bug: HEAD request to Apps Script always failed → permanent offline mode.
       if (!kIsWeb) {
         final networkStatus = await NetworkChecker.getNetworkStatus();
         if (!networkStatus['hasInternet']!) {
           print('GeminiVision: No internet connection → offline fallback');
           return _offlineFallback(bytes, reason: 'No internet connection');
         }
-        if (!networkStatus['backendReachable']!) {
-          print(
-              'GeminiVision: Backend unreachable → offline fallback');
-          return _offlineFallback(bytes,
-              reason: 'AI backend not reachable. Using knowledge base.');
-        }
+        // ✅ Removed backend reachability pre-check — let the actual call handle it
+        print('GeminiVision: Internet available — proceeding with online analysis');
       }
 
       // Step 1: Upload to Cloudinary

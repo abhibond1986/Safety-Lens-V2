@@ -1,17 +1,27 @@
-name: Build Safety Lens APK
+name: Build & Release Safety Lens APK
 
 on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., 1.2.0). Leave empty for auto-increment.'
+        required: false
+        default: ''
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 30
+    permissions:
+      contents: write  # Needed to create GitHub Releases
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for version detection
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -26,37 +36,100 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Flutter version (sanity check)
-        run: flutter --version
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Auto-increment: find latest tag, bump patch
+            LATEST=$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            if [ -z "$LATEST" ]; then
+              VERSION="1.0.0"
+            else
+              # Strip 'v' prefix and increment patch
+              VER=${LATEST#v}
+              MAJOR=$(echo $VER | cut -d. -f1)
+              MINOR=$(echo $VER | cut -d. -f2)
+              PATCH=$(echo $VER | cut -d. -f3)
+              PATCH=$((PATCH + 1))
+              VERSION="$MAJOR.$MINOR.$PATCH"
+            fi
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+          # Version code = commits count (always incrementing)
+          CODE=$(git rev-list --count HEAD)
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "📦 Building version $VERSION (code: $CODE)"
 
       - name: Setup local.properties
         run: |
           cd android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "flutter.sdk=$FLUTTER_ROOT" >> local.properties
-          echo "flutter.versionCode=17" >> local.properties
-          echo "flutter.versionName=1.0.0" >> local.properties
-          cat local.properties
-
-      - name: Clean
-        run: flutter clean
+          echo "flutter.versionCode=${{ steps.version.outputs.code }}" >> local.properties
+          echo "flutter.versionName=${{ steps.version.outputs.version }}" >> local.properties
 
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Run Flutter analyzer (non-blocking)
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
+      # ✅ Regenerate launcher icons from app_icon.png (SAIL logo)
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
 
-      - name: Build debug APK
-        run: flutter build apk --debug --no-tree-shake-icons
+      # ✅ Build RELEASE APK (much smaller than debug — faster install)
+      - name: Build release APK
+        run: |
+          flutter build apk --release \
+            --no-tree-shake-icons \
+            --build-number=${{ steps.version.outputs.code }} \
+            --build-name=${{ steps.version.outputs.version }}
 
-      - name: List APK output
-        run: ls -la build/app/outputs/flutter-apk/
+      - name: List APK outputs
+        run: |
+          echo "=== Release APK ==="
+          ls -lh build/app/outputs/flutter-apk/
+          echo ""
+          echo "=== APK sizes ==="
+          find build/app/outputs -name "*.apk" -exec ls -lh {} \;
 
+      - name: Rename APK for clarity
+        run: |
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/SafetyLens-v${{ steps.version.outputs.version }}.apk
+
+      # ✅ Upload as artifact (available immediately from Actions tab)
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: safety-lens-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: SafetyLens-v${{ steps.version.outputs.version }}
+          path: build/app/outputs/flutter-apk/SafetyLens-v${{ steps.version.outputs.version }}.apk
           retention-days: 90
-          if-no-files-found: error
+
+      # ✅ Create GitHub Release with APK attached (enables auto-update in app)
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Safety Lens ${{ steps.version.outputs.tag }}"
+          body: |
+            ## Safety Lens ${{ steps.version.outputs.tag }}
+
+            **Auto-built from commit:** ${{ github.sha }}
+            **Date:** ${{ github.event.head_commit.timestamp }}
+
+            ### Changes
+            ${{ github.event.head_commit.message }}
+
+            ### Install
+            1. Download `SafetyLens-v${{ steps.version.outputs.version }}.apk` below
+            2. Open on your Android phone
+            3. Allow "Install from unknown sources" if prompted
+            4. Done! The app will auto-check for future updates every 2 days.
+          files: |
+            build/app/outputs/flutter-apk/SafetyLens-v${{ steps.version.outputs.version }}.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
