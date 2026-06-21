@@ -121,7 +121,7 @@ body{font-family:'DM Sans',sans-serif;background:linear-gradient(135deg,#E8EAF6 
 .srch{padding:7px 11px;border:1px solid var(--border);border-radius:var(--rx);font-family:'DM Sans',sans-serif;font-size:13px;background:var(--s2);width:190px}
 .srch:focus{outline:none;border-color:var(--accent)}
 
-.bsm{padding:7px 13px;border-radius:var(--rx);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;cursor:pointer;border:none;display:flex;align-items:center;gap:4px;transition:all .12s;white-space:nowrap}
+.bsm{padding:7px 11px;border-radius:var(--rx);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;border:none;display:inline-flex;align-items:center;gap:4px;transition:all .12s;white-space:nowrap;min-width:auto}
 .b-ac{background:var(--accent);color:#fff}.b-ac:hover{background:var(--ah)}
 .b-gh{background:var(--s2);color:var(--text);border:1px solid var(--border)}.b-gh:hover{background:var(--al);color:var(--accent);border-color:var(--accent)}
 .b-dn{background:var(--dbg);color:var(--danger);border:1px solid #fca5a5}.b-dn:hover{background:var(--danger);color:#fff}
@@ -146,7 +146,7 @@ td{padding:11px 14px;vertical-align:middle}
 .un{font-weight:600}
 .um{font-size:11px;color:var(--muted)}
 
-.ar{display:flex;gap:3px;flex-wrap:wrap}
+.ar{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-start;align-items:center}
 
 .filter-row{padding:10px 14px 0;display:flex;gap:5px;flex-wrap:wrap}
 .fb{padding:4px 11px;border-radius:99px;border:1px solid var(--border);background:var(--surface);font-size:11px;cursor:pointer;transition:all .12s;font-family:'DM Sans',sans-serif}
@@ -366,7 +366,7 @@ body.theme-dark .auth-card { background: var(--surface); }
         <div style="overflow-x:auto">
           <table id="u-table">
             <thead><tr>
-              <th>User</th><th>P.No</th><th>Plant</th><th>Designation</th><th>Mobile</th><th>Role</th><th>Status</th><th>Actions</th>
+              <th>User</th><th>P.No</th><th>Plant</th><th>Designation</th><th>Mobile</th><th>Role</th><th>Status</th><th style="min-width: 200px">Actions</th>
             </tr></thead>
             <tbody id="u-tbody"><tr><td colspan="8"><div class="es"><div class="es-ic">⏳</div><p>Loading users from Google Sheets…</p></div></td></tr></tbody>
           </table>
