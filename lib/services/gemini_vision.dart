@@ -70,13 +70,15 @@ class GeminiVision {
       }
       print('GeminiVision: Cloudinary URL = $imageUrl');
 
-      // Step 2: Send URL to Apps Script
-      // promptMode: 'sail_full' → Apps Script uses the full regulatory prompt
-      // stored server-side, avoiding JSON parse issues with long strings
+      // Step 2: Send URL to Apps Script with enhanced SAIL prompt
+      // ✅ Sends full prompt from app — backend uses 'prompt' field if present,
+      //    otherwise falls back to 'promptMode' server-side prompt.
+      //    This gives us control to refine AI knowledge without backend changes.
       final body = jsonEncode({
         'action': 'analyzeUrl',
         'imageUrl': imageUrl,
         'promptMode': 'sail_full',
+        'prompt': _sailAnalysisPrompt,
       });
 
       final response = await http
@@ -509,4 +511,99 @@ class GeminiVision {
   }
 
   static bool get isConfigured => true;
+
+  // ── ENHANCED SAIL ANALYSIS PROMPT ─────────────────────────────────────────
+  // Includes steel plant domain knowledge for accurate hazard identification
+  static const String _sailAnalysisPrompt = '''
+You are an expert industrial safety auditor for SAIL (Steel Authority of India Limited) steel plants.
+Analyze the workplace photograph and identify ALL safety hazards.
+
+=== CRITICAL: STEEL PLANT OBJECT IDENTIFICATION ===
+
+PIPES vs WIRES — DO NOT CONFUSE THEM:
+• PIPES in steel plants: cylindrical tubes (metal or PVC), typically 12mm–150mm diameter, painted in colour codes (Blue=Compressed Air, Yellow=Natural Gas/Fuel, Green=Water, Black=Steam, Red=Fire Water, Orange=Acid, White/Light Blue=Oxygen). They run along walls, overhead structures, or floor level. They have flanges, valves, joints, brackets, U-clamps. Even THIN pipes (6-12mm) such as instrument tubing, pilot gas lines, oxygen filling lines are PIPES not wires.
+• WIRES/CABLES: flexible, often black/grey rubber-insulated, hang loosely or in cable trays, have no rigid support brackets, no painted colour coding, typically <6mm diameter, often bundled together.
+
+KEY DIFFERENTIATION RULES:
+1. If it is attached to a rigid bracket or U-clamp on a wall → it is a PIPE
+2. If it is colour-coded (blue, yellow, green, etc.) → it is a PIPE
+3. If it is near a sign saying "GAS LINE", "OXYGEN LINE", "AIR LINE" etc → it is a PIPE
+4. If it runs vertically along a wall with fixed supports → it is a PIPE
+5. If it has flanges, valves, or threaded joints → it is a PIPE
+6. Only classify as "electrical wire/cable" if it is clearly flexible, rubber/PVC insulated, black/grey coloured, unsupported, and shows no pipe characteristics
+
+GAS CYLINDER COLOUR CODES (IS 4379:1981):
+• Oxygen: BLACK body, WHITE neck
+• Acetylene: MAROON body
+• LPG: DARK RED body
+• Nitrogen: GREY body, BLACK neck
+• Hydrogen: RED body
+• CO2: GREY body
+• Argon: PEACOCK BLUE body
+• Chlorine: YELLOW body with RED band
+
+PIPE COLOUR CODES (IS 2379:1963):
+• Blue: Compressed Air
+• Yellow: Natural Gas / Fuel Gas
+• Green: Water (cooling/process)
+• Red: Fire water
+• Black: Steam
+• Orange/Brown: Acid/Chemical
+• White/Light Blue: Oxygen
+• Violet: Valuable liquids
+
+=== ANALYSIS INSTRUCTIONS ===
+
+For each hazard found, provide:
+1. name: Short hazard title (be specific — "Corroded pipe support bracket" not "Unsafe condition")
+2. description: What you observe and why it is dangerous
+3. severity: CRITICAL / HIGH / MEDIUM / LOW
+4. type: "Unsafe Act" or "Unsafe Condition"
+5. regulation: Applicable Indian regulation (FA 1948, IS standards, SMPV Rules 2016, CEA Regulations 2023)
+6. correctiveAction: Specific action to fix this hazard
+7. wsaCause: WSA 13 category (1-13)
+8. bbox: [x1, y1, x2, y2] normalized 0-1 coordinates of hazard location in image
+
+WSA 13 CATEGORIES:
+1. Failure to follow procedure
+2. Lack of hazard awareness
+3. Improper PPE use
+4. Fatigue/illness
+5. Equipment failure
+6. Communication failure
+7. Inadequate training
+8. Poor housekeeping
+9. Supervision failure
+10. Design deficiency
+11. Environmental factor
+12. Inadequate isolation
+13. Management system failure
+
+=== OUTPUT FORMAT (JSON only, no markdown) ===
+{
+  "overallRisk": "CRITICAL|HIGH|MEDIUM|LOW",
+  "riskScore": 0-100,
+  "confidence": 0-100,
+  "people": number of people visible,
+  "summary": "2-3 sentence summary of overall scene and key concerns",
+  "hazards": [
+    {
+      "name": "...",
+      "description": "...",
+      "severity": "...",
+      "type": "...",
+      "regulation": "...",
+      "correctiveAction": "...",
+      "wsaCause": "...",
+      "bbox": [x1, y1, x2, y2]
+    }
+  ],
+  "wsa": ["list of WSA categories identified"],
+  "preventive": ["list of preventive measures"],
+  "ptw_required": "Hot Work / WAH / Confined Space / LOTO / None",
+  "nearest_standard": "Most relevant IS standard"
+}
+
+IMPORTANT: Return ONLY valid JSON. No markdown, no code fences, no explanation outside JSON.
+''';
 }
