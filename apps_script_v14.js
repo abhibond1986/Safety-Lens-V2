@@ -30,8 +30,10 @@ const SHEET_USERS     = 'users';
 const SHEET_FEEDBACK  = 'feedback';
 const SHEET_KNOWLEDGE = 'knowledge';
 
-const GOOGLE_MODEL     = 'gemini-2.5-flash';        // free tier eligible
-const OPENROUTER_MODEL = 'google/gemini-2.5-flash'; // paid fallback
+// ★ v18: Model name array — gemini-2.5-flash is proven working on free tier
+const GOOGLE_MODELS    = ['gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash'];
+const GOOGLE_MODEL     = 'gemini-2.5-flash-preview-05-20';  // free tier — was working
+const OPENROUTER_MODEL = 'google/gemini-2.5-flash-preview-05-20'; // paid fallback
 
 const INCIDENT_COLS = [
   'id', 'date', 'title', 'plant', 'dept', 'location', 'severity',
@@ -83,12 +85,47 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v16',
+          version: 'v18',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
-          openrouterKeyPresent: !!getOpenRouterKey()
+          openrouterKeyPresent: !!getOpenRouterKey(),
+          models: GOOGLE_MODELS
         };
         break;
+
+      case 'diagnose': {
+        // ★ v18: Quick diagnostic — tests keys with a tiny prompt, no image
+        var diag = { google: 'not_tested', openrouter: 'not_tested' };
+        var gKey = getGoogleKey();
+        if (gKey) {
+          try {
+            var dUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
+              + GOOGLE_MODELS[0] + ':generateContent?key=' + encodeURIComponent(gKey);
+            var dResp = UrlFetchApp.fetch(dUrl, {
+              method: 'post', contentType: 'application/json',
+              payload: JSON.stringify({contents:[{role:'user',parts:[{text:'Say OK'}]}],generationConfig:{maxOutputTokens:10}}),
+              muteHttpExceptions: true
+            });
+            var dCode = dResp.getResponseCode();
+            diag.google = dCode === 200 ? 'OK (model=' + GOOGLE_MODELS[0] + ')' : 'HTTP_' + dCode + ': ' + dResp.getContentText().substring(0,200);
+          } catch(de) { diag.google = 'ERROR: ' + de.toString(); }
+        } else { diag.google = 'NO_KEY'; }
+        var oKey = getOpenRouterKey();
+        if (oKey) {
+          try {
+            var oResp = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method:'post', contentType:'application/json',
+              headers:{'Authorization':'Bearer '+oKey,'HTTP-Referer':'https://abhibond1986.github.io/Safety-Lens-V2/','X-Title':'SAIL Safety Lens'},
+              payload:JSON.stringify({model:OPENROUTER_MODEL,messages:[{role:'user',content:'Say OK'}],max_tokens:10}),
+              muteHttpExceptions:true
+            });
+            var oCode = oResp.getResponseCode();
+            diag.openrouter = oCode === 200 ? 'OK (model=' + OPENROUTER_MODEL + ')' : 'HTTP_' + oCode + ': ' + oResp.getContentText().substring(0,200);
+          } catch(oe) { diag.openrouter = 'ERROR: ' + oe.toString(); }
+        } else { diag.openrouter = 'NO_KEY'; }
+        result = diag;
+        break;
+      }
 
       // ★ v15: reads prompt from app if provided; accepts fallback base64
       case 'analyzeUrl': {
@@ -799,98 +836,110 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
     return null;
   }
 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-    + GOOGLE_MODEL + ':generateContent?key=' + encodeURIComponent(key);
+  // ★ v18: Try multiple models — newer first, fall back to stable
+  for (var mi = 0; mi < GOOGLE_MODELS.length; mi++) {
+    var model = GOOGLE_MODELS[mi];
+    Logger.log('Google: trying model ' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ')');
 
-  const payload = {
-    contents: [{
-      role: 'user',
-      parts: [
-        { text: prompt },
-        { inline_data: { mime_type: mimeType || 'image/jpeg', data: pure } }
-      ]
-    }],
-    generationConfig: {
-      temperature: 0.2,
-      maxOutputTokens: 4096,
-      responseMimeType: 'application/json'
-    }
-  };
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+      + model + ':generateContent?key=' + encodeURIComponent(key);
 
-  try {
-    // ★ v17: Retry up to 4 times for 503/429 (model overloaded / rate limited)
-    // Increased delays: free tier needs 10-30s between requests to clear rate limits
-    let resp, code;
-    for (let attempt = 1; attempt <= 4; attempt++) {
-      resp = UrlFetchApp.fetch(url, {
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true
-      });
-      code = resp.getResponseCode();
-      Logger.log('Google: HTTP ' + code + ' (attempt ' + attempt + '/4)');
-      if ((code === 503 || code === 429) && attempt < 4) {
-        const wait = attempt * 10;  // 10s, 20s, 30s progressive backoff (was 5/10/15)
-        Logger.log('Google: rate limited/overloaded, waiting ' + wait + 's before retry...');
-        Utilities.sleep(wait * 1000);
-      } else {
-        break;
+    var payload = {
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mimeType || 'image/jpeg', data: pure } }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json'
       }
+    };
+
+    try {
+      var resp, code;
+      for (var attempt = 1; attempt <= 4; attempt++) {
+        resp = UrlFetchApp.fetch(url, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true
+        });
+        code = resp.getResponseCode();
+        Logger.log('Google [' + model + ']: HTTP ' + code + ' (attempt ' + attempt + '/4)');
+        if ((code === 503 || code === 429) && attempt < 4) {
+          var wait = attempt * 10;
+          Logger.log('Google: rate limited, waiting ' + wait + 's...');
+          Utilities.sleep(wait * 1000);
+        } else {
+          break;
+        }
+      }
+
+      if (code === 404) {
+        Logger.log('Google: model ' + model + ' not found (404), trying next model...');
+        continue;  // try next model
+      }
+
+      if (code !== 200) {
+        var errBody = resp.getContentText().substring(0, 500);
+        Logger.log('Google error body: ' + errBody);
+        continue;  // try next model
+      }
+
+      var data = JSON.parse(resp.getContentText());
+
+      if (!data.candidates || data.candidates.length === 0) {
+        Logger.log('Google: no candidates, prompt feedback = '
+          + JSON.stringify(data.promptFeedback || {}));
+        continue;
+      }
+      var c = data.candidates[0];
+      if (c.finishReason && c.finishReason !== 'STOP' && c.finishReason !== 'MAX_TOKENS') {
+        Logger.log('Google: blocked, finishReason = ' + c.finishReason);
+        continue;
+      }
+      if (!c.content || !c.content.parts || c.content.parts.length === 0) {
+        Logger.log('Google: empty content parts');
+        continue;
+      }
+
+      var text = c.content.parts[0].text || '';
+      text = text.trim();
+      if (text.startsWith('```json')) text = text.substring(7);
+      if (text.startsWith('```'))     text = text.substring(3);
+      if (text.endsWith('```'))       text = text.slice(0, -3);
+      var f = text.indexOf('{'), l = text.lastIndexOf('}');
+      if (f >= 0 && l > f) text = text.substring(f, l + 1);
+
+      var result = JSON.parse(text.trim());
+      result._provider = 'google_direct';
+      result._model    = model;
+      if (result.people === undefined) result.people = 0;
+
+      if (data.usageMetadata) {
+        result._tokens = {
+          in:    data.usageMetadata.promptTokenCount     || 0,
+          out:   data.usageMetadata.candidatesTokenCount || 0,
+          total: data.usageMetadata.totalTokenCount      || 0
+        };
+      }
+
+      Logger.log('Google: SUCCESS with ' + model + ' — hazards=' + (result.hazards || []).length
+        + ', tokens=' + ((result._tokens && result._tokens.total) || '?'));
+      return result;
+
+    } catch (err) {
+      Logger.log('Google exception with ' + model + ': ' + err.toString());
+      continue;  // try next model
     }
-
-    if (code !== 200) {
-      const errBody = resp.getContentText().substring(0, 500);
-      Logger.log('Google error body: ' + errBody);
-      return null;
-    }
-
-    const data = JSON.parse(resp.getContentText());
-
-    if (!data.candidates || data.candidates.length === 0) {
-      Logger.log('Google: no candidates, prompt feedback = '
-        + JSON.stringify(data.promptFeedback || {}));
-      return null;
-    }
-    const c = data.candidates[0];
-    if (c.finishReason && c.finishReason !== 'STOP' && c.finishReason !== 'MAX_TOKENS') {
-      Logger.log('Google: blocked, finishReason = ' + c.finishReason);
-      return null;
-    }
-    if (!c.content || !c.content.parts || c.content.parts.length === 0) {
-      Logger.log('Google: empty content parts');
-      return null;
-    }
-
-    let text = c.content.parts[0].text || '';
-    text = text.trim();
-    if (text.startsWith('```json')) text = text.substring(7);
-    if (text.startsWith('```'))     text = text.substring(3);
-    if (text.endsWith('```'))       text = text.slice(0, -3);
-    const f = text.indexOf('{'), l = text.lastIndexOf('}');
-    if (f >= 0 && l > f) text = text.substring(f, l + 1);
-
-    const result = JSON.parse(text.trim());
-    result._provider = 'google_direct';
-    result._model    = GOOGLE_MODEL;
-    if (result.people === undefined) result.people = 0;
-
-    if (data.usageMetadata) {
-      result._tokens = {
-        in:    data.usageMetadata.promptTokenCount     || 0,
-        out:   data.usageMetadata.candidatesTokenCount || 0,
-        total: data.usageMetadata.totalTokenCount      || 0
-      };
-    }
-
-    Logger.log('Google: SUCCESS — hazards=' + (result.hazards || []).length
-      + ', tokens=' + ((result._tokens && result._tokens.total) || '?'));
-    return result;
-
-  } catch (err) {
-    Logger.log('Google exception: ' + err.toString());
-    return null;
   }
+
+  Logger.log('Google: all models failed');
+  return null;
 }
 
 function callGoogleDirectText(prompt) {
