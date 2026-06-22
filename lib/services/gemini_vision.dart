@@ -16,7 +16,7 @@ import 'network_checker.dart';
 
 class GeminiVision {
   static const String _backendUrl =
-      'https://script.google.com/macros/s/AKfycbzMuftb2ymAXg2tdCGZO5PWv4qTnOQXPYu17veCjQVcOWXvua_Hc0n41a9Unxxyq0lk4A/exec';
+      'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
 
   static const String _cloudinaryUrl =
       'https://api.cloudinary.com/v1_1/dzt1vxsdg/image/upload';
