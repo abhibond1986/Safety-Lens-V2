@@ -437,7 +437,7 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
             GestureDetector(
               onLongPress: _showLanguagePicker,
               child: _IconBtn(
-                icon: Icons.translate_rounded,
+                icon: Icons.language_rounded,
                 label: langLabel,
                 color: AppColors.amber,
                 onTap: () async {

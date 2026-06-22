@@ -14,6 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 import '../main.dart';
 import '../services/gemini_vision.dart';
 import '../services/network_checker.dart';
@@ -50,7 +52,6 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   final _brief           = TextEditingController();
   final _dept            = TextEditingController();
   final _location        = TextEditingController();
-  final _people          = TextEditingController();
   final _description     = TextEditingController();
   final _immediateAction = TextEditingController();
 
@@ -259,7 +260,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     _micPulseCtrl.dispose();
     _speech.cancel();
     _brief.dispose(); _dept.dispose(); _location.dispose();
-    _people.dispose(); _description.dispose(); _immediateAction.dispose();
+    _description.dispose(); _immediateAction.dispose();
     super.dispose();
   }
 
@@ -365,7 +366,6 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         _immediateAction.text = refinedData['action']!;
         _dept.text            = user?['department']?.toString() ?? 'Operations';
         _location.text        = 'To be confirmed (edit if needed)';
-        _people.text          = '0';
         _plant                = plantFromProfile;
         _wsaCause             = refinedData['cause']!;
         _severity             = sev;
@@ -473,7 +473,6 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       'wsaCategory':     _wsaCause,
       'obsType':         _obsType,
       'desc':            '${_brief.text}\n\n${_description.text}'.trim(),
-      'people':          _people.text.trim(),
       'immediateAction': _immediateAction.text.trim(),
       'type':            'NEAR_MISS',
       'status':          'OPEN',
@@ -502,12 +501,12 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     }
 
     if (mounted) {
-      _snack(exportAfter ? 'Saved + PDF exported' : 'Report submitted successfully', AppColors.green);
       setState(() {
         _pickedFile = null; _imageBytes = null; _aiBrief = null;
         _brief.clear(); _dept.clear(); _location.clear();
-        _people.clear(); _description.clear(); _immediateAction.clear();
+        _description.clear(); _immediateAction.clear();
       });
+      _showSaveSuccessDialog(incident, synced, exportAfter);
     }
     return true;
   }
@@ -530,6 +529,121 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       margin: const EdgeInsets.all(12),
       duration: const Duration(seconds: 3),
     ));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  SHARE HELPERS
+  // ═══════════════════════════════════════════════════════════════
+
+  void _showSaveSuccessDialog(Map<String, dynamic> incident, bool synced, bool exported) {
+    showDialog(context: context, builder: (ctx) => Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(padding: const EdgeInsets.all(24), child: Column(
+        mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: AppColors.green.withOpacity(0.1), shape: BoxShape.circle),
+            child: Icon(Icons.check_circle_rounded, color: AppColors.green, size: 48)),
+          const SizedBox(height: 16),
+          Text(exported ? 'Saved + PDF Exported' : 'Near Miss Reported',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Text(synced ? 'Synced to cloud ☁️' : 'Saved locally (will sync later)',
+            style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+          const SizedBox(height: 20),
+          // Share buttons
+          Text('Share Report', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
+          const SizedBox(height: 10),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+            _shareBtn(icon: Icons.chat_rounded, label: 'WhatsApp',
+              color: const Color(0xFF25D366),
+              onTap: () { Navigator.pop(ctx); _shareViaWhatsApp(incident); }),
+            _shareBtn(icon: Icons.email_outlined, label: 'Email',
+              color: const Color(0xFF1976D2),
+              onTap: () { Navigator.pop(ctx); _shareViaEmail(incident); }),
+            _shareBtn(icon: Icons.share_rounded, label: 'More',
+              color: AppColors.accent,
+              onTap: () { Navigator.pop(ctx); _shareGeneric(incident); }),
+          ]),
+          const SizedBox(height: 16),
+          TextButton(onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close', style: TextStyle(fontWeight: FontWeight.w600))),
+        ],
+      )),
+    ));
+  }
+
+  Widget _shareBtn({required IconData icon, required String label,
+      required Color color, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.4))),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
+        ]),
+      ),
+    );
+  }
+
+  String _buildShareText(Map<String, dynamic> incident) {
+    final title    = incident['title']?.toString() ?? 'Near Miss Report';
+    final severity = incident['severity']?.toString() ?? 'MEDIUM';
+    final plant    = incident['plant']?.toString() ?? '';
+    final location = incident['location']?.toString() ?? '';
+    final desc     = incident['desc']?.toString() ?? '';
+    final date     = incident['date']?.toString().split('T').first ?? '';
+
+    return '⚠️ *SAIL Safety Lens — Near Miss Report*\n\n'
+        '📋 *Title:* $title\n'
+        '🔴 *Severity:* $severity\n'
+        '🏭 *Plant:* $plant\n'
+        '📍 *Location:* $location\n'
+        '📅 *Date:* $date\n\n'
+        '📝 *Description:*\n$desc\n\n'
+        '—\n_Generated by SAIL Safety Lens_';
+  }
+
+  Future<void> _shareViaWhatsApp(Map<String, dynamic> incident) async {
+    final text = _buildShareText(incident);
+    final encoded = Uri.encodeComponent(text);
+    final url = Uri.parse('https://wa.me/?text=$encoded');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      } else {
+        await SharePlus.instance.share(ShareParams(text: text));
+      }
+    } catch (_) {
+      await SharePlus.instance.share(ShareParams(text: text));
+    }
+  }
+
+  Future<void> _shareViaEmail(Map<String, dynamic> incident) async {
+    final text    = _buildShareText(incident);
+    final title   = incident['title']?.toString() ?? 'Near Miss Report';
+    final subject = 'SAIL Safety Lens: $title';
+    final url = Uri(scheme: 'mailto', query: 'subject=${Uri.encodeComponent(subject)}&body=${Uri.encodeComponent(text)}');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url);
+      } else {
+        await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+      }
+    } catch (_) {
+      await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+    }
+  }
+
+  Future<void> _shareGeneric(Map<String, dynamic> incident) async {
+    final text = _buildShareText(incident);
+    await SharePlus.instance.share(ShareParams(text: text));
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -853,7 +967,6 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
-          _buildTextField('People Exposed (Count)', _people, Icons.people_outline_rounded, sl, keyboardType: TextInputType.number),
           _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3,
             suffix: _micButton(_description)),
           _buildTextField('Immediate Corrective Action', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
