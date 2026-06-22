@@ -1,16 +1,14 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v14
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v15
 //
-// CHANGES FROM v13:
-//   ✅ NEW: analyzeUrl now reads `prompt` field from app request body
-//          • If app sends a prompt (>100 chars), uses it instead of
-//            server-side getSailPrompt() — allows app-side prompt updates
-//          • Falls back to server-side prompt if not provided
-//   ✅ NEW: PIPE vs WIRE differentiation rules added to server-side prompt
-//          • 6 clear rules to distinguish pipes from electrical wires
-//          • Gas cylinder colour codes (IS 4379:1981)
-//          • Pipe colour codes (IS 2379:1963)
-//          • Prevents AI from misidentifying thin pipes as wires
+// CHANGES FROM v14:
+//   ✅ FIX: analyzeUrl accepts fallback imageBase64 from app
+//          • Server-side Cloudinary URL fetch often returns 400/403
+//          • App now sends base64 alongside URL as backup
+//          • Google AI can always receive inline image data
+//          • Eliminates "All AI providers failed" when URL fetch fails
+//   ✅ FROM v14: analyzeUrl reads `prompt` field from app request body
+//   ✅ FROM v14: PIPE vs WIRE differentiation rules in server-side prompt
 //   ✅ Everything else identical to v13 (sheet formatting, Google AI Studio
 //          primary, OpenRouter fallback, Cloudinary preserved)
 //
@@ -64,7 +62,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v14', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v15', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -85,19 +83,19 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v14',
+          version: 'v15',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey()
         };
         break;
 
-      // ★ v14: reads prompt from app if provided (>100 chars)
+      // ★ v15: reads prompt from app if provided; accepts fallback base64
       case 'analyzeUrl': {
         const prompt = (params.prompt && params.prompt.length > 100)
           ? params.prompt
           : getSailPrompt('sail_full');
-        result = analyzeImageUrl(params.imageUrl || '', prompt);
+        result = analyzeImageUrl(params.imageUrl || '', prompt, params.imageBase64 || '');
         break;
       }
       case 'gemini': {
@@ -1025,27 +1023,42 @@ function analyzeImage(prompt, imageBase64) {
   return runProviderChain(prompt, cleanB64, 'image/jpeg', cloudUrl);
 }
 
-function analyzeImageUrl(imageUrl, prompt) {
-  if (!imageUrl) return { error: 'No image URL provided' };
+function analyzeImageUrl(imageUrl, prompt, fallbackBase64) {
+  if (!imageUrl && !fallbackBase64) return { error: 'No image URL or data provided' };
 
   let base64 = '';
   let mimeType = 'image/jpeg';
-  try {
-    const resp = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true });
-    const code = resp.getResponseCode();
-    if (code === 200) {
-      const blob = resp.getBlob();
-      const ct = blob.getContentType() || '';
-      if (ct.indexOf('image/') === 0) mimeType = ct;
-      else if (imageUrl.match(/\.png(\?|$)/i))  mimeType = 'image/png';
-      else if (imageUrl.match(/\.webp(\?|$)/i)) mimeType = 'image/webp';
-      base64 = Utilities.base64Encode(blob.getBytes());
-      Logger.log('analyzeImageUrl: fetched ' + base64.length + ' chars base64, mime=' + mimeType);
-    } else {
-      Logger.log('analyzeImageUrl: image fetch HTTP ' + code);
+
+  // Try to fetch image from URL server-side
+  if (imageUrl) {
+    try {
+      const resp = UrlFetchApp.fetch(imageUrl, { muteHttpExceptions: true });
+      const code = resp.getResponseCode();
+      if (code === 200) {
+        const blob = resp.getBlob();
+        const ct = blob.getContentType() || '';
+        if (ct.indexOf('image/') === 0) mimeType = ct;
+        else if (imageUrl.match(/\.png(\?|$)/i))  mimeType = 'image/png';
+        else if (imageUrl.match(/\.webp(\?|$)/i)) mimeType = 'image/webp';
+        base64 = Utilities.base64Encode(blob.getBytes());
+        Logger.log('analyzeImageUrl: fetched ' + base64.length + ' chars base64, mime=' + mimeType);
+      } else {
+        Logger.log('analyzeImageUrl: image fetch HTTP ' + code);
+      }
+    } catch (err) {
+      Logger.log('analyzeImageUrl: fetch exception ' + err.toString());
     }
-  } catch (err) {
-    Logger.log('analyzeImageUrl: fetch exception ' + err.toString());
+  }
+
+  // ★ v15: Use fallback base64 from app if server-side fetch failed
+  if (!base64 && fallbackBase64 && fallbackBase64.length > 100) {
+    Logger.log('analyzeImageUrl: using fallback base64 from app (' + fallbackBase64.length + ' chars)');
+    base64 = fallbackBase64.replace(/\s+/g, '');
+    // Strip data URI prefix if present
+    const commaIdx = base64.indexOf(',');
+    if (base64.indexOf('base64') >= 0 && commaIdx > 0) {
+      base64 = base64.substring(commaIdx + 1);
+    }
   }
 
   return runProviderChain(prompt, base64, mimeType, imageUrl);

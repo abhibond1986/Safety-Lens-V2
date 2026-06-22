@@ -70,20 +70,15 @@ class GeminiVision {
       }
       print('GeminiVision: Cloudinary URL = $imageUrl');
 
-      // Step 2: Send URL to Apps Script with enhanced SAIL prompt
-      // ✅ On mobile: send full prompt from app for enhanced analysis
-      // ✅ On web: skip sending large prompt to avoid CORS/body-size issues
-      //    with cross-origin Apps Script redirects. Backend v14 has the same
-      //    pipe/wire rules built into its server-side prompt.
+      // Step 2: Send base64 directly to Apps Script using action=gemini
+      // ✅ v15 FIX: Use 'gemini' action which sends base64 inline to Google AI
+      //    The 'analyzeUrl' path fails because Apps Script can't re-fetch from Cloudinary
+      //    The 'gemini' action passes base64 directly → Google processes it immediately
       final Map<String, dynamic> requestBody = {
-        'action': 'analyzeUrl',
-        'imageUrl': imageUrl,
-        'promptMode': 'sail_full',
+        'action': 'gemini',
+        'imageBase64': base64Encode(bytes),
+        'imageUrl': imageUrl, // kept for reference in response
       };
-      // Only send the large prompt on mobile — web uses backend's built-in prompt
-      if (!kIsWeb) {
-        requestBody['prompt'] = _sailAnalysisPrompt;
-      }
       final body = jsonEncode(requestBody);
 
       final response = await http
