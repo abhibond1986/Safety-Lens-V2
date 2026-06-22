@@ -1,15 +1,15 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v15
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v16
 //
-// CHANGES FROM v14:
-//   ✅ FIX: analyzeUrl accepts fallback imageBase64 from app
-//          • Server-side Cloudinary URL fetch often returns 400/403
-//          • App now sends base64 alongside URL as backup
-//          • Google AI can always receive inline image data
-//          • Eliminates "All AI providers failed" when URL fetch fails
-//   ✅ FROM v14: analyzeUrl reads `prompt` field from app request body
+// CHANGES FROM v15:
+//   ✅ FIX: callGoogleDirectImage now retries up to 4 times with
+//          progressive backoff (5s, 10s, 15s) on HTTP 503/429
+//          • Google free tier returns 503 "model overloaded" intermittently
+//          • Also handles 429 "rate limit exceeded"
+//          • Eliminates "every alternate image fails" problem
+//   ✅ FROM v15: analyzeUrl accepts fallback imageBase64 from app
 //   ✅ FROM v14: PIPE vs WIRE differentiation rules in server-side prompt
-//   ✅ Everything else identical to v13 (sheet formatting, Google AI Studio
+//   ✅ Everything else identical to v15 (sheet formatting, Google AI Studio
 //          primary, OpenRouter fallback, Cloudinary preserved)
 //
 // REQUIRED SCRIPT PROPERTY (unchanged):
@@ -62,7 +62,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v15', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v16', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -83,7 +83,7 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v15',
+          version: 'v16',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey()
@@ -816,9 +816,9 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
   };
 
   try {
-    // Retry up to 3 times for 503 (model overloaded)
+    // ★ v16: Retry up to 4 times for 503/429 (model overloaded / rate limited)
     let resp, code;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
       resp = UrlFetchApp.fetch(url, {
         method: 'post',
         contentType: 'application/json',
@@ -826,10 +826,11 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
         muteHttpExceptions: true
       });
       code = resp.getResponseCode();
-      Logger.log('Google: HTTP ' + code + ' (attempt ' + attempt + ')');
-      if (code === 503 && attempt < 3) {
-        Logger.log('Google: model overloaded, retrying in ' + (attempt * 3) + 's...');
-        Utilities.sleep(attempt * 3000);
+      Logger.log('Google: HTTP ' + code + ' (attempt ' + attempt + '/4)');
+      if ((code === 503 || code === 429) && attempt < 4) {
+        const wait = attempt * 5;  // 5s, 10s, 15s progressive backoff
+        Logger.log('Google: rate limited/overloaded, waiting ' + wait + 's before retry...');
+        Utilities.sleep(wait * 1000);
       } else {
         break;
       }

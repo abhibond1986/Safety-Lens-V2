@@ -33,7 +33,7 @@ class GeminiVision {
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes,
       {int retryCount = 0}) async {
     const maxRetries = 2;
-    const timeoutSeconds = 45; // ✅ Reduced from 90s for mobile
+    const timeoutSeconds = 90; // ✅ v16: increased to allow server-side retries on 503
 
     try {
       print(
