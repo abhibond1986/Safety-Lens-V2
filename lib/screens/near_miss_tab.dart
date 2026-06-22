@@ -618,10 +618,10 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
       } else {
-        await SharePlus.instance.share(ShareParams(text: text));
+        await Share.share(text);
       }
     } catch (_) {
-      await SharePlus.instance.share(ShareParams(text: text));
+      await Share.share(text);
     }
   }
 
@@ -634,16 +634,16 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       if (await canLaunchUrl(url)) {
         await launchUrl(url);
       } else {
-        await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+        await Share.share(text, subject: subject);
       }
     } catch (_) {
-      await SharePlus.instance.share(ShareParams(text: text, subject: subject));
+      await Share.share(text, subject: subject);
     }
   }
 
   Future<void> _shareGeneric(Map<String, dynamic> incident) async {
     final text = _buildShareText(incident);
-    await SharePlus.instance.share(ShareParams(text: text));
+    await Share.share(text);
   }
 
   // ═══════════════════════════════════════════════════════════════
