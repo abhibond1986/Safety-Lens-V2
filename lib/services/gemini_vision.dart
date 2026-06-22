@@ -21,6 +21,7 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'network_checker.dart';
+import 'api_keys.dart';
 import 'gemini_direct.dart';
 import 'openrouter_direct.dart';
 
@@ -48,6 +49,9 @@ class GeminiVision {
 
     try {
       print('GeminiVision: ═══ STARTING ANALYSIS ═══ (${bytes.length} bytes)');
+
+      // ── Ensure API keys are loaded ──
+      await ApiKeys.init();
 
       // ── Network check (mobile only) ──
       if (!kIsWeb) {

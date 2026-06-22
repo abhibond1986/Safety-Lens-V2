@@ -7,13 +7,12 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:google_generative_ai/google_generative_ai.dart';
+import 'api_keys.dart';
 
 class GeminiDirect {
-  // ─── API Key (injected at build time via --dart-define) ───────────────────
-  // Build command: flutter run --dart-define=GOOGLE_AI_KEY=AIzaSy...
-  // NEVER hardcode keys — Google revokes exposed keys on public repos.
-  static const String _googleApiKey =
-      String.fromEnvironment('GOOGLE_AI_KEY', defaultValue: '');
+  // Key is fetched at runtime from Apps Script (see ApiKeys.init())
+  // Fallback: --dart-define=GOOGLE_AI_KEY=... at build time
+  static String get _googleApiKey => ApiKeys.googleKey;
 
   // Models to try (newest first, fallback to stable)
   static const List<String> _models = [
@@ -29,7 +28,7 @@ class GeminiDirect {
   /// Returns the standard hazard JSON structure on success, null on failure.
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     if (_googleApiKey.isEmpty) {
-      print('GeminiDirect: GOOGLE_AI_KEY not set — pass via --dart-define');
+      print('GeminiDirect: GOOGLE_AI_KEY not set — ensure ApiKeys.init() was called');
       return null;
     }
 

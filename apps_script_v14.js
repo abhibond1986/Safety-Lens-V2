@@ -93,6 +93,14 @@ function handle(e) {
         };
         break;
 
+      // ★ v20: Return API keys to app for direct Gemini/OpenRouter calls
+      case 'getApiKeys':
+        result = {
+          googleKey: getGoogleKey(),
+          openRouterKey: getOpenRouterKey()
+        };
+        break;
+
       case 'diagnose': {
         // ★ v18: Quick diagnostic — tests keys with a tiny prompt, no image
         var diag = { google: 'not_tested', openrouter: 'not_tested' };

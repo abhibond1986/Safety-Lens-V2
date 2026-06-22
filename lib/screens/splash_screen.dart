@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
+import '../services/api_keys.dart';
 import '../widgets/glass_card.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
@@ -37,6 +38,8 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _navigate() async {
     if (!mounted) return;
+    // Fetch API keys in background during splash (non-blocking)
+    ApiKeys.init(); // fire-and-forget, cached for entire session
     final user = await LocalDB.getCurrentUser();
     if (!mounted) return;
     Navigator.pushReplacement(

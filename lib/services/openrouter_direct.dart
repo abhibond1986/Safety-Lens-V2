@@ -7,13 +7,12 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:http/http.dart' as http;
+import 'api_keys.dart';
 
 class OpenRouterDirect {
-  // ─── API Key (injected at build time via --dart-define) ───────────────────
-  // Build command: flutter run --dart-define=OPENROUTER_API_KEY=sk-or-v1-...
-  // NEVER hardcode keys — they get revoked on public repos.
-  static const String _apiKey =
-      String.fromEnvironment('OPENROUTER_API_KEY', defaultValue: '');
+  // Key is fetched at runtime from Apps Script (see ApiKeys.init())
+  // Fallback: --dart-define=OPENROUTER_API_KEY=... at build time
+  static String get _apiKey => ApiKeys.openRouterKey;
   static const String _model = 'google/gemini-2.5-flash-preview-05-20';
   static const String _fallbackModel = 'google/gemini-2.0-flash-001';
 
@@ -23,7 +22,7 @@ class OpenRouterDirect {
   /// Returns standard hazard JSON on success, null on failure.
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     if (_apiKey.isEmpty) {
-      print('OpenRouterDirect: OPENROUTER_API_KEY not set — pass via --dart-define');
+      print('OpenRouterDirect: OPENROUTER_API_KEY not set — ensure ApiKeys.init() was called');
       return null;
     }
 
