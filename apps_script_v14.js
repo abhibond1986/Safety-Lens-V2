@@ -990,6 +990,50 @@ function callOpenRouterImageUrl(imageUrl, prompt) {
   }
 }
 
+// ★ v17: OpenRouter with base64 data URL — works when Cloudinary fails
+function callOpenRouterImageBase64(base64, mimeType, prompt) {
+  try {
+    const dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
+    Logger.log('OpenRouter base64: sending data URL (' + base64.length + ' chars)');
+    const response = callOpenRouterWithRetry({
+      model: OPENROUTER_MODEL,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }],
+      max_tokens: 4096, temperature: 0.2
+    });
+    if (!response) return null;
+    const code = response.getResponseCode();
+    Logger.log('OpenRouter base64: HTTP ' + code);
+    if (code !== 200) {
+      Logger.log('OpenRouter base64 error: ' + response.getContentText().substring(0, 500));
+      return null;
+    }
+
+    let text = JSON.parse(response.getContentText())
+      .choices[0].message.content.trim();
+    if (text.startsWith('```json')) text = text.substring(7);
+    if (text.startsWith('```'))     text = text.substring(3);
+    if (text.endsWith('```'))       text = text.slice(0, -3);
+    const f = text.indexOf('{'), l = text.lastIndexOf('}');
+    if (f >= 0 && l > f) text = text.substring(f, l + 1);
+
+    const result = JSON.parse(text.trim());
+    result._provider = 'openrouter';
+    result._model    = OPENROUTER_MODEL;
+    if (result.people === undefined) result.people = 0;
+    Logger.log('OpenRouter base64: SUCCESS — hazards=' + (result.hazards || []).length);
+    return result;
+  } catch(err) {
+    Logger.log('OpenRouter base64 exception: ' + err.toString());
+    return null;
+  }
+}
+
 function callOpenRouterWithRetry(payload) {
   const key = getOpenRouterKey();
   if (!key) {
@@ -1103,18 +1147,23 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
         imageUrl: cloudUrl || null
       };
     }
+    // ★ v17: Try OpenRouter with URL first, then with base64 data URL as fallback
     if (cloudUrl) result = callOpenRouterImageUrl(cloudUrl, prompt);
+    if (!result && base64) result = callOpenRouterImageBase64(base64, mimeType, prompt);
     if (result) {
-      result.imageUrl = cloudUrl;
+      if (cloudUrl) result.imageUrl = cloudUrl;
       result._fallback = 'google_failed';
       return result;
     }
   } else {
+    // OpenRouter primary
     if (cloudUrl) result = callOpenRouterImageUrl(cloudUrl, prompt);
+    if (!result && base64) result = callOpenRouterImageBase64(base64, mimeType, prompt);
     if (result) {
-      result.imageUrl = cloudUrl;
+      if (cloudUrl) result.imageUrl = cloudUrl;
       return result;
     }
+    // Fallback to Google
     if (base64) result = callGoogleDirectImage(prompt, base64, mimeType);
     if (result) {
       if (cloudUrl) result.imageUrl = cloudUrl;
