@@ -816,14 +816,24 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
   };
 
   try {
-    const resp = UrlFetchApp.fetch(url, {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    });
-    const code = resp.getResponseCode();
-    Logger.log('Google: HTTP ' + code);
+    // Retry up to 3 times for 503 (model overloaded)
+    let resp, code;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      resp = UrlFetchApp.fetch(url, {
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+      code = resp.getResponseCode();
+      Logger.log('Google: HTTP ' + code + ' (attempt ' + attempt + ')');
+      if (code === 503 && attempt < 3) {
+        Logger.log('Google: model overloaded, retrying in ' + (attempt * 3) + 's...');
+        Utilities.sleep(attempt * 3000);
+      } else {
+        break;
+      }
+    }
 
     if (code !== 200) {
       const errBody = resp.getContentText().substring(0, 500);
