@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'local_ai.dart';
 import 'network_checker.dart';
+import 'gemini_direct.dart';
 
 class GeminiVision {
   static const String _backendUrl =
@@ -130,12 +131,22 @@ class GeminiVision {
               errorMsg.contains('no GOOGLE_AI_KEY') ||
               errorMsg.contains('fallback disabled');
 
+          // ★ v19 FAILSAFE: If Apps Script AI failed, try direct Gemini from app
+          if (errorMsg.contains('All AI providers failed') ||
+              errorMsg.contains('overloaded') ||
+              errorMsg.contains('rate limit')) {
+            print('GeminiVision: Apps Script AI failed → trying DIRECT Gemini call...');
+            final directResult = await GeminiDirect.analyseImageBytes(bytes);
+            if (directResult != null && directResult['hazards'] != null) {
+              print('GeminiVision: DIRECT Gemini SUCCESS — bypassed Apps Script');
+              directResult['imageUrl'] = data['imageUrl']; // preserve Cloudinary URL
+              return directResult;
+            }
+            print('GeminiVision: Direct Gemini also failed');
+          }
+
           if (!isPermanent && retryCount < maxRetries) {
-            // ✅ v17: Longer delay for rate-limit errors (503/429 need 10-20s to clear)
-            final isRateLimit = errorMsg.contains('All AI providers failed') ||
-                errorMsg.contains('overloaded') ||
-                errorMsg.contains('rate limit');
-            final delay = isRateLimit ? 10 * (retryCount + 1) : 2 * (retryCount + 1);
+            final delay = 2 * (retryCount + 1);
             print(
                 'GeminiVision: Retrying after API error in ${delay}s (attempt ${retryCount + 2}/${maxRetries + 1})…');
             await Future.delayed(Duration(seconds: delay));
@@ -192,6 +203,12 @@ class GeminiVision {
             'GeminiVision: Retrying after timeout (attempt ${retryCount + 2}/${maxRetries + 1})…');
         await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
         return analyseImageBytes(bytes, retryCount: retryCount + 1);
+      }
+      // ★ v19: Try direct Gemini before going offline
+      print('GeminiVision: All retries exhausted → trying DIRECT Gemini...');
+      final directResult = await GeminiDirect.analyseImageBytes(bytes);
+      if (directResult != null && directResult['hazards'] != null) {
+        return directResult;
       }
       return _offlineFallback(bytes,
           reason: 'Request timeout - AI backend slow or offline');
