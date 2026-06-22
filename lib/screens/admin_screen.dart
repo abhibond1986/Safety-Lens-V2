@@ -1904,7 +1904,7 @@ class _AdminScreenState extends State<AdminScreen>
     setState(() => _checkingHealth = true);
     try {
       const url = 'https://script.google.com/macros/s/'
-          'AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
+          'AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
       final resp = await http.get(Uri.parse('$url?action=health'))
           .timeout(const Duration(seconds: 15));
       if (resp.statusCode == 200) {

@@ -47,7 +47,7 @@ class _ChatTabState extends State<ChatTab> {
 
   // ── Apps Script backend URL ──────────────────────────────────────
   static const String _backendUrl =
-      'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
+      'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
 
   // ── Suraksha Saathi system prompt ────────────────────────────────
   // Same regulatory knowledge as AI Scan — shared knowledge base

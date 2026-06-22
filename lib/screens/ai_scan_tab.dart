@@ -62,7 +62,7 @@ class _AIScanTabState extends State<AIScanTab> {
   bool _capturingLocation = false;
 
   static const String _sheetUrl =
-      'https://docs.google.com/spreadsheets/d/1gkN0Kxy5tulHN9oCbvliI5bota7S1UpK6gusftWUZgI/edit';
+      'https://docs.google.com/spreadsheets/d/16BeCJ3KpXiYzl-cbcfRUFL1vZkPtzyXzUHZP5usNZhY/edit';
 
   @override
   void dispose() {

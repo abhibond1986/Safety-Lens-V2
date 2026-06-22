@@ -55,7 +55,7 @@ class NetworkChecker {
   /// Verify backend is reachable
   /// ✅ FIX: Uses GET (not HEAD) — Apps Script only supports GET/POST
   static Future<bool> canReachBackend({int maxRetries = 1}) async {
-    const backendUrl = 'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
+    const backendUrl = 'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
 
     for (int attempt = 0; attempt <= maxRetries; attempt++) {
       try {

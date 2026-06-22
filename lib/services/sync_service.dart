@@ -11,7 +11,7 @@ import 'local_db.dart';
 /// Cons: ~60 req/min rate limit, eventual consistency.
 class SyncService {
   static const String _defaultBackendUrl =
-      'https://script.google.com/macros/s/AKfycbxLSH2Z-X6iQPw0rY2O7T0SYSDU7bzikpWq-G_ysOT_noU-IwgSHYNr3AKbwPFPZYginw/exec';
+      'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
   static const String _kBackendUrl   = 'sync_backend_url';
   static const String _kPendingQueue = 'sync_pending_queue';
   static const String _kLastSyncTime = 'sync_last_time';

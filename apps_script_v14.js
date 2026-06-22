@@ -332,6 +332,8 @@ function upsertIncident(params) {
     }
   } catch (_) {}
   try { sheet.autoResizeColumns(1, Math.min(20, INCIDENT_COLS.length)); } catch(_) {}
+  // ★ v17: Auto-format sheet after every insert for professional look
+  try { formatIncidentsSheet(); } catch(_) {}
   return { ok: true, action: 'inserted', id: incId, row: sheet.getLastRow() };
 }
 
@@ -816,7 +818,8 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
   };
 
   try {
-    // ★ v16: Retry up to 4 times for 503/429 (model overloaded / rate limited)
+    // ★ v17: Retry up to 4 times for 503/429 (model overloaded / rate limited)
+    // Increased delays: free tier needs 10-30s between requests to clear rate limits
     let resp, code;
     for (let attempt = 1; attempt <= 4; attempt++) {
       resp = UrlFetchApp.fetch(url, {
@@ -828,7 +831,7 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
       code = resp.getResponseCode();
       Logger.log('Google: HTTP ' + code + ' (attempt ' + attempt + '/4)');
       if ((code === 503 || code === 429) && attempt < 4) {
-        const wait = attempt * 5;  // 5s, 10s, 15s progressive backoff
+        const wait = attempt * 10;  // 10s, 20s, 30s progressive backoff (was 5/10/15)
         Logger.log('Google: rate limited/overloaded, waiting ' + wait + 's before retry...');
         Utilities.sleep(wait * 1000);
       } else {

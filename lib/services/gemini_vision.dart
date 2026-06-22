@@ -32,8 +32,8 @@ class GeminiVision {
   // ── analyseImageBytes (web + mobile) WITH RETRY ──────────────────────────
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes,
       {int retryCount = 0}) async {
-    const maxRetries = 2;
-    const timeoutSeconds = 90; // ✅ v16: increased to allow server-side retries on 503
+    const maxRetries = 3; // ✅ v17: increased from 2 to give more attempts for rate-limited scenarios
+    const timeoutSeconds = 120; // ✅ v17: increased to 120s to allow server-side retries (4 attempts × 10-30s backoff)
 
     try {
       print(
@@ -123,15 +123,22 @@ class GeminiVision {
           final errorMsg = data['error'].toString();
           print('GeminiVision: Apps Script error = $errorMsg');
 
-          // ✅ FIX: Don't retry permanent provider failures (key issues won't self-heal)
-          final isPermanent = errorMsg.contains('All AI providers failed') ||
-              errorMsg.contains('key invalid') ||
-              errorMsg.contains('no GOOGLE_AI_KEY');
+          // ✅ FIX: Only skip retry for truly permanent failures (key issues)
+          // NOTE: "All AI providers failed" is usually rate limiting (503/429)
+          //       which self-heals after a few seconds — DO retry it.
+          final isPermanent = errorMsg.contains('key invalid') ||
+              errorMsg.contains('no GOOGLE_AI_KEY') ||
+              errorMsg.contains('fallback disabled');
 
           if (!isPermanent && retryCount < maxRetries) {
+            // ✅ v17: Longer delay for rate-limit errors (503/429 need 10-20s to clear)
+            final isRateLimit = errorMsg.contains('All AI providers failed') ||
+                errorMsg.contains('overloaded') ||
+                errorMsg.contains('rate limit');
+            final delay = isRateLimit ? 10 * (retryCount + 1) : 2 * (retryCount + 1);
             print(
-                'GeminiVision: Retrying after API error (attempt ${retryCount + 2}/${maxRetries + 1})…');
-            await Future.delayed(Duration(seconds: 2 * (retryCount + 1)));
+                'GeminiVision: Retrying after API error in ${delay}s (attempt ${retryCount + 2}/${maxRetries + 1})…');
+            await Future.delayed(Duration(seconds: delay));
             return analyseImageBytes(bytes, retryCount: retryCount + 1);
           }
 

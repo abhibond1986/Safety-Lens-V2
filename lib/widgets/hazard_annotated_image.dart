@@ -68,9 +68,20 @@ class _BboxOverlay extends StatelessWidget {
             final bbox = hazard['bbox'];
             if (bbox == null) return const SizedBox.shrink();
 
-            final List<num> box = (bbox is List)
-                ? bbox.map((e) => (e is num) ? e : num.tryParse(e.toString()) ?? 0).toList()
-                : [];
+            // ✅ v17: Handle bbox as Map {x, y, w, h} OR List [x1, y1, x2, y2]
+            final List<num> box;
+            if (bbox is Map) {
+              // Gemini prompt asks for {x, y, w, h} format
+              final x = num.tryParse(bbox['x']?.toString() ?? '') ?? 0;
+              final y = num.tryParse(bbox['y']?.toString() ?? '') ?? 0;
+              final bw = num.tryParse(bbox['w']?.toString() ?? bbox['width']?.toString() ?? '') ?? 0;
+              final bh = num.tryParse(bbox['h']?.toString() ?? bbox['height']?.toString() ?? '') ?? 0;
+              box = [x, y, bw, bh];
+            } else if (bbox is List) {
+              box = bbox.map((e) => (e is num) ? e : num.tryParse(e.toString()) ?? 0).toList();
+            } else {
+              return const SizedBox.shrink();
+            }
 
             if (box.length < 4) return const SizedBox.shrink();
 
@@ -78,8 +89,8 @@ class _BboxOverlay extends StatelessWidget {
             // OR some APIs return [x, y, width, height] in 0-1 range
             double left, top, right, bottom;
 
-            if (box.every((v) => v <= 1.1)) {
-              // Normalized 0-1 format: [x, y, w, h]
+            if (bbox is Map || box.every((v) => v <= 1.1)) {
+              // Normalized 0-1 format: [x, y, w, h] (from Map or List)
               left   = box[0].toDouble() * w;
               top    = box[1].toDouble() * h;
               right  = (box[0].toDouble() + box[2].toDouble()) * w;
