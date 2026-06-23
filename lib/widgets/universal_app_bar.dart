@@ -403,19 +403,16 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
               padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
               child: Row(children: [
             // SAIL Safety Lens badge icon
-            Container(
+            SizedBox(
               width: 36, height: 36,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                boxShadow: [BoxShadow(
-                  color: AppColors.accent.withOpacity(0.2),
-                  blurRadius: 8, spreadRadius: 1)]),
-              child: ClipOval(
-                child: Image.asset('assets/images/app_icon.png',
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+              child: Image.asset('assets/images/app_icon.png',
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
                     color: AppColors.accent,
-                    child: const Icon(Icons.shield, color: Colors.white, size: 20)))),
+                    borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.shield, color: Colors.white, size: 20))),
             ),
             const SizedBox(width: 10),
 

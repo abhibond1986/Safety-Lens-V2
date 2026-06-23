@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
+import '../services/sync_service.dart';
 import '../services/i18n.dart';
 import '../widgets/glass_card.dart';
 import 'home_screen.dart';
@@ -107,12 +108,17 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     setState(() { _loading = true; _err = ''; });
     try {
-      final ok = await LocalDB.register({
+      final userData = {
         'name': name, 'username': user, 'password': pass,
         'designation': desig, 'plant': plant,
-        'pno': _regPnoCtrl.text.trim()});
+        'pno': _regPnoCtrl.text.trim(),
+        'isAdmin': 'false', 'status': 'active',
+      };
+      final ok = await LocalDB.register(userData);
       if (!mounted) return;
       if (ok != null) {
+        // Sync new user to backend (fire-and-forget)
+        SyncService.pushUser(userData).catchError((_) => false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${I18n.t('common.success')}! Welcome, $name'),
           backgroundColor: Colors.green,

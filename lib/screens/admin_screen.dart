@@ -224,7 +224,8 @@ class _AdminScreenState extends State<AdminScreen>
       final cachedUsers = await LocalDB.getCachedUsers();
 
       final byUname = <String, Map<String, dynamic>>{};
-      for (final u in [...sheetsUsers, ...cachedUsers, ...localUsers]) {
+      // Sheets data takes priority, then cached, then local
+      for (final u in [...localUsers, ...cachedUsers, ...sheetsUsers]) {
         final uname = (u['username']?.toString() ?? '').trim();
         if (uname.isEmpty) continue;
         if (!byUname.containsKey(uname)) {
@@ -232,7 +233,7 @@ class _AdminScreenState extends State<AdminScreen>
         } else {
           final existing = byUname[uname]!;
           u.forEach((k, v) {
-            if (existing[k] == null || existing[k].toString().isEmpty) {
+            if (v != null && v.toString().isNotEmpty) {
               existing[k] = v;
             }
           });
@@ -246,7 +247,27 @@ class _AdminScreenState extends State<AdminScreen>
         };
       }
 
-      final incs  = await LocalDB.getIncidents();
+      // Pull incidents from backend + merge with local
+      List<Map<String, dynamic>> sheetsIncs = [];
+      try { sheetsIncs = await SyncService.fetchIncidents(); } catch (_) {}
+      final localIncs = await LocalDB.getIncidents();
+
+      // Merge: backend overrides, local adds missing
+      final byId = <String, Map<String, dynamic>>{};
+      for (final inc in [...localIncs, ...sheetsIncs]) {
+        final id = (inc['id']?.toString() ?? '').trim();
+        if (id.isEmpty) continue;
+        if (!byId.containsKey(id)) {
+          byId[id] = Map<String, dynamic>.from(inc);
+        } else {
+          final existing = byId[id]!;
+          inc.forEach((k, v) {
+            if (v != null && v.toString().isNotEmpty) existing[k] = v;
+          });
+        }
+      }
+      final incs = byId.values.toList();
+
       final kb    = await LocalDB.getKnowledgeDocs();
       final audit = await AdminAudit.getLog(limit: 500);
 
@@ -2657,6 +2678,21 @@ class _AdminScreenState extends State<AdminScreen>
             const SizedBox(width: 6),
             _miniBadge('$admins admins', AppColors.amber, sl),
             const Spacer(),
+            GestureDetector(
+              onTap: _addNewUser,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3949AB).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: const Color(0xFF3949AB).withOpacity(0.4))),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.person_add_rounded, size: 13, color: Color(0xFF3949AB)),
+                  SizedBox(width: 5),
+                  Text('Add User', style: TextStyle(
+                      color: Color(0xFF3949AB), fontSize: 11,
+                      fontWeight: FontWeight.w700)),
+                ]))),
           ]),
         ])),
       Expanded(child: filtered.isEmpty
@@ -3008,6 +3044,125 @@ class _AdminScreenState extends State<AdminScreen>
     await _loadAll();
     _toast('User deleted', AppColors.red);
   }
+
+  Future<void> _addNewUser() async {
+    final sl = SL.of(context);
+    final nameCtrl  = TextEditingController();
+    final unameCtrl = TextEditingController();
+    final passCtrl  = TextEditingController(text: 'sail@123');
+    final desigCtrl = TextEditingController();
+    final pnoCtrl   = TextEditingController();
+    String? selectedPlant;
+    bool makeAdmin = false;
+
+    final ok = await showDialog<bool>(context: context, builder: (_) =>
+      StatefulBuilder(builder: (ctx, setSt) => AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Add New User',
+            style: TextStyle(color: sl.text1, fontSize: 14,
+                fontWeight: FontWeight.w800)),
+        content: SingleChildScrollView(child: SizedBox(width: 320,
+          child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _addUserField('Full Name *', nameCtrl, sl),
+              const SizedBox(height: 10),
+              _addUserField('Username *', unameCtrl, sl),
+              const SizedBox(height: 10),
+              _addUserField('Password *', passCtrl, sl),
+              const SizedBox(height: 10),
+              _addUserField('Designation', desigCtrl, sl),
+              const SizedBox(height: 10),
+              _addUserField('PNO', pnoCtrl, sl),
+              const SizedBox(height: 10),
+              Text('Plant', style: TextStyle(color: sl.text3, fontSize: 10)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: sl.bg, borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: sl.border)),
+                child: DropdownButton<String>(
+                  value: selectedPlant,
+                  isExpanded: true,
+                  underline: const SizedBox(),
+                  hint: Text('Select plant', style: TextStyle(
+                      color: sl.text4, fontSize: 11)),
+                  dropdownColor: sl.card,
+                  style: TextStyle(color: sl.text1, fontSize: 11),
+                  items: _plantsEditable.map((p) => DropdownMenuItem(
+                    value: p['name'],
+                    child: Text(p['name'] ?? '?',
+                        style: TextStyle(color: sl.text1, fontSize: 11)),
+                  )).toList(),
+                  onChanged: (v) => setSt(() => selectedPlant = v))),
+              const SizedBox(height: 12),
+              Row(children: [
+                Checkbox(
+                  value: makeAdmin,
+                  onChanged: (v) => setSt(() => makeAdmin = v ?? false),
+                  activeColor: AppColors.amber,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                Text('Grant Admin access',
+                    style: TextStyle(color: sl.text2, fontSize: 11)),
+              ]),
+            ]))),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+            onPressed: () {
+              if (nameCtrl.text.trim().isEmpty || unameCtrl.text.trim().isEmpty
+                  || passCtrl.text.trim().isEmpty) return;
+              Navigator.pop(context, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF3949AB),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Create User', style: TextStyle(color: Colors.white))),
+        ])));
+    if (ok != true) return;
+
+    final userData = <String, dynamic>{
+      'name':        nameCtrl.text.trim(),
+      'username':    unameCtrl.text.trim().toLowerCase(),
+      'password':    passCtrl.text.trim(),
+      'designation': desigCtrl.text.trim(),
+      'pno':         pnoCtrl.text.trim(),
+      'plant':       selectedPlant ?? '',
+      'isAdmin':     makeAdmin.toString(),
+      'status':      'active',
+    };
+
+    try {
+      await LocalDB.upsertUser(userData);
+      try { await SyncService.pushUser(userData); } catch (_) {}
+    } catch (_) {}
+    await AdminAudit.log(
+      action: AdminAudit.actUserEdit,
+      actor: _currentActor,
+      target: userData['username'],
+      targetName: userData['name'],
+      meta: {'action': 'created'});
+    await _loadAll();
+    _toast('User ${userData['username']} created', const Color(0xFF3949AB));
+  }
+
+  Widget _addUserField(String label, TextEditingController ctrl, SL sl) =>
+    TextField(
+      controller: ctrl,
+      style: TextStyle(color: sl.text1, fontSize: 12),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: sl.text4, fontSize: 10),
+        filled: true, fillColor: sl.bg, isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: sl.border)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: sl.border)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF3949AB), width: 1.5))));
 
   // ══════════════════════════════════════════════════════════════════
   //  MODULE 7 — PLANT & DEPARTMENT MASTER

@@ -188,6 +188,9 @@ class LocalDB {
       final storedH = u['passwordHash']?.toString() ?? '';
       if ((uname == username || email == username) &&
           (stored == password || storedH == password)) {
+        // Block disabled users from logging in
+        final status = (u['status']?.toString().toLowerCase() ?? 'active');
+        if (status == 'disabled' || status == 'blocked') return null;
         await _prefs.setString(_kCurrentUser, jsonEncode(u));
         return u;
       }
@@ -198,6 +201,9 @@ class LocalDB {
       final uname   = u['username']?.toString() ?? '';
       final storedH = u['passwordHash']?.toString() ?? '';
       if (uname == username && storedH == password) {
+        // Block disabled users from logging in
+        final status = (u['status']?.toString().toLowerCase() ?? 'active');
+        if (status == 'disabled' || status == 'blocked') return null;
         await _prefs.setString(_kCurrentUser, jsonEncode(u));
         return u;
       }
