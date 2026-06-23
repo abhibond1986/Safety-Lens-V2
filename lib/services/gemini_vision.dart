@@ -102,7 +102,10 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    const timeoutSeconds = 90; // Apps Script can take up to 60s for AI
+    // Scale timeout by payload size: small images 60s, large images up to 120s
+    final payloadKB = bytes.length ~/ 1024;
+    final timeoutSeconds = payloadKB > 500 ? 120 : 60;
+    print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSeconds}s');
 
     final requestBody = {
       'action': 'gemini',

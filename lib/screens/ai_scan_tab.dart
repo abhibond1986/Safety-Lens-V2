@@ -111,8 +111,8 @@ class _AIScanTabState extends State<AIScanTab> {
     // ✅ Step 1: Open camera/gallery IMMEDIATELY — no GPS blocking
     final picker = ImagePicker();
     final picked = await picker.pickImage(
-        source: source, imageQuality: 72,
-        maxWidth: 1024, maxHeight: 1024);
+        source: source, imageQuality: 65,
+        maxWidth: 800, maxHeight: 800);
     if (picked == null) return;
 
     // Step 2: Read image bytes
@@ -1548,19 +1548,19 @@ class _AIScanTabState extends State<AIScanTab> {
                   icon: Icons.chat_rounded,
                   color: const Color(0xFF25D366),
                   label: 'WhatsApp',
-                  onTap: () { Navigator.pop(context); _shareViaWhatsApp(); },
+                  onTap: () { Navigator.pop(context); _shareResultWhatsApp(); },
                 ),
                 _shareOption(
                   icon: Icons.email_rounded,
                   color: const Color(0xFF1976D2),
                   label: 'Email',
-                  onTap: () { Navigator.pop(context); _shareViaEmail(); },
+                  onTap: () { Navigator.pop(context); _shareResultEmail(); },
                 ),
                 _shareOption(
                   icon: Icons.more_horiz_rounded,
                   color: Colors.grey[700]!,
                   label: 'Other',
-                  onTap: () { Navigator.pop(context); _shareGeneric(); },
+                  onTap: () { Navigator.pop(context); _shareResultGeneric(); },
                 ),
               ],
             ),
@@ -1596,7 +1596,7 @@ class _AIScanTabState extends State<AIScanTab> {
     );
   }
 
-  String _buildShareText() {
+  String _buildResultShareText() {
     final hazards = (_result!['hazards'] as List?) ?? [];
     final risk = _result!['overallRisk']?.toString() ?? 'UNKNOWN';
     final score = _result!['riskScore'] ?? 0;
@@ -1620,8 +1620,8 @@ class _AIScanTabState extends State<AIScanTab> {
     return buffer.toString();
   }
 
-  Future<void> _shareViaWhatsApp() async {
-    final text = _buildShareText();
+  Future<void> _shareResultWhatsApp() async {
+    final text = _buildResultShareText();
     final encoded = Uri.encodeComponent(text);
     final whatsappUrl = 'https://wa.me/?text=$encoded';
     try {
@@ -1629,7 +1629,6 @@ class _AIScanTabState extends State<AIScanTab> {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
-        // Fallback: use share_plus
         await Share.share(text, subject: 'SAIL Safety Lens - Hazard Report');
       }
     } catch (e) {
@@ -1637,8 +1636,8 @@ class _AIScanTabState extends State<AIScanTab> {
     }
   }
 
-  Future<void> _shareViaEmail() async {
-    final text = _buildShareText();
+  Future<void> _shareResultEmail() async {
+    final text = _buildResultShareText();
     final subject = Uri.encodeComponent('SAIL Safety Lens - Hazard Report');
     final body = Uri.encodeComponent(text);
     final emailUrl = 'mailto:?subject=$subject&body=$body';
@@ -1654,8 +1653,8 @@ class _AIScanTabState extends State<AIScanTab> {
     }
   }
 
-  Future<void> _shareGeneric() async {
-    final text = _buildShareText();
+  Future<void> _shareResultGeneric() async {
+    final text = _buildResultShareText();
     await Share.share(text, subject: 'SAIL Safety Lens - Hazard Report');
   }
 
