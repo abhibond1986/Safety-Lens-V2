@@ -111,8 +111,8 @@ class _AIScanTabState extends State<AIScanTab> {
     // ✅ Step 1: Open camera/gallery IMMEDIATELY — no GPS blocking
     final picker = ImagePicker();
     final picked = await picker.pickImage(
-        source: source, imageQuality: 85,
-        maxWidth: 1600, maxHeight: 1600);
+        source: source, imageQuality: 72,
+        maxWidth: 1024, maxHeight: 1024);
     if (picked == null) return;
 
     // Step 2: Read image bytes
@@ -172,15 +172,8 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Future<void> _analyze() async {
-    final steps = ['Image uploaded', 'Sending to AI…',
-                   'Analyzing hazards…', 'Mapping IS 14489…',
-                   'Building report…'];
-    for (var i = 0; i < steps.length - 1; i++) {
-      setState(() => _step = steps[i]);
-      await Future.delayed(const Duration(milliseconds: 700));
-    }
+    setState(() => _step = 'Analyzing hazards…');
     try {
-      setState(() => _step = steps.last);
       Map<String, dynamic>? result;
       bool failedDueToInternet = false;
 

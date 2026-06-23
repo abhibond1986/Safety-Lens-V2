@@ -95,11 +95,12 @@ function handle(e) {
         };
         break;
 
-      // ★ v20: Return API keys to app for direct Gemini/OpenRouter calls
+      // ★ v21: API keys are NEVER sent to client (security fix)
       case 'getApiKeys':
         result = {
-          googleKey: getGoogleKey(),
-          openRouterKey: getOpenRouterKey()
+          error: 'API keys are no longer exposed to client. All AI calls go through server-side.',
+          googleKey: '',
+          openRouterKey: ''
         };
         break;
 

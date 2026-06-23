@@ -1,19 +1,16 @@
 // lib/services/gemini_vision.dart
-// ★ v20 FAILSAFE ARCHITECTURE — Fast, reliable, multi-path
+// ★ v21 SECURE ARCHITECTURE — All AI calls through Apps Script only
 //
 // PRIORITY CHAIN (stops at first success):
-//   1. GeminiDirect  — App → Google AI (single hop, ~5-15s)
-//   2. OpenRouterDirect — App → OpenRouter (single hop, ~5-15s)
-//   3. Apps Script   — App → Apps Script → Google/OpenRouter (~15-60s)
-//   4. Offline       — Knowledge-based fallback (instant)
+//   1. Apps Script (server-side Gemini/OpenRouter — keys never leave server)
+//   2. Offline fallback (instant, knowledge-based)
 //
-// KEY CHANGES FROM v19:
-//   ✅ Direct Gemini is PRIMARY (was last-resort)
-//   ✅ OpenRouter direct added as second path
-//   ✅ Cloudinary upload moved to BACKGROUND (after analysis)
-//   ✅ Total max wait: ~45s instead of ~180s
-//   ✅ Apps Script demoted to third fallback
-//   ✅ Better retry: only retry on transient errors, not permanent ones
+// KEY CHANGES FROM v20:
+//   ✅ REMOVED direct Gemini/OpenRouter calls (keys were exposed in browser)
+//   ✅ API keys NEVER sent to client — stored only in Script Properties
+//   ✅ Single path: App → Apps Script → AI (keys hidden server-side)
+//   ✅ Cloudinary upload moved to Apps Script (already supported)
+//   ✅ Faster: no wasted time on quota-blocked direct calls
 
 import 'dart:convert';
 import 'dart:async';
@@ -21,18 +18,10 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'network_checker.dart';
-import 'api_keys.dart';
-import 'gemini_direct.dart';
-import 'openrouter_direct.dart';
 
 class GeminiVision {
   static const String _backendUrl =
       'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
-
-  static const String _cloudinaryUrl =
-      'https://api.cloudinary.com/v1_1/dzt1vxsdg/image/upload';
-
-  static const String _cloudinaryPreset = 'safety_lens';
 
   // ── analyseImage (mobile / File path) ─────────────────────────────────────
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
@@ -41,7 +30,7 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  MAIN ENTRY: FAILSAFE PROVIDER CHAIN
+  //  MAIN ENTRY: SECURE SERVER-SIDE ANALYSIS
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes,
       {int retryCount = 0}) async {
@@ -49,9 +38,6 @@ class GeminiVision {
 
     try {
       print('GeminiVision: ═══ STARTING ANALYSIS ═══ (${bytes.length} bytes)');
-
-      // ── Ensure API keys are loaded ──
-      await ApiKeys.init();
 
       // ── Network check (mobile only) ──
       if (!kIsWeb) {
@@ -63,64 +49,48 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // PATH 1: DIRECT GEMINI (fastest — single hop, ~5-15s)
+      // APPS SCRIPT: Server-side AI (keys safe in Script Properties)
       // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ▶ PATH 1: Direct Gemini...');
-      try {
-        final directResult = await GeminiDirect.analyseImageBytes(bytes);
-        if (directResult != null && directResult['hazards'] != null) {
-          print('GeminiVision: ✓ PATH 1 SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-          // Upload to Cloudinary in background (non-blocking)
-          _uploadToCloudinaryBackground(bytes, directResult);
-          return directResult;
-        }
-        print('GeminiVision: ✗ PATH 1 failed (null or no hazards)');
-      } catch (e) {
-        print('GeminiVision: ✗ PATH 1 exception: $e');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // PATH 2: DIRECT OPENROUTER (second fastest — single hop, ~5-15s)
-      // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ▶ PATH 2: Direct OpenRouter...');
-      try {
-        final orResult = await OpenRouterDirect.analyseImageBytes(bytes);
-        if (orResult != null && orResult['hazards'] != null) {
-          print('GeminiVision: ✓ PATH 2 SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-          _uploadToCloudinaryBackground(bytes, orResult);
-          return orResult;
-        }
-        print('GeminiVision: ✗ PATH 2 failed (null or no hazards)');
-      } catch (e) {
-        print('GeminiVision: ✗ PATH 2 exception: $e');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // PATH 3: APPS SCRIPT (slowest — multiple hops, but different infra)
-      // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ▶ PATH 3: Apps Script fallback...');
+      print('GeminiVision: ▶ Sending to Apps Script (server-side AI)...');
       try {
         final appsResult = await _callAppsScript(bytes);
         if (appsResult != null && appsResult['hazards'] != null && appsResult['error'] == null) {
-          print('GeminiVision: ✓ PATH 3 SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+          print('GeminiVision: ✓ SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
           return appsResult;
         }
         if (appsResult != null && appsResult['error'] != null) {
-          print('GeminiVision: ✗ PATH 3 returned error: ${appsResult['error']}');
+          print('GeminiVision: ✗ Server returned error: ${appsResult['error']}');
         } else {
-          print('GeminiVision: ✗ PATH 3 failed (null or no hazards)');
+          print('GeminiVision: ✗ Server failed (null or no hazards)');
         }
       } catch (e) {
-        print('GeminiVision: ✗ PATH 3 exception: $e');
+        print('GeminiVision: ✗ Apps Script exception: $e');
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // PATH 4: OFFLINE FALLBACK
+      // RETRY ONCE (in case of transient server error)
       // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ▶ PATH 4: Offline fallback (all online paths failed)');
+      if (retryCount == 0) {
+        print('GeminiVision: ▶ Retrying after 3s...');
+        await Future.delayed(const Duration(seconds: 3));
+        try {
+          final retryResult = await _callAppsScript(bytes);
+          if (retryResult != null && retryResult['hazards'] != null && retryResult['error'] == null) {
+            print('GeminiVision: ✓ RETRY SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            return retryResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ Retry exception: $e');
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // OFFLINE FALLBACK
+      // ══════════════════════════════════════════════════════════════════════
+      print('GeminiVision: ▶ Offline fallback (server unavailable)');
       print('GeminiVision: Total time elapsed: ${stopwatch.elapsedMilliseconds}ms');
       return _offlineFallback(bytes,
-          reason: 'All AI providers failed after ${stopwatch.elapsedMilliseconds}ms');
+          reason: 'AI server unavailable after ${stopwatch.elapsedMilliseconds}ms');
     } catch (e) {
       print('GeminiVision: Unexpected top-level error: $e');
       return _offlineFallback(bytes, reason: e.toString());
@@ -128,10 +98,10 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  APPS SCRIPT CALL (PATH 3) — simplified, single attempt, short timeout
+  //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    const timeoutSeconds = 60; // reduced from 120
+    const timeoutSeconds = 90; // Apps Script can take up to 60s for AI
 
     final requestBody = {
       'action': 'gemini',
@@ -164,45 +134,6 @@ class GeminiVision {
       return data;
     } catch (e) {
       print('GeminiVision: Apps Script JSON parse error: $e');
-      return null;
-    }
-  }
-
-  // ── Upload to Cloudinary (background, non-blocking) ───────────────────────
-  static void _uploadToCloudinaryBackground(Uint8List bytes, Map<String, dynamic> result) {
-    // Fire-and-forget: upload image for hosting/PDF reports
-    Future(() async {
-      try {
-        final url = await _uploadToCloudinary(bytes);
-        if (url != null) {
-          result['imageUrl'] = url;
-          print('GeminiVision: Background Cloudinary upload success: $url');
-        }
-      } catch (e) {
-        print('GeminiVision: Background Cloudinary upload failed: $e');
-      }
-    });
-  }
-
-  // ── Upload to Cloudinary ───────────────────────────────────────────────────
-  static Future<String?> _uploadToCloudinary(Uint8List bytes) async {
-    try {
-      final request = http.MultipartRequest('POST', Uri.parse(_cloudinaryUrl));
-      request.files.add(http.MultipartFile.fromBytes(
-          'file', bytes,
-          filename: 'safety_scan.jpg'));
-      request.fields['upload_preset'] = _cloudinaryPreset;
-
-      final streamed = await request.send().timeout(const Duration(seconds: 30));
-      final response = await http.Response.fromStream(streamed);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['secure_url']?.toString();
-      }
-      return null;
-    } catch (e) {
-      print('GeminiVision: Cloudinary exception = $e');
       return null;
     }
   }
