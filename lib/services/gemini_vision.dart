@@ -104,8 +104,8 @@ class GeminiVision {
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
     // Scale timeout by payload size: small images 60s, large images up to 120s
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSeconds = payloadKB > 500 ? 120 : 60;
-    print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSeconds}s');
+    final timeoutSec = payloadKB > 500 ? 120 : 60;
+    print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {
       'action': 'gemini',
@@ -116,7 +116,7 @@ class GeminiVision {
       Uri.parse(_backendUrl),
       body: jsonEncode(requestBody),
       headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    ).timeout(const Duration(seconds: timeoutSeconds));
+    ).timeout(Duration(seconds: timeoutSec));
 
     if (response.statusCode != 200) {
       print('GeminiVision: Apps Script HTTP ${response.statusCode}');
