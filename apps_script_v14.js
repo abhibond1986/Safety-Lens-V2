@@ -31,9 +31,9 @@ const SHEET_FEEDBACK  = 'feedback';
 const SHEET_KNOWLEDGE = 'knowledge';
 
 // ★ v18: Model name array — gemini-2.5-flash is proven working on free tier
-const GOOGLE_MODELS    = ['gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash'];
-const GOOGLE_MODEL     = 'gemini-2.5-flash-preview-05-20';  // free tier — was working
-const OPENROUTER_MODEL = 'google/gemini-2.5-flash-preview-05-20'; // paid fallback
+const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — stable GA model
+const OPENROUTER_MODEL = 'google/gemini-2.5-flash'; // paid fallback
 
 const INCIDENT_COLS = [
   'id', 'date', 'title', 'plant', 'dept', 'location', 'severity',

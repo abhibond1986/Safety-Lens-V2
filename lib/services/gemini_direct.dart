@@ -16,7 +16,7 @@ class GeminiDirect {
 
   // Models to try (newest first, fallback to stable)
   static const List<String> _models = [
-    'gemini-2.5-flash-preview-05-20',
+    'gemini-2.5-flash',
     'gemini-2.0-flash',
   ];
 

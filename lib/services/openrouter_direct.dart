@@ -13,8 +13,8 @@ class OpenRouterDirect {
   // Key is fetched at runtime from Apps Script (see ApiKeys.init())
   // Fallback: --dart-define=OPENROUTER_API_KEY=... at build time
   static String get _apiKey => ApiKeys.openRouterKey;
-  static const String _model = 'google/gemini-2.5-flash-preview-05-20';
-  static const String _fallbackModel = 'google/gemini-2.0-flash-001';
+  static const String _model = 'google/gemini-2.5-flash';
+  static const String _fallbackModel = 'google/gemini-2.0-flash';
 
   static const int _timeoutSeconds = 45;
 
