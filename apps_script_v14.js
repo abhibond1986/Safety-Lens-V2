@@ -1,21 +1,23 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v16
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v20
 //
-// CHANGES FROM v15:
-//   ✅ FIX: callGoogleDirectImage now retries up to 4 times with
-//          progressive backoff (5s, 10s, 15s) on HTTP 503/429
-//          • Google free tier returns 503 "model overloaded" intermittently
-//          • Also handles 429 "rate limit exceeded"
-//          • Eliminates "every alternate image fails" problem
-//   ✅ FROM v15: analyzeUrl accepts fallback imageBase64 from app
-//   ✅ FROM v14: PIPE vs WIRE differentiation rules in server-side prompt
-//   ✅ Everything else identical to v15 (sheet formatting, Google AI Studio
-//          primary, OpenRouter fallback, Cloudinary preserved)
+// CHANGES FROM v16:
+//   ✅ Intelligent model fallback: gemini-2.5-flash → 2.0-flash → 2.0-flash-lite → OpenRouter
+//   ✅ Exponential backoff: 0s, 5s, 10s, 20s for 429/500/503
+//   ✅ Quota exhaustion detection: bails ALL models immediately (no wasted retries)
+//   ✅ callGoogleDirectText rewritten with full retry logic (was failing on first 503)
+//   ✅ callGoogleDirectImage: safe JSON parsing, candidate validation, elapsed tracking
+//   ✅ getProviderHealth() — quick health check of all providers
+//   ✅ Enhanced diagnose endpoint: per-model latency + recommended model
+//   ✅ Structured logging: [AI] Model=X Attempt=Y HTTP=Z
+//   ✅ Never returns null from provider chain — always structured JSON
+//   ✅ 4-minute safety timeout (leaves margin for Apps Script 6-min limit)
+//   ✅ OpenRouter retry: 3 attempts with 2s/5s/10s backoff
 //
-// REQUIRED SCRIPT PROPERTY (unchanged):
+// REQUIRED SCRIPT PROPERTY:
 //   GOOGLE_AI_KEY = AIza... (from https://aistudio.google.com/apikey)
 //
-// OPTIONAL SCRIPT PROPERTY (unchanged):
+// OPTIONAL SCRIPT PROPERTY:
 //   AI_PRIMARY_PROVIDER = 'google' (default) | 'openrouter' | 'google_only'
 //
 // EXISTING PROPERTY (kept for fallback):
@@ -30,9 +32,9 @@ const SHEET_USERS     = 'users';
 const SHEET_FEEDBACK  = 'feedback';
 const SHEET_KNOWLEDGE = 'knowledge';
 
-// ★ v18: Model name array — gemini-2.5-flash is proven working on free tier
-const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — stable GA model
+// ★ v20: Model fallback chain — try all available free-tier models
+const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
+const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
 const OPENROUTER_MODEL = 'google/gemini-2.5-flash'; // paid fallback
 
 const INCIDENT_COLS = [
@@ -64,7 +66,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v16', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v20', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -85,7 +87,7 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v18',
+          version: 'v20',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey(),
@@ -102,35 +104,60 @@ function handle(e) {
         break;
 
       case 'diagnose': {
-        // ★ v18: Quick diagnostic — tests keys with a tiny prompt, no image
-        var diag = { google: 'not_tested', openrouter: 'not_tested' };
+        // ★ v20: Enhanced diagnostics — tests every model with latency
+        var diag = { google: {}, openrouter: {}, recommended: '', timestamp: new Date().toISOString() };
         var gKey = getGoogleKey();
+        var bestModel = '';
+        var bestLatency = 999999;
+
         if (gKey) {
-          try {
-            var dUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
-              + GOOGLE_MODELS[0] + ':generateContent?key=' + encodeURIComponent(gKey);
-            var dResp = UrlFetchApp.fetch(dUrl, {
-              method: 'post', contentType: 'application/json',
-              payload: JSON.stringify({contents:[{role:'user',parts:[{text:'Say OK'}]}],generationConfig:{maxOutputTokens:10}}),
-              muteHttpExceptions: true
-            });
-            var dCode = dResp.getResponseCode();
-            diag.google = dCode === 200 ? 'OK (model=' + GOOGLE_MODELS[0] + ')' : 'HTTP_' + dCode + ': ' + dResp.getContentText().substring(0,200);
-          } catch(de) { diag.google = 'ERROR: ' + de.toString(); }
-        } else { diag.google = 'NO_KEY'; }
+          for (var di = 0; di < GOOGLE_MODELS.length; di++) {
+            var dModel = GOOGLE_MODELS[di];
+            try {
+              var dStart = new Date().getTime();
+              var dUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
+                + dModel + ':generateContent?key=' + encodeURIComponent(gKey);
+              var dResp = UrlFetchApp.fetch(dUrl, {
+                method: 'post', contentType: 'application/json',
+                payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Say OK' }] }], generationConfig: { maxOutputTokens: 10 } }),
+                muteHttpExceptions: true
+              });
+              var dCode = dResp.getResponseCode();
+              var dLatency = new Date().getTime() - dStart;
+              diag.google[dModel] = { status: dCode, latency_ms: dLatency };
+              if (dCode === 200 && dLatency < bestLatency) {
+                bestLatency = dLatency;
+                bestModel = dModel;
+              }
+            } catch (de) {
+              diag.google[dModel] = { status: 'ERROR', error: de.toString().substring(0, 100) };
+            }
+          }
+        } else {
+          diag.google = 'NO_KEY';
+        }
+
         var oKey = getOpenRouterKey();
         if (oKey) {
           try {
+            var oStart = new Date().getTime();
             var oResp = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', {
-              method:'post', contentType:'application/json',
-              headers:{'Authorization':'Bearer '+oKey,'HTTP-Referer':'https://abhibond1986.github.io/Safety-Lens-V2/','X-Title':'SAIL Safety Lens'},
-              payload:JSON.stringify({model:OPENROUTER_MODEL,messages:[{role:'user',content:'Say OK'}],max_tokens:10}),
-              muteHttpExceptions:true
+              method: 'post', contentType: 'application/json',
+              headers: { 'Authorization': 'Bearer ' + oKey, 'HTTP-Referer': 'https://abhibond1986.github.io/Safety-Lens-V2/', 'X-Title': 'SAIL Safety Lens' },
+              payload: JSON.stringify({ model: OPENROUTER_MODEL, messages: [{ role: 'user', content: 'Say OK' }], max_tokens: 10 }),
+              muteHttpExceptions: true
             });
             var oCode = oResp.getResponseCode();
-            diag.openrouter = oCode === 200 ? 'OK (model=' + OPENROUTER_MODEL + ')' : 'HTTP_' + oCode + ': ' + oResp.getContentText().substring(0,200);
-          } catch(oe) { diag.openrouter = 'ERROR: ' + oe.toString(); }
-        } else { diag.openrouter = 'NO_KEY'; }
+            var oLatency = new Date().getTime() - oStart;
+            diag.openrouter = { status: oCode, latency_ms: oLatency, model: OPENROUTER_MODEL };
+          } catch (oe) {
+            diag.openrouter = { status: 'ERROR', error: oe.toString().substring(0, 100) };
+          }
+        } else {
+          diag.openrouter = 'NO_KEY';
+        }
+
+        diag.recommended = bestModel || 'openrouter';
         result = diag;
         break;
       }
@@ -249,6 +276,71 @@ function getGoogleKey() {
 }
 function getOpenRouterKey() {
   return PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY') || '';
+}
+
+
+// ============================================================
+//  PROVIDER HEALTH MONITORING (v20)
+// ============================================================
+function getProviderHealth() {
+  var health = {
+    google: 'UNKNOWN',
+    googleModel: '',
+    openrouter: 'UNKNOWN',
+    lastError: '',
+    timestamp: new Date().toISOString()
+  };
+
+  var gKey = getGoogleKey();
+  if (!gKey) {
+    health.google = 'NO_KEY';
+  } else {
+    for (var i = 0; i < GOOGLE_MODELS.length; i++) {
+      var model = GOOGLE_MODELS[i];
+      try {
+        var url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+          + model + ':generateContent?key=' + encodeURIComponent(gKey);
+        var resp = UrlFetchApp.fetch(url, {
+          method: 'post', contentType: 'application/json',
+          payload: JSON.stringify({
+            contents: [{ role: 'user', parts: [{ text: 'Say OK' }] }],
+            generationConfig: { maxOutputTokens: 10 }
+          }),
+          muteHttpExceptions: true
+        });
+        var code = resp.getResponseCode();
+        if (code === 200) {
+          health.google = 'OK';
+          health.googleModel = model;
+          break;
+        }
+        health.lastError = 'HTTP_' + code + ' on ' + model;
+      } catch (e) {
+        health.lastError = model + ': ' + e.toString().substring(0, 100);
+      }
+    }
+    if (health.google !== 'OK') health.google = 'UNAVAILABLE';
+  }
+
+  var oKey = getOpenRouterKey();
+  if (!oKey) {
+    health.openrouter = 'NO_KEY';
+  } else {
+    try {
+      var oResp = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'post', contentType: 'application/json',
+        headers: { 'Authorization': 'Bearer ' + oKey, 'HTTP-Referer': 'https://abhibond1986.github.io/Safety-Lens-V2/', 'X-Title': 'SAIL Safety Lens' },
+        payload: JSON.stringify({ model: OPENROUTER_MODEL, messages: [{ role: 'user', content: 'Say OK' }], max_tokens: 10 }),
+        muteHttpExceptions: true
+      });
+      health.openrouter = oResp.getResponseCode() === 200 ? 'OK' : 'HTTP_' + oResp.getResponseCode();
+    } catch (e) {
+      health.openrouter = 'ERROR';
+      health.lastError = e.toString().substring(0, 100);
+    }
+  }
+
+  return health;
 }
 
 
@@ -828,7 +920,7 @@ function getSailPrompt(promptMode) {
 function callGoogleDirectImage(prompt, base64, mimeType) {
   const key = getGoogleKey();
   if (!key) {
-    Logger.log('Google: no GOOGLE_AI_KEY set, skipping');
+    Logger.log('[AI] ERROR: no GOOGLE_AI_KEY set, skipping');
     return null;
   }
 
@@ -840,14 +932,23 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
   pure = pure.replace(/\s+/g, '');
 
   if (pure.length < 100) {
-    Logger.log('Google: image data too small (' + pure.length + ' chars)');
+    Logger.log('[AI] ERROR: image data too small (' + pure.length + ' chars)');
     return null;
   }
 
-  // ★ v18: Try multiple models — newer first, fall back to stable
+  var globalStart = new Date().getTime();
+
+  // ★ v20: Intelligent model fallback with exponential backoff
   for (var mi = 0; mi < GOOGLE_MODELS.length; mi++) {
     var model = GOOGLE_MODELS[mi];
-    Logger.log('Google: trying model ' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ')');
+    Logger.log('[AI] Model=' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ') starting...');
+
+    // Bail if we've been running too long (Apps Script 6-min limit)
+    var elapsed = new Date().getTime() - globalStart;
+    if (elapsed > 240000) { // 4 minutes — leave margin
+      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting');
+      break;
+    }
 
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/'
       + model + ':generateContent?key=' + encodeURIComponent(key);
@@ -867,9 +968,18 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
       }
     };
 
+    // Exponential backoff: immediate, 5s, 10s, 20s
+    var BACKOFF = [0, 5, 10, 20];
+
     try {
-      var resp, code;
+      var resp, code, lastErrBody = '';
       for (var attempt = 1; attempt <= 4; attempt++) {
+        if (attempt > 1) {
+          var wait = BACKOFF[attempt - 1];
+          Logger.log('[AI] Model=' + model + ' Attempt=' + attempt + ' waiting ' + wait + 's...');
+          Utilities.sleep(wait * 1000);
+        }
+
         resp = UrlFetchApp.fetch(url, {
           method: 'post',
           contentType: 'application/json',
@@ -877,56 +987,111 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
           muteHttpExceptions: true
         });
         code = resp.getResponseCode();
-        Logger.log('Google [' + model + ']: HTTP ' + code + ' (attempt ' + attempt + '/4)');
-        if ((code === 503 || code === 429) && attempt < 4) {
-          var wait = attempt * 10;
-          Logger.log('Google: rate limited, waiting ' + wait + 's...');
-          Utilities.sleep(wait * 1000);
-        } else {
+        Logger.log('[AI] Model=' + model + ' Attempt=' + attempt + ' HTTP=' + code);
+
+        // Success — break out of retry loop
+        if (code === 200) break;
+
+        lastErrBody = resp.getContentText().substring(0, 500);
+
+        // QUOTA EXHAUSTION — affects ALL models on this key, bail immediately
+        if (lastErrBody.indexOf('Quota exceeded') >= 0 || lastErrBody.indexOf('RESOURCE_EXHAUSTED') >= 0) {
+          Logger.log('[AI] 🚫 QUOTA EXHAUSTED — all models on this key are blocked');
+          Logger.log('[AI] Error: ' + lastErrBody.substring(0, 300));
+          return null; // Skip ALL remaining models
+        }
+
+        // 404 — model doesn't exist, skip to next model immediately
+        if (code === 404) {
+          Logger.log('[AI] Model=' + model + ' not found (404), skipping');
           break;
         }
+
+        // 400/401/403 — permanent error, skip this model
+        if (code === 400 || code === 401 || code === 403) {
+          Logger.log('[AI] Model=' + model + ' permanent error HTTP=' + code + ': ' + lastErrBody.substring(0, 200));
+          break;
+        }
+
+        // 429/500/503 — transient, worth retrying
+        if (code === 429 || code === 500 || code === 503) {
+          if (attempt >= 4) {
+            Logger.log('[AI] Model=' + model + ' exhausted retries, moving to next');
+          }
+          continue;
+        }
+
+        // Unknown error code — log and move on
+        Logger.log('[AI] Model=' + model + ' unexpected HTTP=' + code + ': ' + lastErrBody.substring(0, 200));
+        break;
       }
 
-      if (code === 404) {
-        Logger.log('Google: model ' + model + ' not found (404), trying next model...');
-        continue;  // try next model
-      }
+      // If we didn't get 200 after retries, try next model
+      if (code !== 200) continue;
 
-      if (code !== 200) {
-        var errBody = resp.getContentText().substring(0, 500);
-        Logger.log('Google error body: ' + errBody);
-        continue;  // try next model
+      // ── Parse and validate response ──
+      var data;
+      try {
+        data = JSON.parse(resp.getContentText());
+      } catch (parseErr) {
+        Logger.log('[AI] Model=' + model + ' JSON parse error on response: ' + parseErr.toString());
+        continue;
       }
-
-      var data = JSON.parse(resp.getContentText());
 
       if (!data.candidates || data.candidates.length === 0) {
-        Logger.log('Google: no candidates, prompt feedback = '
+        Logger.log('[AI] Model=' + model + ' no candidates, promptFeedback='
           + JSON.stringify(data.promptFeedback || {}));
         continue;
       }
+
       var c = data.candidates[0];
       if (c.finishReason && c.finishReason !== 'STOP' && c.finishReason !== 'MAX_TOKENS') {
-        Logger.log('Google: blocked, finishReason = ' + c.finishReason);
+        Logger.log('[AI] Model=' + model + ' blocked, finishReason=' + c.finishReason);
         continue;
       }
       if (!c.content || !c.content.parts || c.content.parts.length === 0) {
-        Logger.log('Google: empty content parts');
+        Logger.log('[AI] Model=' + model + ' empty content parts');
         continue;
       }
 
       var text = c.content.parts[0].text || '';
       text = text.trim();
+      if (!text) {
+        Logger.log('[AI] Model=' + model + ' empty text in parts[0]');
+        continue;
+      }
+
+      // ── Safe JSON extraction ──
       if (text.startsWith('```json')) text = text.substring(7);
       if (text.startsWith('```'))     text = text.substring(3);
       if (text.endsWith('```'))       text = text.slice(0, -3);
       var f = text.indexOf('{'), l = text.lastIndexOf('}');
-      if (f >= 0 && l > f) text = text.substring(f, l + 1);
+      if (f < 0 || l <= f) {
+        Logger.log('[AI] Model=' + model + ' no JSON object found in response: ' + text.substring(0, 200));
+        continue;
+      }
+      text = text.substring(f, l + 1);
 
-      var result = JSON.parse(text.trim());
+      var result;
+      try {
+        result = JSON.parse(text.trim());
+      } catch (jsonErr) {
+        Logger.log('[AI] Model=' + model + ' malformed JSON: ' + jsonErr.toString());
+        Logger.log('[AI] Raw text (first 300): ' + text.substring(0, 300));
+        continue;
+      }
+
+      // ── Validate result has required fields ──
+      if (typeof result !== 'object' || result === null) {
+        Logger.log('[AI] Model=' + model + ' result is not an object');
+        continue;
+      }
+
       result._provider = 'google_direct';
       result._model    = model;
       if (result.people === undefined) result.people = 0;
+      if (!result.hazards) result.hazards = [];
+      if (!result.overallRisk) result.overallRisk = 'UNKNOWN';
 
       if (data.usageMetadata) {
         result._tokens = {
@@ -936,51 +1101,92 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
         };
       }
 
-      Logger.log('Google: SUCCESS with ' + model + ' — hazards=' + (result.hazards || []).length
-        + ', tokens=' + ((result._tokens && result._tokens.total) || '?'));
+      var totalMs = new Date().getTime() - globalStart;
+      Logger.log('[AI] ✓ SUCCESS Model=' + model + ' hazards=' + result.hazards.length
+        + ' tokens=' + ((result._tokens && result._tokens.total) || '?')
+        + ' elapsed=' + totalMs + 'ms');
       return result;
 
     } catch (err) {
-      Logger.log('Google exception with ' + model + ': ' + err.toString());
+      Logger.log('[AI] Model=' + model + ' EXCEPTION: ' + err.toString());
       continue;  // try next model
     }
   }
 
-  Logger.log('Google: all models failed');
+  var totalMs = new Date().getTime() - globalStart;
+  Logger.log('[AI] All Google models failed after ' + totalMs + 'ms');
   return null;
 }
 
 function callGoogleDirectText(prompt) {
   const key = getGoogleKey();
-  if (!key) return null;
-
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-    + GOOGLE_MODEL + ':generateContent?key=' + encodeURIComponent(key);
-
-  const payload = {
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
-    generationConfig: { temperature: 0.3, maxOutputTokens: 2048 }
-  };
-  try {
-    const resp = UrlFetchApp.fetch(url, {
-      method: 'post',
-      contentType: 'application/json',
-      payload: JSON.stringify(payload),
-      muteHttpExceptions: true
-    });
-    if (resp.getResponseCode() !== 200) return null;
-    const data = JSON.parse(resp.getContentText());
-    if (!data.candidates || !data.candidates[0] ||
-        !data.candidates[0].content || !data.candidates[0].content.parts) return null;
-    return {
-      success: true,
-      result: data.candidates[0].content.parts[0].text || '',
-      _provider: 'google_direct'
-    };
-  } catch (err) {
-    Logger.log('Google text exception: ' + err.toString());
+  if (!key) {
+    Logger.log('[AI-Text] No GOOGLE_AI_KEY set');
     return null;
   }
+
+  var BACKOFF = [0, 5, 10, 20];
+
+  // ★ v20: Try all models with retry logic (same as image version)
+  for (var mi = 0; mi < GOOGLE_MODELS.length; mi++) {
+    var model = GOOGLE_MODELS[mi];
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+      + model + ':generateContent?key=' + encodeURIComponent(key);
+
+    var payload = {
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 2048 }
+    };
+
+    for (var attempt = 1; attempt <= 4; attempt++) {
+      if (attempt > 1) Utilities.sleep(BACKOFF[attempt - 1] * 1000);
+
+      try {
+        var resp = UrlFetchApp.fetch(url, {
+          method: 'post',
+          contentType: 'application/json',
+          payload: JSON.stringify(payload),
+          muteHttpExceptions: true
+        });
+        var code = resp.getResponseCode();
+        Logger.log('[AI-Text] Model=' + model + ' Attempt=' + attempt + ' HTTP=' + code);
+
+        // Quota exhaustion — bail all models
+        if (code === 429 || code === 503) {
+          var body = resp.getContentText();
+          if (body.indexOf('Quota exceeded') >= 0 || body.indexOf('RESOURCE_EXHAUSTED') >= 0) {
+            Logger.log('[AI-Text] Quota exhausted, bailing');
+            return null;
+          }
+          if (attempt >= 4) break; // move to next model
+          continue;
+        }
+
+        if (code === 404) break; // model not found, next model
+        if (code !== 200) break; // permanent error, next model
+
+        var data = JSON.parse(resp.getContentText());
+        if (!data.candidates || !data.candidates[0] ||
+            !data.candidates[0].content || !data.candidates[0].content.parts) {
+          Logger.log('[AI-Text] Model=' + model + ' no valid candidates');
+          break;
+        }
+
+        return {
+          success: true,
+          result: data.candidates[0].content.parts[0].text || '',
+          _provider: 'google_direct',
+          _model: model
+        };
+      } catch (err) {
+        Logger.log('[AI-Text] Model=' + model + ' exception: ' + err.toString());
+        break;
+      }
+    }
+  }
+
+  Logger.log('[AI-Text] All Google models failed');
+  return null;
 }
 
 
@@ -1094,7 +1300,7 @@ function callOpenRouterImageBase64(base64, mimeType, prompt) {
 function callOpenRouterWithRetry(payload) {
   const key = getOpenRouterKey();
   if (!key) {
-    Logger.log('OpenRouter: no OPENROUTER_API_KEY set');
+    Logger.log('[AI-OR] No OPENROUTER_API_KEY set');
     return null;
   }
   const options = {
@@ -1107,16 +1313,26 @@ function callOpenRouterWithRetry(payload) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
-  let response;
-  for (var attempt = 1; attempt <= 2; attempt++) {
+  // ★ v20: 3 attempts with 2s, 5s, 10s backoff
+  var BACKOFF = [0, 2, 5, 10];
+  var response;
+  for (var attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) {
+      Logger.log('[AI-OR] Retry attempt=' + attempt + ' waiting ' + BACKOFF[attempt] + 's...');
+      Utilities.sleep(BACKOFF[attempt] * 1000);
+    }
     try {
       response = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', options);
-      const code = response.getResponseCode();
+      var code = response.getResponseCode();
+      Logger.log('[AI-OR] Attempt=' + attempt + ' HTTP=' + code);
       if (code === 200) return response;
-      if (code === 429) Utilities.sleep(3000);
-      else if (attempt < 2) Utilities.sleep(1000);
+      // 402 = payment required, no point retrying
+      if (code === 402 || code === 401 || code === 403) {
+        Logger.log('[AI-OR] Permanent error HTTP=' + code + ', not retrying');
+        return response;
+      }
     } catch(err) {
-      if (attempt < 2) Utilities.sleep(1000);
+      Logger.log('[AI-OR] Attempt=' + attempt + ' exception: ' + err.toString());
     }
   }
   return response;
@@ -1229,12 +1445,17 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
     }
   }
 
+  Logger.log('[AI] ✗ ALL PROVIDERS FAILED — returning structured fallback');
   return {
-    error: 'All AI providers failed. Check Logger.log for details.',
-    overallRisk: 'UNKNOWN', riskScore: 0, confidence: 0, people: 0,
-    summary: 'AI unavailable — both Google and OpenRouter calls failed.',
+    overallRisk: 'UNKNOWN',
+    riskScore: 0,
+    confidence: 0,
+    people: 0,
+    summary: 'AI services temporarily unavailable. All providers exhausted after retry. Please try again in 1-2 minutes.',
     hazards: [],
     _provider: 'none',
+    _error: 'All AI providers failed (Google models: ' + GOOGLE_MODELS.join(', ') + ', OpenRouter: ' + OPENROUTER_MODEL + ')',
+    _isOnline: false,
     imageUrl: cloudUrl || null
   };
 }

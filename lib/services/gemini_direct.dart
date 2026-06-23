@@ -20,8 +20,8 @@ class GeminiDirect {
     'gemini-2.0-flash',
   ];
 
-  // Timeouts — aggressive for speed
-  static const int _timeoutPerAttempt = 30; // seconds per model attempt
+  // Timeouts — aggressive for speed, fail fast to reach working provider
+  static const int _timeoutPerAttempt = 15; // seconds per model attempt
   static const int _maxRetries = 1; // 1 retry per model = 2 attempts total
 
   /// Primary analysis method — fast, single hop.
@@ -68,7 +68,13 @@ class GeminiDirect {
           if (errStr.contains('API_KEY') || errStr.contains('api key') || errStr.contains('401') || errStr.contains('403')) {
             print('GeminiDirect: 🔑 API KEY ISSUE — key may be invalid, expired, or lacks permissions');
             print('GeminiDirect: Key used: ${_googleApiKey.substring(0, 8)}...${_googleApiKey.substring(_googleApiKey.length - 4)}');
-            break; // No point retrying with same key
+            return null; // No point retrying with same key — bail ALL models
+          }
+
+          // QUOTA EXHAUSTION — affects ALL models on this key, bail immediately
+          if (errStr.contains('quota') || errStr.contains('Quota exceeded') || errStr.contains('RESOURCE_EXHAUSTED')) {
+            print('GeminiDirect: 🚫 QUOTA EXHAUSTED — affects all models, skipping to next provider');
+            return null; // Don't waste time trying other models
           }
 
           // If model not found, skip to next model immediately
@@ -76,18 +82,26 @@ class GeminiDirect {
             print('GeminiDirect: Model $modelName not available, trying next...');
             break;
           }
-          // If rate limited / quota exceeded
-          if (errStr.contains('429') || errStr.contains('overloaded') || errStr.contains('503') || errStr.contains('quota')) {
-            print('GeminiDirect: ⏳ Rate limited or quota exceeded');
+
+          // 503 overloaded — worth ONE quick retry, then move to next model
+          if (errStr.contains('503') || errStr.contains('overloaded')) {
             if (attempt < _maxRetries) {
-              final wait = (attempt + 1) * 3;
-              print('GeminiDirect: Waiting ${wait}s before retry...');
-              await Future.delayed(Duration(seconds: wait));
+              print('GeminiDirect: ⏳ Model overloaded, quick retry in 2s...');
+              await Future.delayed(const Duration(seconds: 2));
+            } else {
+              print('GeminiDirect: ⏳ Model overloaded, moving to next model...');
+              break; // Don't waste more time, try next model
             }
           }
 
-          // Log first 2 lines of stack trace for unexpected errors
-          if (!errStr.contains('429') && !errStr.contains('503') && !errStr.contains('404')) {
+          // 429 rate limit — brief wait then move on
+          if (errStr.contains('429')) {
+            print('GeminiDirect: ⏳ Rate limited, moving to next model...');
+            break; // Rate limit usually means "wait minutes", not seconds
+          }
+
+          // Log stack trace for unexpected errors
+          if (!errStr.contains('429') && !errStr.contains('503') && !errStr.contains('404') && !errStr.contains('quota')) {
             final traceLines = stackTrace.toString().split('\n').take(3).join('\n');
             print('GeminiDirect: Stack: $traceLines');
           }
