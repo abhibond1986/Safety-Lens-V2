@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
+import '../services/admin_master_data.dart';
 import '../services/i18n.dart';
 import '../widgets/glass_card.dart';
 import 'home_screen.dart';
@@ -33,7 +34,8 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _selectedPlant;
   bool _isOtherPlant = false;
 
-  static const List<String> _sailPlants = [
+  // Loaded dynamically from AdminMasterData
+  List<String> _sailPlants = [
     'BSP — Bhilai Steel Plant',
     'DSP — Durgapur Steel Plant',
     'RSP — Rourkela Steel Plant',
@@ -54,6 +56,26 @@ class _LoginScreenState extends State<LoginScreen> {
   String get _effectivePlant {
     if (_isOtherPlant) return _regOtherPlantCtrl.text.trim();
     return _selectedPlant ?? '';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlants();
+  }
+
+  Future<void> _loadPlants() async {
+    try {
+      final plants = await AdminMasterData.getPlants();
+      if (!mounted || plants.isEmpty) return;
+      final list = plants.map((p) {
+        final code = p['code'] ?? '';
+        final name = p['name'] ?? '';
+        return code.isNotEmpty && name.isNotEmpty ? '$code — $name' : name;
+      }).where((s) => s.isNotEmpty).toList();
+      list.add('Others');
+      setState(() => _sailPlants = list);
+    } catch (_) {}
   }
 
   @override

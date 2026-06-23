@@ -22,6 +22,7 @@ import '../services/network_checker.dart';
 import '../services/local_db.dart';
 import '../services/pdf_export.dart';
 import '../services/sync_service.dart';
+import '../services/admin_master_data.dart';
 import '../widgets/universal_app_bar.dart';
 import '../services/i18n.dart';
 
@@ -95,6 +96,20 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       CurvedAnimation(parent: _micPulseCtrl, curve: Curves.easeInOut));
     _micPulseCtrl.repeat(reverse: true);
     _initSpeech();
+    _loadMasterData();
+  }
+
+  Future<void> _loadMasterData() async {
+    try {
+      final plants = await AdminMasterData.getPlants();
+      final wsa    = await AdminMasterData.getWsaCauses();
+      if (!mounted) return;
+      setState(() {
+        final plantNames = plants.map((p) => p['name'] ?? p['code'] ?? '').where((s) => s.isNotEmpty).toList();
+        if (plantNames.isNotEmpty) _plants = plantNames;
+        if (wsa.isNotEmpty) _wsaCauses = wsa;
+      });
+    } catch (_) {}
   }
 
   static bool _micPermissionGranted = false;
@@ -264,8 +279,9 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     super.dispose();
   }
 
-  final _plants = const ['BSP', 'DSP', 'RSP', 'BSL', 'ISP', 'ASP', 'SSP', 'CFP', 'CMO', 'JGOM', 'OGOM', 'BSP(M)', 'Collieries', 'SRU Kulti'];
-  final _wsaCauses = const ['Burn / Fire', 'Chemical', 'Electrical', 'Fall from Height', 'Fall of Material', 'Gas Related', 'Hit / Caught / Pressed', 'Hot Metal / Slag / Sub', 'Machine / Equipment', 'Material Handling', 'Road / Rail', 'Slip / Fall', 'Other'];
+  // Loaded dynamically from AdminMasterData (synced with admin panel)
+  List<String> _plants = ['BSP', 'DSP', 'RSP', 'BSL', 'ISP', 'ASP', 'SSP', 'CFP', 'CMO', 'JGOM', 'OGOM', 'BSP(M)', 'Collieries', 'SRU Kulti', 'SSO'];
+  List<String> _wsaCauses = ['Burn / Fire', 'Chemical', 'Electrical', 'Fall from Height', 'Fall of Material', 'Gas Related', 'Hit / Caught / Pressed', 'Hot Metal / Slag / Sub', 'Machine / Equipment', 'Material Handling', 'Road / Rail', 'Slip / Fall', 'Other'];
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();

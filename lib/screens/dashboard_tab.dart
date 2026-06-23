@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
+import '../services/admin_master_data.dart';
 import 'admin_screen.dart';
 
 class DashboardTab extends StatefulWidget {
@@ -37,7 +38,8 @@ class _DashboardTabState extends State<DashboardTab> {
   bool _loading    = true;
   bool _refreshing = false;
 
-  static const List<Map<String, String>> _plants = [
+  // Loaded dynamically from AdminMasterData (synced with admin Plant Master)
+  List<Map<String, String>> _plants = [
     {'code': 'BSP',  'name': 'Bhilai Steel Plant'},
     {'code': 'DSP',  'name': 'Durgapur Steel Plant'},
     {'code': 'RSP',  'name': 'Rourkela Steel Plant'},
@@ -56,6 +58,15 @@ class _DashboardTabState extends State<DashboardTab> {
   void initState() {
     super.initState();
     _loadAll();
+    _loadPlantsMaster();
+  }
+
+  Future<void> _loadPlantsMaster() async {
+    try {
+      final masterPlants = await AdminMasterData.getPlants();
+      if (!mounted || masterPlants.isEmpty) return;
+      setState(() => _plants = masterPlants);
+    } catch (_) {}
   }
 
   Future<void> _loadAll() async {
