@@ -41,17 +41,28 @@ class _HazardAnnotatedImageState extends State<HazardAnnotatedImage> {
 
   void _resolveImageSize() {
     final img = MemoryImage(widget.imageBytes);
-    img.resolve(const ImageConfiguration()).addListener(
-      ImageStreamListener((info, _) {
-        if (mounted) {
-          setState(() {
-            _imageSize = Size(
-              info.image.width.toDouble(),
-              info.image.height.toDouble(),
-            );
-          });
-        }
-      }),
+    final stream = img.resolve(const ImageConfiguration());
+    stream.addListener(
+      ImageStreamListener(
+        (info, _) {
+          if (mounted) {
+            setState(() {
+              _imageSize = Size(
+                info.image.width.toDouble(),
+                info.image.height.toDouble(),
+              );
+            });
+          }
+        },
+        onError: (e, _) {
+          // Fallback if image resolution fails (e.g., on web)
+          if (mounted) {
+            setState(() {
+              _imageSize = const Size(1024, 768); // assume 4:3
+            });
+          }
+        },
+      ),
     );
   }
 
