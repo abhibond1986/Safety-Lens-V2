@@ -14,7 +14,7 @@ class OpenRouterDirect {
   // Fallback: --dart-define=OPENROUTER_API_KEY=... at build time
   static String get _apiKey => ApiKeys.openRouterKey;
   static const String _model = 'google/gemini-2.5-flash';
-  static const String _fallbackModel = 'google/gemini-2.0-flash';
+  static const String _fallbackModel = 'google/gemini-2.0-flash-exp';
 
   static const int _timeoutSeconds = 45;
 
@@ -69,7 +69,7 @@ class OpenRouterDirect {
           ]
         }
       ],
-      'max_tokens': 4096,
+      'max_tokens': 2048,
       'temperature': 0.2,
     });
 

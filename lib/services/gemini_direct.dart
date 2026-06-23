@@ -28,12 +28,15 @@ class GeminiDirect {
   /// Returns the standard hazard JSON structure on success, null on failure.
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes) async {
     if (_googleApiKey.isEmpty) {
-      print('GeminiDirect: GOOGLE_AI_KEY not set — ensure ApiKeys.init() was called');
+      print('GeminiDirect: ❌ GOOGLE_AI_KEY is EMPTY — ensure ApiKeys.init() was called');
+      print('GeminiDirect: ApiKeys.hasGoogleKey=${ApiKeys.hasGoogleKey}, '
+          'ApiKeys.googleKey.length=${ApiKeys.googleKey.length}');
       return null;
     }
 
     print('GeminiDirect: Starting direct analysis (${bytes.length} bytes, '
-        '${_models.length} models available)');
+        '${_models.length} models available, '
+        'key=${_googleApiKey.substring(0, 8)}...${_googleApiKey.substring(_googleApiKey.length - 4)})');
 
     for (int modelIdx = 0; modelIdx < _models.length; modelIdx++) {
       final modelName = _models[modelIdx];
@@ -57,22 +60,36 @@ class GeminiDirect {
           if (attempt < _maxRetries) {
             await Future.delayed(const Duration(seconds: 2));
           }
-        } catch (e) {
+        } catch (e, stackTrace) {
           final errStr = e.toString();
-          print('GeminiDirect: Error on $modelName attempt ${attempt + 1}: $errStr');
+          print('GeminiDirect: ❌ Error on $modelName attempt ${attempt + 1}: $errStr');
+
+          // Log specific error types for debugging
+          if (errStr.contains('API_KEY') || errStr.contains('api key') || errStr.contains('401') || errStr.contains('403')) {
+            print('GeminiDirect: 🔑 API KEY ISSUE — key may be invalid, expired, or lacks permissions');
+            print('GeminiDirect: Key used: ${_googleApiKey.substring(0, 8)}...${_googleApiKey.substring(_googleApiKey.length - 4)}');
+            break; // No point retrying with same key
+          }
 
           // If model not found, skip to next model immediately
           if (errStr.contains('404') || errStr.contains('not found')) {
             print('GeminiDirect: Model $modelName not available, trying next...');
             break;
           }
-          // If rate limited, wait briefly then retry
-          if (errStr.contains('429') || errStr.contains('overloaded') || errStr.contains('503')) {
+          // If rate limited / quota exceeded
+          if (errStr.contains('429') || errStr.contains('overloaded') || errStr.contains('503') || errStr.contains('quota')) {
+            print('GeminiDirect: ⏳ Rate limited or quota exceeded');
             if (attempt < _maxRetries) {
               final wait = (attempt + 1) * 3;
-              print('GeminiDirect: Rate limited, waiting ${wait}s...');
+              print('GeminiDirect: Waiting ${wait}s before retry...');
               await Future.delayed(Duration(seconds: wait));
             }
+          }
+
+          // Log first 2 lines of stack trace for unexpected errors
+          if (!errStr.contains('429') && !errStr.contains('503') && !errStr.contains('404')) {
+            final traceLines = stackTrace.toString().split('\n').take(3).join('\n');
+            print('GeminiDirect: Stack: $traceLines');
           }
         }
       }
@@ -104,7 +121,14 @@ class GeminiDirect {
 
     final text = response.text;
     if (text == null || text.isEmpty) {
-      print('GeminiDirect: Empty response from $modelName');
+      print('GeminiDirect: ⚠️ Empty response from $modelName');
+      print('GeminiDirect: Response candidates: ${response.candidates?.length ?? 0}');
+      if (response.candidates != null && response.candidates!.isNotEmpty) {
+        print('GeminiDirect: Finish reason: ${response.candidates!.first.finishReason}');
+      }
+      if (response.promptFeedback != null) {
+        print('GeminiDirect: Prompt feedback: ${response.promptFeedback}');
+      }
       return null;
     }
 

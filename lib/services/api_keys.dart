@@ -53,7 +53,9 @@ class ApiKeys {
         }
       }
     } catch (e) {
-      print('ApiKeys: Failed to fetch keys ($e) — will use --dart-define fallback');
+      print('ApiKeys: ❌ Failed to fetch keys ($e) — will use --dart-define fallback');
+      print('ApiKeys: dart-define GOOGLE_AI_KEY present: ${const String.fromEnvironment('GOOGLE_AI_KEY', defaultValue: '').isNotEmpty}');
+      print('ApiKeys: dart-define OPENROUTER_API_KEY present: ${const String.fromEnvironment('OPENROUTER_API_KEY', defaultValue: '').isNotEmpty}');
     }
   }
 }
