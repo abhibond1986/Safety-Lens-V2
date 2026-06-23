@@ -8,7 +8,7 @@
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/material.dart';
 
-class HazardAnnotatedImage extends StatelessWidget {
+class HazardAnnotatedImage extends StatefulWidget {
   final Uint8List imageBytes;
   final List hazards;
   final void Function(int index)? onHazardTap;
@@ -21,27 +21,86 @@ class HazardAnnotatedImage extends StatelessWidget {
   });
 
   @override
+  State<HazardAnnotatedImage> createState() => _HazardAnnotatedImageState();
+}
+
+class _HazardAnnotatedImageState extends State<HazardAnnotatedImage> {
+  Size? _imageSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveImageSize();
+  }
+
+  @override
+  void didUpdateWidget(HazardAnnotatedImage old) {
+    super.didUpdateWidget(old);
+    if (old.imageBytes != widget.imageBytes) _resolveImageSize();
+  }
+
+  void _resolveImageSize() {
+    final img = MemoryImage(widget.imageBytes);
+    img.resolve(const ImageConfiguration()).addListener(
+      ImageStreamListener((info, _) {
+        if (mounted) {
+          setState(() {
+            _imageSize = Size(
+              info.image.width.toDouble(),
+              info.image.height.toDouble(),
+            );
+          });
+        }
+      }),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Show full image with bounding boxes overlaid using Stack + Positioned
-        return Stack(
-          children: [
-            // Full image — takes its natural aspect ratio
-            Image.memory(
-              imageBytes,
-              width: constraints.maxWidth,
-              fit: BoxFit.contain,
-              // Use a builder to get the actual rendered image size
-            ),
-            // Overlay bounding boxes using AspectRatio + custom paint
-            Positioned.fill(
-              child: _BboxOverlay(
-                hazards: hazards,
-                onHazardTap: onHazardTap,
+        final containerW = constraints.maxWidth;
+
+        // Calculate actual rendered image dimensions (BoxFit.contain)
+        double imageRenderW = containerW;
+        double imageRenderH;
+        double offsetX = 0;
+        double offsetY = 0;
+
+        if (_imageSize != null && _imageSize!.width > 0 && _imageSize!.height > 0) {
+          final aspect = _imageSize!.width / _imageSize!.height;
+          imageRenderH = containerW / aspect;
+        } else {
+          // Fallback: assume 4:3 until image loads
+          imageRenderH = containerW * 0.75;
+        }
+
+        return SizedBox(
+          width: containerW,
+          height: imageRenderH,
+          child: Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              // Full image
+              Image.memory(
+                widget.imageBytes,
+                width: containerW,
+                height: imageRenderH,
+                fit: BoxFit.contain,
               ),
-            ),
-          ],
+              // Overlay bounding boxes — constrained to image area
+              Positioned(
+                left: offsetX,
+                top: offsetY,
+                width: imageRenderW,
+                height: imageRenderH,
+                child: _BboxOverlay(
+                  hazards: widget.hazards,
+                  onHazardTap: widget.onHazardTap,
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -62,6 +121,7 @@ class _BboxOverlay extends StatelessWidget {
         final h = constraints.maxHeight;
 
         return Stack(
+          clipBehavior: Clip.hardEdge,
           children: hazards.asMap().entries.map((entry) {
             final i = entry.key;
             final hazard = Map<String, dynamic>.from(entry.value as Map);

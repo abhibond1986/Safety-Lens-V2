@@ -555,7 +555,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           Text('Share Report', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
           const SizedBox(height: 10),
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-            _shareBtn(icon: Icons.chat_rounded, label: 'WhatsApp',
+            _shareBtn(iconWidget: _whatsAppIcon(20), label: 'WhatsApp',
               color: const Color(0xFF25D366),
               onTap: () { Navigator.pop(ctx); _shareViaWhatsApp(incident); }),
             _shareBtn(icon: Icons.email_outlined, label: 'Email',
@@ -573,7 +573,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     ));
   }
 
-  Widget _shareBtn({required IconData icon, required String label,
+  Widget _shareBtn({IconData? icon, Widget? iconWidget, required String label,
       required Color color, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -584,11 +584,22 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: color.withOpacity(0.4))),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, color: color, size: 20),
+          iconWidget ?? Icon(icon, color: color, size: 20),
           const SizedBox(height: 4),
           Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
         ]),
       ),
+    );
+  }
+
+  Widget _whatsAppIcon(double size) {
+    return Container(
+      width: size, height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFF25D366),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.phone, color: Colors.white, size: size * 0.6),
     );
   }
 
