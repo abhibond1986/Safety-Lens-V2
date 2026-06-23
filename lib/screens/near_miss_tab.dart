@@ -296,7 +296,31 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       _pickedFile = picked; _imageBytes = bytes;
       _analyzing = true; _aiBrief = null;
     });
+
+    // Capture GPS in background and auto-fill location with place name
+    _captureGpsInBackground();
+
     await _analyzeImage();
+  }
+
+  /// Captures GPS location silently and fills location field with place name
+  Future<void> _captureGpsInBackground() async {
+    try {
+      final location = await GeoService.getCurrentLocation().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => LocationData(error: 'GPS timeout'),
+      );
+      if (!mounted) return;
+      if (location != null && location.isValid) {
+        _capturedLocation = location;
+        final address = GeoService.getDisplayAddress(location);
+        if (address.isNotEmpty) {
+          setState(() => _location.text = address);
+        }
+      }
+    } catch (_) {
+      // GPS capture failed silently — user can fill manually
+    }
   }
 
   Map<String, dynamic> _applyHardenedV15Filters(String name, String desc, String action, String reg, String cause) {
@@ -385,7 +409,14 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         _description.text     = refinedData['desc']!;
         _immediateAction.text = refinedData['action']!;
         _dept.text            = user?['department']?.toString() ?? 'Operations';
-        _location.text        = 'To be confirmed (edit if needed)';
+        // Only set placeholder if GPS hasn't already filled it
+        if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
+          if (_capturedLocation != null && _capturedLocation!.isValid) {
+            _location.text = GeoService.getDisplayAddress(_capturedLocation!);
+          } else {
+            _location.text = 'To be confirmed (edit if needed)';
+          }
+        }
         _plant                = plantFromProfile;
         _wsaCause             = refinedData['cause']!;
         _severity             = sev;
@@ -911,7 +942,10 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   Widget _imageWithBrief(SL sl) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_imageBytes!, fit: BoxFit.fitWidth)),
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 220),
+        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_imageBytes!, fit: BoxFit.cover, width: double.infinity)),
+      ),
       const SizedBox(height: 12),
       Container(
         padding: const EdgeInsets.all(14),
