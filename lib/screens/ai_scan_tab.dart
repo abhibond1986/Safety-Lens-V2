@@ -133,9 +133,7 @@ class _AIScanTabState extends State<AIScanTab> {
     });
 
     // Step 4: Capture GPS silently in background (non-blocking)
-    if (source == ImageSource.camera) {
-      _captureGpsInBackground(bytes);
-    }
+    _captureGpsInBackground(bytes);
 
     await _analyze();
   }

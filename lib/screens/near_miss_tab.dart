@@ -23,6 +23,7 @@ import '../services/local_db.dart';
 import '../services/pdf_export.dart';
 import '../services/sync_service.dart';
 import '../services/admin_master_data.dart';
+import '../services/geo_service.dart';
 import '../widgets/universal_app_bar.dart';
 import '../services/i18n.dart';
 
@@ -62,6 +63,9 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   String _obsType  = 'Unsafe Condition';
 
   String? _lastSubmissionKey;
+
+  // GPS geo-tagging
+  LocationData? _capturedLocation;
 
   final stt.SpeechToText _speech         = stt.SpeechToText();
   bool                    _speechAvailable = false;
@@ -478,6 +482,16 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     }
     if (await _checkDuplicate()) return false;
 
+    // Capture GPS location (non-blocking, best-effort)
+    try {
+      _capturedLocation = await GeoService.getCurrentLocation().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => LocationData(error: 'GPS timeout'),
+      );
+    } catch (_) {
+      _capturedLocation = null;
+    }
+
     final user = await LocalDB.getCurrentUser();
     final incident = {
       'id':              DateTime.now().millisecondsSinceEpoch.toString(),
@@ -497,6 +511,15 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       'date':            DateTime.now().toIso8601String(),
       'imageBase64':     _imageBytes != null ? base64Encode(_imageBytes!) : null,
     };
+
+    // Add GPS data if available
+    if (_capturedLocation != null && _capturedLocation!.isValid) {
+      incident['latitude'] = _capturedLocation!.latitude;
+      incident['longitude'] = _capturedLocation!.longitude;
+      incident['locationAccuracy'] = _capturedLocation!.accuracy;
+      incident['locationAddress'] = _capturedLocation!.address;
+      incident['locationTimestamp'] = _capturedLocation!.timestamp.toIso8601String();
+    }
 
     await LocalDB.saveIncident(incident);
     final synced = await SyncService.pushIncident(incident).catchError((_) => false);
