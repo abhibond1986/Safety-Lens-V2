@@ -131,6 +131,22 @@ class GeminiVision {
 
     try {
       final data = jsonDecode(bodyTrimmed) as Map<String, dynamic>;
+
+      // Detect server-side AI failure disguised as success
+      // (Apps Script returns hazards with error message in summary/description)
+      final summary = data['summary']?.toString().toLowerCase() ?? '';
+      final firstHazardDesc = (data['hazards'] is List && (data['hazards'] as List).isNotEmpty)
+          ? (data['hazards'] as List).first['description']?.toString().toLowerCase() ?? ''
+          : '';
+      if (summary.contains('all providers exhausted') ||
+          summary.contains('temporarily unavailable') ||
+          firstHazardDesc.contains('all providers exhausted') ||
+          firstHazardDesc.contains('temporarily unavailable')) {
+        print('GeminiVision: Server AI failed (providers exhausted)');
+        data['error'] = 'AI providers exhausted on server';
+        return data;
+      }
+
       if (data['hazards'] != null) {
         data['_source'] = 'apps_script';
         data['_isOnline'] = true;
