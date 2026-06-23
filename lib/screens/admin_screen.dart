@@ -139,8 +139,12 @@ class _AdminScreenState extends State<AdminScreen>
   bool _mastersLoaded = false;
 
   // ── Custom lists state ──────────────────────────────────────────
-  String _customListTab = 'wsa';     // wsa | severity | status | obstype
+  String _customListTab = 'wsa';     // wsa | severity | status | obstype | scoring
   Map<String, List<String>> _customLists = {};
+
+  // ── Severity scoring state ─────────────────────────────────────
+  Map<String, int> _severityScores = {};
+  bool _scoresLoaded = false;
 
   // ── Alerts state ────────────────────────────────────────────────
   List<Map<String, dynamic>> _alertRules = [];
@@ -279,6 +283,7 @@ class _AdminScreenState extends State<AdminScreen>
       final sevs    = await AdminMasterData.getSeverities();
       final stats   = await AdminMasterData.getStatuses();
       final obs     = await AdminMasterData.getObsTypes();
+      final scores  = await AdminMasterData.getSeverityScores();
 
       if (!mounted) return;
       setState(() {
@@ -295,8 +300,10 @@ class _AdminScreenState extends State<AdminScreen>
           'status'  : stats,
           'obstype' : obs,
         };
-        _mastersLoaded = true;
-        _alertsLoaded  = true;
+        _severityScores = scores;
+        _scoresLoaded   = true;
+        _mastersLoaded  = true;
+        _alertsLoaded   = true;
         _loading   = false;
       });
     } catch (_) {
@@ -763,12 +770,6 @@ class _AdminScreenState extends State<AdminScreen>
           _kpi('Today', '$todayCount',
               Icons.today_rounded, const Color(0xFF8E24AA), sl,
               sub: today),
-          _kpi('KB Entries', '${_kbDocs.length}',
-              Icons.menu_book_rounded, const Color(0xFF00897B), sl,
-              sub: 'regulatory'),
-          _kpi('Audit Events', '${_auditLog.length}',
-              Icons.history_rounded, const Color(0xFF6D4C41), sl,
-              sub: 'last 500'),
         ]),
 
       const SizedBox(height: 16),
@@ -905,7 +906,15 @@ class _AdminScreenState extends State<AdminScreen>
     }
 
     final avgRisk = riskCount == 0 ? 0 : (totalRisk / riskCount).round();
-    final paretoWsa = byWsa.entries.toList()
+    // Ensure WSA Pareto uses the custom list categories
+    final wsaCustomList = _customLists['wsa'] ?? [];
+    // Initialize all custom WSA categories with 0
+    for (final wCat in wsaCustomList) {
+      byWsa.putIfAbsent(wCat, () => 0);
+    }
+    final paretoWsa = byWsa.entries
+        .where((e) => e.value > 0) // only show categories with incidents
+        .toList()
         ..sort((a, b) => b.value.compareTo(a.value));
     final topPlants = byPlant.entries.toList()
         ..sort((a, b) => b.value.compareTo(a.value));
@@ -949,9 +958,9 @@ class _AdminScreenState extends State<AdminScreen>
         ])),
       const SizedBox(height: 16),
 
-      // ── WSA Pareto ─────────────────────────────────────────────
+      // ── WSA Pareto (uses custom list categories) ────────────────
       _sectionHeader('WSA-13 Pareto — Root Causes', sl,
-          trailing: Text('${byWsa.length} causes',
+          trailing: Text('${paretoWsa.length} causes',
               style: TextStyle(color: sl.text4, fontSize: 10))),
       const SizedBox(height: 8),
       Container(
@@ -963,7 +972,7 @@ class _AdminScreenState extends State<AdminScreen>
           ? Text('No data',
               style: TextStyle(color: sl.text4, fontSize: 11))
           : Column(children: [
-              for (var i = 0; i < math.min(8, paretoWsa.length); i++) ...[
+              for (var i = 0; i < math.min(13, paretoWsa.length); i++) ...[
                 if (i > 0) const SizedBox(height: 8),
                 _paretoRow(
                     paretoWsa[i].key,
@@ -3497,7 +3506,11 @@ class _AdminScreenState extends State<AdminScreen>
           _clTabChip('severity', 'Severity', sl),
           _clTabChip('status',   'Status', sl),
           _clTabChip('obstype',  'Obs Type', sl),
+          _clTabChip('scoring',  'Scoring', sl),
         ])),
+      if (_customListTab == 'scoring') ...[
+        Expanded(child: _buildScoringEditor(sl)),
+      ] else ...[
       Padding(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
         child: Row(children: [
@@ -3552,7 +3565,128 @@ class _AdminScreenState extends State<AdminScreen>
                       onPressed: () => _deleteCustomItem(i)),
                   ])),
             ])),
+      ],
     ]);
+  }
+
+  // ── Scoring Editor UI ───────────────────────────────────────────
+  Widget _buildScoringEditor(SL sl) {
+    final levels = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+    final colors = {
+      'CRITICAL': AppColors.crit,
+      'HIGH': AppColors.red,
+      'MEDIUM': AppColors.amber,
+      'LOW': AppColors.green,
+    };
+
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          margin: const EdgeInsets.only(bottom: 14),
+          decoration: BoxDecoration(
+            color: AppColors.accent.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppColors.accent.withOpacity(0.3))),
+          child: Row(children: [
+            const Icon(Icons.info_outline_rounded,
+                size: 16, color: AppColors.accent),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              'Set the score value for each severity level. '
+              'These scores are used to calculate the overall risk score of each scan.',
+              style: TextStyle(color: sl.text2, fontSize: 10.5, height: 1.4))),
+          ]),
+        ),
+        for (final level in levels) ...[
+          _scoreTile(level, colors[level]!, sl),
+          const SizedBox(height: 10),
+        ],
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: _resetScoresToDefault,
+            icon: const Icon(Icons.restore_rounded, size: 14, color: Colors.white),
+            label: const Text('Reset to Defaults',
+                style: TextStyle(color: Colors.white, fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.amber,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10))),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _scoreTile(String level, Color color, SL sl) {
+    final score = _severityScores[level] ??
+        AdminMasterData.defaultSeverityScores[level] ?? 10;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.4))),
+      child: Row(children: [
+        Container(
+          width: 10, height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 10),
+        Expanded(child: Text(level, style: TextStyle(
+            color: sl.text1, fontSize: 12, fontWeight: FontWeight.w700))),
+        IconButton(
+          onPressed: () => _adjustScore(level, -5),
+          icon: const Icon(Icons.remove_circle_outline_rounded, size: 20),
+          color: AppColors.red,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+        ),
+        Container(
+          width: 48,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(6)),
+          child: Text('$score', style: TextStyle(
+              color: color, fontSize: 16, fontWeight: FontWeight.w800)),
+        ),
+        IconButton(
+          onPressed: () => _adjustScore(level, 5),
+          icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
+          color: AppColors.green,
+          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          padding: EdgeInsets.zero,
+        ),
+      ]),
+    );
+  }
+
+  void _adjustScore(String level, int delta) {
+    setState(() {
+      final current = _severityScores[level] ??
+          AdminMasterData.defaultSeverityScores[level] ?? 10;
+      _severityScores[level] = (current + delta).clamp(0, 100);
+    });
+    AdminMasterData.saveSeverityScores(_severityScores);
+    AdminAudit.log(
+      action: 'scoring_updated',
+      actor: _currentActor,
+      meta: {'level': level, 'newScore': _severityScores[level]});
+  }
+
+  void _resetScoresToDefault() {
+    setState(() {
+      _severityScores = Map<String, int>.from(
+          AdminMasterData.defaultSeverityScores);
+    });
+    AdminMasterData.saveSeverityScores(_severityScores);
+    _toast('Scores reset to defaults', AppColors.amber);
   }
 
   Widget _clTabChip(String value, String label, SL sl) {

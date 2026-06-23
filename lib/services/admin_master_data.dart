@@ -145,6 +145,34 @@ class AdminMasterData {
   static Future<void> saveStatuses(List<String> v)    => _saveList(_kStatuses, v);
   static Future<void> saveObsTypes(List<String> v)    => _saveList(_kObsTypes, v);
 
+  // ── SEVERITY SCORING (admin-configurable) ─────────────────────────
+  static const String _kSeverityScores = 'admin_severity_scores';
+
+  static const Map<String, int> defaultSeverityScores = {
+    'CRITICAL': 25,
+    'HIGH': 15,
+    'MEDIUM': 10,
+    'LOW': 5,
+  };
+
+  static Future<Map<String, int>> getSeverityScores() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kSeverityScores);
+    if (raw == null) return Map<String, int>.from(defaultSeverityScores);
+    try {
+      final map = (jsonDecode(raw) as Map)
+          .map((k, v) => MapEntry(k.toString(), (v is int) ? v : int.tryParse(v.toString()) ?? 0));
+      return map;
+    } catch (_) {
+      return Map<String, int>.from(defaultSeverityScores);
+    }
+  }
+
+  static Future<void> saveSeverityScores(Map<String, int> scores) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kSeverityScores, jsonEncode(scores));
+  }
+
   // ── RESET to defaults ────────────────────────────────────────────
   static Future<void> resetAllToDefaults() async {
     final prefs = await SharedPreferences.getInstance();
@@ -154,5 +182,6 @@ class AdminMasterData {
     await prefs.remove(_kSeverities);
     await prefs.remove(_kStatuses);
     await prefs.remove(_kObsTypes);
+    await prefs.remove(_kSeverityScores);
   }
 }

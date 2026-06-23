@@ -18,6 +18,7 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'network_checker.dart';
+import 'admin_master_data.dart';
 
 class GeminiVision {
   static const String _backendUrl =
@@ -44,7 +45,7 @@ class GeminiVision {
         final networkStatus = await NetworkChecker.getNetworkStatus();
         if (!networkStatus['hasInternet']!) {
           print('GeminiVision: No internet → offline fallback');
-          return _offlineFallback(bytes, reason: 'No internet connection');
+          return await _offlineFallback(bytes, reason: 'No internet connection');
         }
       }
 
@@ -89,11 +90,11 @@ class GeminiVision {
       // ══════════════════════════════════════════════════════════════════════
       print('GeminiVision: ▶ Offline fallback (server unavailable)');
       print('GeminiVision: Total time elapsed: ${stopwatch.elapsedMilliseconds}ms');
-      return _offlineFallback(bytes,
+      return await _offlineFallback(bytes,
           reason: 'AI server unavailable after ${stopwatch.elapsedMilliseconds}ms');
     } catch (e) {
       print('GeminiVision: Unexpected top-level error: $e');
-      return _offlineFallback(bytes, reason: e.toString());
+      return await _offlineFallback(bytes, reason: e.toString());
     }
   }
 
@@ -139,9 +140,9 @@ class GeminiVision {
   }
 
   // ── Offline fallback with clear messaging ─────────────────────────────────
-  static Map<String, dynamic> _offlineFallback(Uint8List bytes,
-      {String reason = ''}) {
-    final result = _knowledgeBasedAnalysis(bytes);
+  static Future<Map<String, dynamic>> _offlineFallback(Uint8List bytes,
+      {String reason = ''}) async {
+    final result = await _knowledgeBasedAnalysisAsync(bytes);
     result['_source'] = 'offline_fallback';
     result['_offline_reason'] = reason;
     result['_isOnline'] = false;
@@ -263,7 +264,17 @@ class GeminiVision {
     return seed;
   }
 
-  static Map<String, dynamic> _knowledgeBasedAnalysis(Uint8List bytes) {
+  static Future<Map<String, dynamic>> _knowledgeBasedAnalysisAsync(Uint8List bytes) async {
+    try {
+      final scores = await AdminMasterData.getSeverityScores();
+      return _knowledgeBasedAnalysisWithScores(bytes, scores);
+    } catch (_) {
+      return _knowledgeBasedAnalysisWithScores(bytes, AdminMasterData.defaultSeverityScores);
+    }
+  }
+
+  static Map<String, dynamic> _knowledgeBasedAnalysisWithScores(
+      Uint8List bytes, Map<String, int> scores) {
     final seed = _deriveSeed(bytes);
     final count = 3 + (seed % 3);
     final selected = <Map<String, dynamic>>[];
@@ -281,22 +292,11 @@ class GeminiVision {
     String risk = 'LOW';
     int score = 30;
     for (final h in selected) {
-      switch (h['severity']) {
-        case 'CRITICAL':
-          score += 18;
-          risk = 'CRITICAL';
-          break;
-        case 'HIGH':
-          score += 12;
-          if (risk != 'CRITICAL') risk = 'HIGH';
-          break;
-        case 'MEDIUM':
-          score += 7;
-          if (risk == 'LOW') risk = 'MEDIUM';
-          break;
-        default:
-          score += 3;
-      }
+      final sev = h['severity']?.toString().toUpperCase() ?? 'LOW';
+      score += scores[sev] ?? 5;
+      if (sev == 'CRITICAL') risk = 'CRITICAL';
+      else if (sev == 'HIGH' && risk != 'CRITICAL') risk = 'HIGH';
+      else if (sev == 'MEDIUM' && risk == 'LOW') risk = 'MEDIUM';
     }
 
     return {
