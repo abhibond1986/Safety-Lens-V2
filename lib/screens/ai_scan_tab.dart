@@ -1467,24 +1467,43 @@ class _AIScanTabState extends State<AIScanTab> {
   Future<void> _uploadPdfBackground(
       Map<String, dynamic> incident, Map<String, dynamic> user) async {
     try {
+      print('PDF Upload: generating PDF for incident ${incident['id']}...');
       final pdfBytes = await PdfExport.generateIncidentReportBytes(
         incident:     incident,
         reporterName: user['name']?.toString() ?? 'SAIL Safety Officer',
         reporterPno:  user['pno']?.toString()  ?? '',
         imageBytes:   _imageBytes,
       );
-      if (pdfBytes.isEmpty) return;
+      if (pdfBytes.isEmpty) {
+        print('PDF Upload: FAILED — empty PDF bytes');
+        return;
+      }
+      print('PDF Upload: generated ${pdfBytes.length} bytes, uploading to Drive...');
+
+      // Wait a moment to ensure incident row exists in sheet before uploading PDF
+      await Future.delayed(const Duration(seconds: 3));
+
       final url = await SyncService.uploadPdfToDrive(
         incidentId: incident['id']?.toString() ?? '',
         pdfBytes:   pdfBytes,
         fileName:   'SafetyLens_${incident['id']}.pdf',
       );
       if (url != null && url.isNotEmpty) {
+        print('PDF Upload: SUCCESS — $url');
+        // Update the incident with the PDF URL
         await SyncService.pushIncident({
-          ...incident, 'pdfUrl': url,
-        }).catchError((_) => false);
+          'id': incident['id'],
+          'pdfUrl': url,
+        }).catchError((e) {
+          print('PDF Upload: pushIncident failed — $e');
+          return false;
+        });
+      } else {
+        print('PDF Upload: uploadPdfToDrive returned null/empty URL');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('PDF Upload: EXCEPTION — $e');
+    }
   }
 
   Future<void> _exportPdf() async {

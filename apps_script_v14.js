@@ -221,6 +221,7 @@ function handle(e) {
         const b64   = params.pdfBase64  || '';
         const name  = params.fileName   || 'SafetyLens_Report.pdf';
         const incId = params.incidentId || '';
+        Logger.log('[PDF] uploadPdfToDrive: incId=' + incId + ', name=' + name + ', b64Len=' + b64.length);
         if (!b64) { result = { success: false, error: 'No PDF data' }; break; }
         try {
           const bytes  = Utilities.base64Decode(b64);
@@ -229,9 +230,16 @@ function handle(e) {
           const file   = folder.createFile(blob);
           file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
           const viewUrl = 'https://drive.google.com/file/d/' + file.getId() + '/view';
-          if (incId) upsertIncident({ id: incId, pdfUrl: viewUrl });
+          Logger.log('[PDF] Uploaded to Drive: ' + viewUrl);
+          if (incId) {
+            Logger.log('[PDF] Updating incident ' + incId + ' with pdfUrl');
+            upsertIncident({ id: incId, pdfUrl: viewUrl });
+          }
           result = { success: true, pdfUrl: viewUrl, fileId: file.getId() };
-        } catch(e) { result = { success: false, error: e.toString() }; }
+        } catch(e) {
+          Logger.log('[PDF] ERROR: ' + e.toString());
+          result = { success: false, error: e.toString() };
+        }
         break;
       }
 
