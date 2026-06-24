@@ -1345,10 +1345,10 @@ function callOpenRouterWithRetry(payload) {
     payload: JSON.stringify(payload),
     muteHttpExceptions: true
   };
-  // ★ v20: 3 attempts with 2s, 5s, 10s backoff
-  var BACKOFF = [0, 2, 5, 10];
+  // ★ v22: 2 attempts with 1s, 3s backoff (reduced from 3 attempts / 2s,5s,10s)
+  var BACKOFF = [0, 1, 3];
   var response;
-  for (var attempt = 1; attempt <= 3; attempt++) {
+  for (var attempt = 1; attempt <= 2; attempt++) {
     if (attempt > 1) {
       Logger.log('[AI-OR] Retry attempt=' + attempt + ' waiting ' + BACKOFF[attempt] + 's...');
       Utilities.sleep(BACKOFF[attempt] * 1000);
@@ -1380,10 +1380,12 @@ function analyzeImage(prompt, imageBase64) {
   let cleanB64 = imageBase64.replace(/ /g, '+').replace(/[^A-Za-z0-9+\/=]/g, '');
   while (cleanB64.length % 4 !== 0) cleanB64 += '=';
 
-  const cloudUrl = uploadToCloudinary(cleanB64);
-  Logger.log('analyzeImage: cloudUrl = ' + (cloudUrl || 'FAILED'));
+  // ★ v22 SPEED FIX: Skip Cloudinary upload entirely during analysis.
+  // OpenRouter accepts base64 directly — no URL needed.
+  // Cloudinary was adding 5-10s of latency. Image URL not needed for hazard detection.
+  Logger.log('analyzeImage: skipping Cloudinary (base64 sent directly to AI)');
 
-  return runProviderChain(prompt, cleanB64, 'image/jpeg', cloudUrl);
+  return runProviderChain(prompt, cleanB64, 'image/jpeg', null);
 }
 
 function analyzeImageUrl(imageUrl, prompt, fallbackBase64) {

@@ -1410,11 +1410,15 @@ class _AIScanTabState extends State<AIScanTab> {
 
   Map<String, dynamic> _buildIncident(Map<String, dynamic> user) {
     final hazards        = (_result!['hazards'] as List?) ?? [];
-    final firstHazard    = hazards.isNotEmpty
-        ? hazards.first['name'] : 'AI Hazard Scan';
-    final firstHazardMap = hazards.isNotEmpty
-        ? Map<String, dynamic>.from(hazards.first as Map)
-        : <String, dynamic>{};
+    // ✅ FIX: Safe access to first hazard — guard against null/non-Map entries
+    Map<String, dynamic> firstHazardMap = <String, dynamic>{};
+    String firstHazard = 'AI Hazard Scan';
+    if (hazards.isNotEmpty && hazards.first is Map) {
+      try {
+        firstHazardMap = Map<String, dynamic>.from(hazards.first as Map);
+        firstHazard = firstHazardMap['name']?.toString() ?? 'AI Hazard Scan';
+      } catch (_) {}
+    }
 
     // Build base incident
     final incident = {
