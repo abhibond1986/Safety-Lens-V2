@@ -1,25 +1,19 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v22
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v23
+//
+// CHANGES FROM v22:
+//   ✅ TRUE PARALLEL: UrlFetchApp.fetchAll() fires Gemini + OpenRouter simultaneously
+//   ✅ Best-result selection: picks most hazards / highest confidence
+//   ✅ CacheService quota cooldown: exhausted providers skipped for 60s
+//   ✅ Base64 cleaning: properly strips data URI prefix BEFORE sanitizing
+//   ✅ Reduced timeout budget: 45s max (was 4 min — client was timing out at 90s)
+//   ✅ Clear error propagation: _isOnline:false always set on failure path
 //
 // CHANGES FROM v20:
-//   ✅ PARALLEL AI: Gemini + OpenRouter fire simultaneously via fetchAll()
-//   ✅ Best-result selection: picks highest confidence + most hazards
-//   ✅ Faster response: no sequential waiting — both providers race
-//   ✅ Graceful degradation: if parallel fails, falls back to sequential retry
-//   ✅ parseGoogleResponse / parseOpenRouterResponse extracted for reuse
-//
-// CHANGES FROM v16:
 //   ✅ Intelligent model fallback: gemini-2.5-flash → 2.0-flash → 2.0-flash-lite → OpenRouter
-//   ✅ Exponential backoff: 0s, 5s, 10s, 20s for 429/500/503
 //   ✅ Quota exhaustion detection: bails ALL models immediately (no wasted retries)
-//   ✅ callGoogleDirectText rewritten with full retry logic (was failing on first 503)
-//   ✅ callGoogleDirectImage: safe JSON parsing, candidate validation, elapsed tracking
-//   ✅ getProviderHealth() — quick health check of all providers
-//   ✅ Enhanced diagnose endpoint: per-model latency + recommended model
-//   ✅ Structured logging: [AI] Model=X Attempt=Y HTTP=Z
-//   ✅ Never returns null from provider chain — always structured JSON
-//   ✅ 4-minute safety timeout (leaves margin for Apps Script 6-min limit)
-//   ✅ OpenRouter retry: 3 attempts with 2s/5s/10s backoff
+//   ✅ Structured logging: [AI] / [PARALLEL] / [CACHE] prefixes
+//   ✅ parseGoogleResponse / parseOpenRouterResponse extracted for reuse
 //
 // REQUIRED SCRIPT PROPERTY:
 //   GOOGLE_AI_KEY = AIza... (from https://aistudio.google.com/apikey)
@@ -77,7 +71,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v22', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v23', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -98,7 +92,7 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v22',
+          version: 'v23',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey(),
@@ -963,10 +957,10 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
     var model = GOOGLE_MODELS[mi];
     Logger.log('[AI] Model=' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ') starting...');
 
-    // Bail if we've been running too long (Apps Script 6-min limit)
+    // ✅ v23: Reduced budget — 45s max (no point making client wait 90s)
     var elapsed = new Date().getTime() - globalStart;
-    if (elapsed > 240000) { // 4 minutes — leave margin
-      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting');
+    if (elapsed > 45000) {
+      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (45s budget)');
       break;
     }
 
@@ -1018,6 +1012,7 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
         if (lastErrBody.indexOf('Quota exceeded') >= 0 || lastErrBody.indexOf('RESOURCE_EXHAUSTED') >= 0) {
           Logger.log('[AI] 🚫 QUOTA EXHAUSTED — all models on this key are blocked');
           Logger.log('[AI] Error: ' + lastErrBody.substring(0, 300));
+          setProviderCooldown('google', 60); // ✅ v23: Cache cooldown
           return null; // Skip ALL remaining models
         }
 
@@ -1378,13 +1373,18 @@ function callOpenRouterWithRetry(payload) {
 function analyzeImage(prompt, imageBase64) {
   if (!imageBase64 || imageBase64.length < 10) return { error: 'No image data' };
 
-  let cleanB64 = imageBase64.replace(/ /g, '+').replace(/[^A-Za-z0-9+\/=]/g, '');
+  // ✅ FIX v23: Properly strip data URI prefix BEFORE sanitizing
+  let cleanB64 = imageBase64;
+  // Strip "data:image/jpeg;base64," or similar prefix
+  var commaIdx = cleanB64.indexOf(',');
+  if (cleanB64.indexOf('base64') >= 0 && commaIdx > 0 && commaIdx < 100) {
+    cleanB64 = cleanB64.substring(commaIdx + 1);
+  }
+  // Now sanitize: spaces→+, remove anything non-base64
+  cleanB64 = cleanB64.replace(/ /g, '+').replace(/[^A-Za-z0-9+\/=]/g, '');
   while (cleanB64.length % 4 !== 0) cleanB64 += '=';
 
-  // ★ v22 SPEED FIX: Skip Cloudinary upload entirely during analysis.
-  // OpenRouter accepts base64 directly — no URL needed.
-  // Cloudinary was adding 5-10s of latency. Image URL not needed for hazard detection.
-  Logger.log('analyzeImage: skipping Cloudinary (base64 sent directly to AI)');
+  Logger.log('analyzeImage: cleaned base64 length=' + cleanB64.length);
 
   return runProviderChain(prompt, cleanB64, 'image/jpeg', null);
 }
@@ -1419,12 +1419,14 @@ function analyzeImageUrl(imageUrl, prompt, fallbackBase64) {
   // ★ v15: Use fallback base64 from app if server-side fetch failed
   if (!base64 && fallbackBase64 && fallbackBase64.length > 100) {
     Logger.log('analyzeImageUrl: using fallback base64 from app (' + fallbackBase64.length + ' chars)');
-    base64 = fallbackBase64.replace(/\s+/g, '');
-    // Strip data URI prefix if present
-    const commaIdx = base64.indexOf(',');
-    if (base64.indexOf('base64') >= 0 && commaIdx > 0) {
-      base64 = base64.substring(commaIdx + 1);
+    base64 = fallbackBase64;
+    // ✅ v23: Strip data URI prefix FIRST, then sanitize
+    var fbComma = base64.indexOf(',');
+    if (base64.indexOf('base64') >= 0 && fbComma > 0 && fbComma < 100) {
+      base64 = base64.substring(fbComma + 1);
     }
+    base64 = base64.replace(/ /g, '+').replace(/[^A-Za-z0-9+\/=]/g, '');
+    while (base64.length % 4 !== 0) base64 += '=';
   }
 
   return runProviderChain(prompt, base64, mimeType, imageUrl);
@@ -1435,12 +1437,11 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
   Logger.log('runProviderChain: primary=' + primary
     + ', hasBase64=' + (!!base64)
     + ', hasCloudUrl=' + (!!cloudUrl)
-    + ', mode=PARALLEL');
+    + ', mode=TRUE_PARALLEL');
 
-  // ★ v22: PARALLEL EXECUTION — call Gemini + OpenRouter simultaneously
-  // Uses best result (more hazards / higher confidence wins)
+  // ✅ v23: TRUE PARALLEL — Gemini + OpenRouter race simultaneously via fetchAll()
   if (primary !== 'google_only') {
-    var parallelResult = runParallelProviders(prompt, base64, mimeType, cloudUrl);
+    var parallelResult = runTrueParallel(prompt, base64, mimeType, cloudUrl);
     if (parallelResult) {
       if (cloudUrl) parallelResult.imageUrl = cloudUrl;
       return parallelResult;
@@ -1449,98 +1450,236 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
 
   // Fallback: google_only mode or parallel failed entirely
   if (primary === 'google_only' || primary === 'google') {
-    var result = null;
-    if (base64) result = callGoogleDirectImage(prompt, base64, mimeType);
-    if (result) {
-      if (cloudUrl) result.imageUrl = cloudUrl;
-      return result;
+    // Check cooldown before sequential attempt
+    if (isProviderCoolingDown('google')) {
+      Logger.log('[AI] Google on cooldown, skipping sequential fallback');
+    } else {
+      var result = null;
+      if (base64) result = callGoogleDirectImage(prompt, base64, mimeType);
+      if (result) {
+        if (cloudUrl) result.imageUrl = cloudUrl;
+        return result;
+      }
     }
     if (primary === 'google_only') {
       return {
-        error: 'Google AI Studio unavailable (free tier exhausted or key invalid). '
-             + 'Set AI_PRIMARY_PROVIDER=google to enable OpenRouter fallback.',
+        error: 'Google AI Studio unavailable (free tier exhausted or key invalid).',
         overallRisk: 'UNKNOWN', riskScore: 0, confidence: 0, people: 0,
-        summary: 'AI unavailable — primary provider failed and fallback disabled.',
+        summary: 'AI unavailable — provider on cooldown or failed.',
         hazards: [],
         _provider: 'none',
+        _isOnline: false,
         imageUrl: cloudUrl || null
       };
     }
   }
 
-  Logger.log('[AI] ✗ ALL PROVIDERS FAILED — returning structured fallback');
+  Logger.log('[AI] ✗ ALL PROVIDERS FAILED — returning structured error');
   return {
     overallRisk: 'UNKNOWN',
     riskScore: 0,
     confidence: 0,
     people: 0,
-    summary: 'AI services temporarily unavailable. All providers exhausted after retry. Please try again in 1-2 minutes.',
+    summary: 'AI services temporarily unavailable. All providers exhausted. Please try again in 1-2 minutes.',
     hazards: [],
     _provider: 'none',
-    _error: 'All AI providers failed (Google models: ' + GOOGLE_MODELS.join(', ') + ', OpenRouter: ' + OPENROUTER_MODEL + ')',
+    _error: 'All AI providers failed',
     _isOnline: false,
     imageUrl: cloudUrl || null
   };
 }
 
-// ★ v22: FAST PROVIDER CHAIN — OpenRouter first (different provider, no Google quota issue)
-// Then Google as fallback. No more fetchAll (it waits for slowest request).
-function runParallelProviders(prompt, base64, mimeType, cloudUrl) {
+// ════════════════════════════════════════════════════════════════════════
+//  ✅ v23: TRUE PARALLEL via UrlFetchApp.fetchAll()
+//  Both providers fire simultaneously. First valid result wins.
+//  Total budget: 45s max (well within Apps Script 6-min limit).
+// ════════════════════════════════════════════════════════════════════════
+function runTrueParallel(prompt, base64, mimeType, cloudUrl) {
   var googleKey = getGoogleKey();
   var openRouterKey = getOpenRouterKey();
   var startTime = new Date().getTime();
 
   if (!googleKey && !openRouterKey) {
-    Logger.log('[AI-FAST] No API keys configured');
+    Logger.log('[PARALLEL] No API keys configured');
     return null;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // STEP 1: Try OpenRouter FIRST (fast, different provider from Google)
-  // This avoids waiting for exhausted Google to time out
-  // ═══════════════════════════════════════════════════════════════════
-  if (openRouterKey) {
-    Logger.log('[AI-FAST] ▶ OpenRouter first (model=' + OPENROUTER_MODEL + ')');
-    var orResult = null;
-    if (cloudUrl) {
-      orResult = callOpenRouterImageUrl(cloudUrl, prompt);
-    }
-    if (!orResult && base64) {
-      orResult = callOpenRouterImageBase64(base64, mimeType, prompt);
-    }
-    if (orResult && orResult.hazards && orResult.hazards.length > 0) {
-      var elapsed = new Date().getTime() - startTime;
-      Logger.log('[AI-FAST] ✓ OpenRouter SUCCESS in ' + elapsed + 'ms, hazards=' + orResult.hazards.length);
-      return orResult;
-    }
-    Logger.log('[AI-FAST] ✗ OpenRouter failed, trying Google...');
+  // ✅ Check CacheService cooldowns — skip providers known to be exhausted
+  var googleCooling = isProviderCoolingDown('google');
+  var orCooling = isProviderCoolingDown('openrouter');
+
+  if (googleCooling && orCooling) {
+    Logger.log('[PARALLEL] Both providers on cooldown — skipping');
+    return null;
   }
 
-  // ═══════════════════════════════════════════════════════════════════
-  // STEP 2: Google Gemini (only if OpenRouter failed)
-  // Quick single-model try — if quota is hit, returns null immediately
-  // ═══════════════════════════════════════════════════════════════════
-  if (googleKey && base64) {
-    var googleElapsed = new Date().getTime() - startTime;
-    // Skip Google if we've already spent >30s (OpenRouter was slow to fail)
-    if (googleElapsed > 30000) {
-      Logger.log('[AI-FAST] ✗ Skipping Google — already ' + Math.round(googleElapsed/1000) + 's elapsed');
-    } else {
-      Logger.log('[AI-FAST] ▶ Google Gemini fallback');
-      var googleResult = callGoogleDirectImage(prompt, base64, mimeType);
-      if (googleResult) {
-        var elapsed2 = new Date().getTime() - startTime;
-        Logger.log('[AI-FAST] ✓ Google SUCCESS in ' + elapsed2 + 'ms, hazards=' + (googleResult.hazards || []).length);
-        googleResult._fallback = 'openrouter_failed';
-        return googleResult;
+  // Build parallel request array
+  var requests = [];
+  var requestLabels = []; // Track which request is which
+
+  // ── Google Gemini request ──
+  if (googleKey && base64 && !googleCooling) {
+    var googleModel = GOOGLE_MODELS[0]; // Primary model
+    var googleUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
+      + googleModel + ':generateContent?key=' + encodeURIComponent(googleKey);
+    var googlePayload = {
+      contents: [{
+        role: 'user',
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mimeType || 'image/jpeg', data: base64 } }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.2,
+        maxOutputTokens: 4096,
+        responseMimeType: 'application/json'
       }
-      Logger.log('[AI-FAST] ✗ Google also failed');
+    };
+    requests.push({
+      url: googleUrl,
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(googlePayload),
+      muteHttpExceptions: true
+    });
+    requestLabels.push({ provider: 'google', model: googleModel });
+    Logger.log('[PARALLEL] ▶ Queued Google ' + googleModel);
+  }
+
+  // ── OpenRouter request ──
+  if (openRouterKey && base64 && !orCooling) {
+    var dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
+    var orPayload = {
+      model: OPENROUTER_MODEL,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }],
+      max_tokens: 4096,
+      temperature: 0.2
+    };
+    requests.push({
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'Authorization': 'Bearer ' + openRouterKey,
+        'HTTP-Referer': 'https://abhibond1986.github.io/Safety-Lens-V2/',
+        'X-Title': 'SAIL Safety Lens'
+      },
+      payload: JSON.stringify(orPayload),
+      muteHttpExceptions: true
+    });
+    requestLabels.push({ provider: 'openrouter', model: OPENROUTER_MODEL });
+    Logger.log('[PARALLEL] ▶ Queued OpenRouter ' + OPENROUTER_MODEL);
+  }
+
+  if (requests.length === 0) {
+    Logger.log('[PARALLEL] No requests to send (all on cooldown or no keys)');
+    return null;
+  }
+
+  // ✅ FIRE ALL SIMULTANEOUSLY — fetchAll() sends all requests in parallel
+  Logger.log('[PARALLEL] Firing ' + requests.length + ' requests simultaneously...');
+  var responses;
+  try {
+    responses = UrlFetchApp.fetchAll(requests);
+  } catch (e) {
+    Logger.log('[PARALLEL] fetchAll exception: ' + e.toString());
+    return null;
+  }
+
+  var elapsed = new Date().getTime() - startTime;
+  Logger.log('[PARALLEL] All responses received in ' + elapsed + 'ms');
+
+  // ✅ Parse all responses, pick the BEST result
+  var results = [];
+  for (var i = 0; i < responses.length; i++) {
+    var resp = responses[i];
+    var label = requestLabels[i];
+    var code = resp.getResponseCode();
+    Logger.log('[PARALLEL] ' + label.provider + ' (' + label.model + ') HTTP=' + code);
+
+    if (code !== 200) {
+      var errBody = resp.getContentText().substring(0, 300);
+      // Detect quota exhaustion → set cooldown
+      if (errBody.indexOf('Quota exceeded') >= 0 || errBody.indexOf('RESOURCE_EXHAUSTED') >= 0
+          || code === 429) {
+        Logger.log('[PARALLEL] 🚫 ' + label.provider + ' QUOTA EXHAUSTED — cooling down 60s');
+        setProviderCooldown(label.provider, 60);
+      }
+      continue;
+    }
+
+    // Parse response based on provider
+    try {
+      var parsed = null;
+      if (label.provider === 'google') {
+        parsed = parseGoogleResponse(resp, label.model);
+      } else {
+        parsed = parseOpenRouterResponse(resp);
+      }
+
+      if (parsed && parsed.hazards && parsed.hazards.length > 0) {
+        parsed._parallelElapsed = elapsed;
+        results.push(parsed);
+        Logger.log('[PARALLEL] ✓ ' + label.provider + ' returned ' + parsed.hazards.length + ' hazards');
+      } else {
+        Logger.log('[PARALLEL] ' + label.provider + ' returned no hazards or parse failed');
+      }
+    } catch (parseErr) {
+      Logger.log('[PARALLEL] ' + label.provider + ' parse error: ' + parseErr.toString());
     }
   }
 
-  var totalElapsed = new Date().getTime() - startTime;
-  Logger.log('[AI-FAST] ✗ ALL FAILED in ' + totalElapsed + 'ms');
-  return null;
+  // ✅ Pick BEST result: most hazards, then highest confidence
+  if (results.length === 0) {
+    var totalElapsed = new Date().getTime() - startTime;
+    Logger.log('[PARALLEL] ✗ ALL FAILED in ' + totalElapsed + 'ms');
+    return null;
+  }
+
+  results.sort(function(a, b) {
+    // Prefer more hazards
+    var hDiff = (b.hazards || []).length - (a.hazards || []).length;
+    if (hDiff !== 0) return hDiff;
+    // Then higher confidence
+    return (b.confidence || 0) - (a.confidence || 0);
+  });
+
+  var best = results[0];
+  Logger.log('[PARALLEL] ✓ BEST: ' + best._provider + '/' + best._model
+    + ' hazards=' + best.hazards.length + ' confidence=' + (best.confidence || '?')
+    + ' totalElapsed=' + (new Date().getTime() - startTime) + 'ms');
+  return best;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  ✅ v23: CacheService-based quota cooldown
+//  Marks a provider as exhausted for N seconds. Prevents wasted retries.
+// ════════════════════════════════════════════════════════════════════════
+function isProviderCoolingDown(provider) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var val = cache.get('cooldown_' + provider);
+    return val !== null;
+  } catch (e) {
+    return false; // CacheService unavailable — don't block
+  }
+}
+
+function setProviderCooldown(provider, seconds) {
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.put('cooldown_' + provider, 'exhausted', seconds || 60);
+    Logger.log('[CACHE] Set cooldown: ' + provider + ' for ' + seconds + 's');
+  } catch (e) {
+    Logger.log('[CACHE] Failed to set cooldown: ' + e.toString());
+  }
 }
 
 // Parse a Google Gemini response into structured result
