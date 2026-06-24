@@ -44,8 +44,8 @@ const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-fl
 const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
 // ★ v22: Use a DIFFERENT provider on OpenRouter so it's a true fallback
 // when Google Gemini quota is exhausted.
-// google/gemma-3-27b-it:free — reliable free vision model on OpenRouter
-const OPENROUTER_MODEL = 'google/gemma-3-27b-it:free'; // reliable free vision model
+// nvidia/nemotron-nano-12b-v2-vl:free — NVIDIA free vision model (NOT Google, avoids shared quota)
+const OPENROUTER_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'; // NVIDIA free vision, fast 12B
 const OPENROUTER_MODEL_PAID = 'anthropic/claude-sonnet-4'; // paid fallback if free fails
 
 const INCIDENT_COLS = [
