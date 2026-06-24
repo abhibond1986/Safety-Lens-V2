@@ -43,8 +43,9 @@ const SHEET_KNOWLEDGE = 'knowledge';
 const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
 // ★ v22: Use a DIFFERENT provider on OpenRouter so it's a true fallback
-// when Google Gemini quota is exhausted. Qwen2.5-VL is free-tier vision model.
-const OPENROUTER_MODEL = 'qwen/qwen2.5-vl-72b-instruct:free'; // free vision model, different provider
+// when Google Gemini quota is exhausted.
+// meta-llama/llama-4-scout:free — fast free vision model (~10-15s vs 40s for qwen-72b)
+const OPENROUTER_MODEL = 'meta-llama/llama-4-scout:free'; // fast free vision model
 const OPENROUTER_MODEL_PAID = 'anthropic/claude-sonnet-4'; // paid fallback if free fails
 
 const INCIDENT_COLS = [
