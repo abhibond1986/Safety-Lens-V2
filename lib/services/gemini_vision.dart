@@ -103,9 +103,10 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    // Scale timeout by payload size: allow enough time for server-side AI
+    // Scale timeout by payload size — reduced from 90s to 60s since server now
+    // skips Cloudinary and has reduced retries
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 150 : 90;
+    final timeoutSec = payloadKB > 500 ? 90 : 60;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {

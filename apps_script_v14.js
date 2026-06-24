@@ -44,8 +44,8 @@ const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-fl
 const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
 // ★ v22: Use a DIFFERENT provider on OpenRouter so it's a true fallback
 // when Google Gemini quota is exhausted.
-// meta-llama/llama-4-scout:free — fast free vision model (~10-15s vs 40s for qwen-72b)
-const OPENROUTER_MODEL = 'meta-llama/llama-4-scout:free'; // fast free vision model
+// google/gemma-3-27b-it:free — reliable free vision model on OpenRouter
+const OPENROUTER_MODEL = 'google/gemma-3-27b-it:free'; // reliable free vision model
 const OPENROUTER_MODEL_PAID = 'anthropic/claude-sonnet-4'; // paid fallback if free fails
 
 const INCIDENT_COLS = [
@@ -988,12 +988,12 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
       }
     };
 
-    // Exponential backoff: immediate, 5s, 10s, 20s
-    var BACKOFF = [0, 5, 10, 20];
+    // ★ v22: Reduced backoff — 2 attempts max (quota exhaustion is instant, no point retrying)
+    var BACKOFF = [0, 3];
 
     try {
       var resp, code, lastErrBody = '';
-      for (var attempt = 1; attempt <= 4; attempt++) {
+      for (var attempt = 1; attempt <= 2; attempt++) {
         if (attempt > 1) {
           var wait = BACKOFF[attempt - 1];
           Logger.log('[AI] Model=' + model + ' Attempt=' + attempt + ' waiting ' + wait + 's...');
@@ -1035,7 +1035,7 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
 
         // 429/500/503 — transient, worth retrying
         if (code === 429 || code === 500 || code === 503) {
-          if (attempt >= 4) {
+          if (attempt >= 2) {
             Logger.log('[AI] Model=' + model + ' exhausted retries, moving to next');
           }
           continue;
@@ -1518,18 +1518,24 @@ function runParallelProviders(prompt, base64, mimeType, cloudUrl) {
 
   // ═══════════════════════════════════════════════════════════════════
   // STEP 2: Google Gemini (only if OpenRouter failed)
-  // Uses smart model fallback chain with quota detection
+  // Quick single-model try — if quota is hit, returns null immediately
   // ═══════════════════════════════════════════════════════════════════
   if (googleKey && base64) {
-    Logger.log('[AI-FAST] ▶ Google Gemini fallback');
-    var googleResult = callGoogleDirectImage(prompt, base64, mimeType);
-    if (googleResult) {
-      var elapsed = new Date().getTime() - startTime;
-      Logger.log('[AI-FAST] ✓ Google SUCCESS in ' + elapsed + 'ms, hazards=' + (googleResult.hazards || []).length);
-      googleResult._fallback = 'openrouter_failed';
-      return googleResult;
+    var googleElapsed = new Date().getTime() - startTime;
+    // Skip Google if we've already spent >30s (OpenRouter was slow to fail)
+    if (googleElapsed > 30000) {
+      Logger.log('[AI-FAST] ✗ Skipping Google — already ' + Math.round(googleElapsed/1000) + 's elapsed');
+    } else {
+      Logger.log('[AI-FAST] ▶ Google Gemini fallback');
+      var googleResult = callGoogleDirectImage(prompt, base64, mimeType);
+      if (googleResult) {
+        var elapsed2 = new Date().getTime() - startTime;
+        Logger.log('[AI-FAST] ✓ Google SUCCESS in ' + elapsed2 + 'ms, hazards=' + (googleResult.hazards || []).length);
+        googleResult._fallback = 'openrouter_failed';
+        return googleResult;
+      }
+      Logger.log('[AI-FAST] ✗ Google also failed');
     }
-    Logger.log('[AI-FAST] ✗ Google also failed');
   }
 
   var totalElapsed = new Date().getTime() - startTime;
@@ -1956,7 +1962,6 @@ function testListIncidents() {
   const result = listSheet(SHEET_INCIDENTS, INCIDENT_COLS);
   Logger.log('Count: ' + result.count);
 }
-
 function testPromptVersion() {
   const p = getSailPrompt('sail_full');
   Logger.log('Prompt length: ' + p.length);
