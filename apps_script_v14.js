@@ -1,5 +1,12 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v20
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v22
+//
+// CHANGES FROM v20:
+//   ✅ PARALLEL AI: Gemini + OpenRouter fire simultaneously via fetchAll()
+//   ✅ Best-result selection: picks highest confidence + most hazards
+//   ✅ Faster response: no sequential waiting — both providers race
+//   ✅ Graceful degradation: if parallel fails, falls back to sequential retry
+//   ✅ parseGoogleResponse / parseOpenRouterResponse extracted for reuse
 //
 // CHANGES FROM v16:
 //   ✅ Intelligent model fallback: gemini-2.5-flash → 2.0-flash → 2.0-flash-lite → OpenRouter
@@ -66,7 +73,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v20', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v22', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -87,7 +94,7 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v20',
+          version: 'v22',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey(),
@@ -1408,11 +1415,22 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
   const primary = getAiPrimary();
   Logger.log('runProviderChain: primary=' + primary
     + ', hasBase64=' + (!!base64)
-    + ', hasCloudUrl=' + (!!cloudUrl));
+    + ', hasCloudUrl=' + (!!cloudUrl)
+    + ', mode=PARALLEL');
 
-  let result = null;
+  // ★ v22: PARALLEL EXECUTION — call Gemini + OpenRouter simultaneously
+  // Uses best result (more hazards / higher confidence wins)
+  if (primary !== 'google_only') {
+    var parallelResult = runParallelProviders(prompt, base64, mimeType, cloudUrl);
+    if (parallelResult) {
+      if (cloudUrl) parallelResult.imageUrl = cloudUrl;
+      return parallelResult;
+    }
+  }
 
-  if (primary === 'google' || primary === 'google_only') {
+  // Fallback: google_only mode or parallel failed entirely
+  if (primary === 'google_only' || primary === 'google') {
+    var result = null;
     if (base64) result = callGoogleDirectImage(prompt, base64, mimeType);
     if (result) {
       if (cloudUrl) result.imageUrl = cloudUrl;
@@ -1429,29 +1447,6 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
         imageUrl: cloudUrl || null
       };
     }
-    // ★ v17: Try OpenRouter with URL first, then with base64 data URL as fallback
-    if (cloudUrl) result = callOpenRouterImageUrl(cloudUrl, prompt);
-    if (!result && base64) result = callOpenRouterImageBase64(base64, mimeType, prompt);
-    if (result) {
-      if (cloudUrl) result.imageUrl = cloudUrl;
-      result._fallback = 'google_failed';
-      return result;
-    }
-  } else {
-    // OpenRouter primary
-    if (cloudUrl) result = callOpenRouterImageUrl(cloudUrl, prompt);
-    if (!result && base64) result = callOpenRouterImageBase64(base64, mimeType, prompt);
-    if (result) {
-      if (cloudUrl) result.imageUrl = cloudUrl;
-      return result;
-    }
-    // Fallback to Google
-    if (base64) result = callGoogleDirectImage(prompt, base64, mimeType);
-    if (result) {
-      if (cloudUrl) result.imageUrl = cloudUrl;
-      result._fallback = 'openrouter_failed';
-      return result;
-    }
   }
 
   Logger.log('[AI] ✗ ALL PROVIDERS FAILED — returning structured fallback');
@@ -1467,6 +1462,251 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
     _isOnline: false,
     imageUrl: cloudUrl || null
   };
+}
+
+// ★ v22: PARALLEL provider execution — fires Gemini + OpenRouter at the same time
+// Returns the BEST result (highest confidence & most hazards), or null if both fail
+function runParallelProviders(prompt, base64, mimeType, cloudUrl) {
+  var googleKey = getGoogleKey();
+  var openRouterKey = getOpenRouterKey();
+
+  if (!googleKey && !openRouterKey) {
+    Logger.log('[PARALLEL] No API keys configured');
+    return null;
+  }
+
+  // Build parallel request array for UrlFetchApp.fetchAll()
+  var requests = [];
+  var requestLabels = []; // track which request is which
+
+  // ── Google Gemini request (first available model) ──
+  if (googleKey && base64) {
+    var pure = base64;
+    var commaIdx = pure.indexOf(',');
+    if (pure.indexOf('base64') >= 0 && commaIdx > 0) pure = pure.substring(commaIdx + 1);
+    pure = pure.replace(/\s+/g, '');
+
+    if (pure.length >= 100) {
+      // Try primary model first in parallel
+      var model = GOOGLE_MODELS[0];
+      var googleUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
+        + model + ':generateContent?key=' + encodeURIComponent(googleKey);
+      var googlePayload = {
+        contents: [{
+          role: 'user',
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType || 'image/jpeg', data: pure } }
+          ]
+        }],
+        generationConfig: { temperature: 0.2, maxOutputTokens: 4096, responseMimeType: 'application/json' }
+      };
+      requests.push({
+        url: googleUrl,
+        method: 'post',
+        contentType: 'application/json',
+        payload: JSON.stringify(googlePayload),
+        muteHttpExceptions: true
+      });
+      requestLabels.push('google:' + model);
+    }
+  }
+
+  // ── OpenRouter request ──
+  if (openRouterKey) {
+    var orContent;
+    if (cloudUrl) {
+      orContent = [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: cloudUrl } }
+      ];
+    } else if (base64) {
+      var dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
+      orContent = [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: dataUrl } }
+      ];
+    }
+
+    if (orContent) {
+      var orPayload = {
+        model: OPENROUTER_MODEL,
+        messages: [{ role: 'user', content: orContent }],
+        max_tokens: 4096,
+        temperature: 0.2
+      };
+      requests.push({
+        url: 'https://openrouter.ai/api/v1/chat/completions',
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          'Authorization': 'Bearer ' + openRouterKey,
+          'HTTP-Referer': 'https://abhibond1986.github.io/Safety-Lens-V2/',
+          'X-Title': 'SAIL Safety Lens'
+        },
+        payload: JSON.stringify(orPayload),
+        muteHttpExceptions: true
+      });
+      requestLabels.push('openrouter:' + OPENROUTER_MODEL);
+    }
+  }
+
+  if (requests.length === 0) {
+    Logger.log('[PARALLEL] No valid requests to send');
+    return null;
+  }
+
+  Logger.log('[PARALLEL] Firing ' + requests.length + ' requests simultaneously: ' + requestLabels.join(', '));
+  var startTime = new Date().getTime();
+
+  // ★ FIRE BOTH SIMULTANEOUSLY
+  var responses;
+  try {
+    responses = UrlFetchApp.fetchAll(requests);
+  } catch (e) {
+    Logger.log('[PARALLEL] fetchAll exception: ' + e.toString());
+    return null;
+  }
+
+  var elapsed = new Date().getTime() - startTime;
+  Logger.log('[PARALLEL] All responses received in ' + elapsed + 'ms');
+
+  // ── Parse responses ──
+  var results = [];
+  for (var i = 0; i < responses.length; i++) {
+    var label = requestLabels[i];
+    var resp = responses[i];
+    var code = resp.getResponseCode();
+    Logger.log('[PARALLEL] ' + label + ' HTTP=' + code);
+
+    if (code !== 200) {
+      Logger.log('[PARALLEL] ' + label + ' failed: ' + resp.getContentText().substring(0, 200));
+      continue;
+    }
+
+    try {
+      var parsed = null;
+      if (label.indexOf('google:') === 0) {
+        parsed = parseGoogleResponse(resp, label.split(':')[1]);
+      } else if (label.indexOf('openrouter:') === 0) {
+        parsed = parseOpenRouterResponse(resp);
+      }
+
+      if (parsed && parsed.hazards && parsed.hazards.length > 0) {
+        results.push(parsed);
+        Logger.log('[PARALLEL] ' + label + ' ✓ hazards=' + parsed.hazards.length
+          + ' confidence=' + (parsed.confidence || '?'));
+      } else {
+        Logger.log('[PARALLEL] ' + label + ' returned no valid hazards');
+      }
+    } catch (parseErr) {
+      Logger.log('[PARALLEL] ' + label + ' parse error: ' + parseErr.toString());
+    }
+  }
+
+  if (results.length === 0) {
+    Logger.log('[PARALLEL] No successful results from parallel calls');
+    // Fall through to sequential retry with remaining Google models
+    if (googleKey && base64) {
+      Logger.log('[PARALLEL] Trying remaining Google models sequentially...');
+      var seqResult = callGoogleDirectImage(prompt, base64, mimeType);
+      if (seqResult) return seqResult;
+    }
+    // Try OpenRouter with retry (in case first attempt hit transient error)
+    if (openRouterKey) {
+      Logger.log('[PARALLEL] Trying OpenRouter with retry...');
+      if (cloudUrl) {
+        var orRetry = callOpenRouterImageUrl(cloudUrl, prompt);
+        if (orRetry) return orRetry;
+      }
+      if (base64) {
+        var orRetryB64 = callOpenRouterImageBase64(base64, mimeType, prompt);
+        if (orRetryB64) return orRetryB64;
+      }
+    }
+    return null;
+  }
+
+  // ── Pick best result: highest confidence, then most hazards ──
+  if (results.length === 1) {
+    Logger.log('[PARALLEL] Single winner: ' + results[0]._provider + '/' + results[0]._model);
+    return results[0];
+  }
+
+  // Both succeeded — pick the better one
+  var best = results[0];
+  for (var r = 1; r < results.length; r++) {
+    var candidate = results[r];
+    var bestScore = (best.confidence || 0) + (best.hazards || []).length * 5;
+    var candScore = (candidate.confidence || 0) + (candidate.hazards || []).length * 5;
+    if (candScore > bestScore) best = candidate;
+  }
+
+  Logger.log('[PARALLEL] ★ Best result: ' + best._provider + '/' + best._model
+    + ' (confidence=' + (best.confidence || '?') + ', hazards=' + (best.hazards || []).length + ')');
+  best._parallelWinner = true;
+  best._totalProviders = results.length;
+  return best;
+}
+
+// Parse a Google Gemini response into structured result
+function parseGoogleResponse(resp, model) {
+  var data = JSON.parse(resp.getContentText());
+  if (!data.candidates || data.candidates.length === 0) return null;
+
+  var c = data.candidates[0];
+  if (c.finishReason && c.finishReason !== 'STOP' && c.finishReason !== 'MAX_TOKENS') return null;
+  if (!c.content || !c.content.parts || c.content.parts.length === 0) return null;
+
+  var text = c.content.parts[0].text || '';
+  text = text.trim();
+  if (!text) return null;
+
+  if (text.startsWith('```json')) text = text.substring(7);
+  if (text.startsWith('```'))     text = text.substring(3);
+  if (text.endsWith('```'))       text = text.slice(0, -3);
+  var f = text.indexOf('{'), l = text.lastIndexOf('}');
+  if (f < 0 || l <= f) return null;
+  text = text.substring(f, l + 1);
+
+  var result = JSON.parse(text.trim());
+  if (typeof result !== 'object' || result === null) return null;
+
+  result._provider = 'google_direct';
+  result._model = model;
+  if (result.people === undefined) result.people = 0;
+  if (!result.hazards) result.hazards = [];
+  if (!result.overallRisk) result.overallRisk = 'UNKNOWN';
+
+  if (data.usageMetadata) {
+    result._tokens = {
+      in: data.usageMetadata.promptTokenCount || 0,
+      out: data.usageMetadata.candidatesTokenCount || 0,
+      total: data.usageMetadata.totalTokenCount || 0
+    };
+  }
+  return result;
+}
+
+// Parse an OpenRouter response into structured result
+function parseOpenRouterResponse(resp) {
+  var data = JSON.parse(resp.getContentText());
+  if (!data.choices || data.choices.length === 0) return null;
+
+  var text = data.choices[0].message.content.trim();
+  if (text.startsWith('```json')) text = text.substring(7);
+  if (text.startsWith('```'))     text = text.substring(3);
+  if (text.endsWith('```'))       text = text.slice(0, -3);
+  var f = text.indexOf('{'), l = text.lastIndexOf('}');
+  if (f >= 0 && l > f) text = text.substring(f, l + 1);
+
+  var result = JSON.parse(text.trim());
+  result._provider = 'openrouter';
+  result._model = OPENROUTER_MODEL;
+  if (result.people === undefined) result.people = 0;
+  if (!result.hazards) result.hazards = [];
+  if (!result.overallRisk) result.overallRisk = 'UNKNOWN';
+  return result;
 }
 
 function callGeminiText(prompt) {

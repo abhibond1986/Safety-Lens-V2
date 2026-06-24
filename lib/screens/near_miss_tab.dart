@@ -378,7 +378,15 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           : await GeminiVision.analyseImage(File(_pickedFile!.path));
 
       final hazards = (result?['hazards'] as List?) ?? [];
-      final first   = hazards.isNotEmpty ? Map<String, dynamic>.from(hazards.first) : null;
+      // ✅ FIX: Safely access first hazard — guard against null/non-Map entries
+      Map<String, dynamic>? first;
+      if (hazards.isNotEmpty && hazards.first is Map) {
+        try {
+          first = Map<String, dynamic>.from(hazards.first as Map);
+        } catch (_) {
+          first = null;
+        }
+      }
 
       String rawName   = first?['name']?.toString() ?? 'Near miss observed';
       String rawDesc   = first?['description']?.toString() ?? result?['summary']?.toString() ?? '';
@@ -399,15 +407,15 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         _isOnlineMode = isOnline;
         _aiBrief = {
           'identified': refinedData['name'],
-          'statutory':  refinedData['reg'].isEmpty ? 'Refer Factories Act S35-41' : refinedData['reg'],
+          'statutory':  (refinedData['reg']?.toString() ?? '').isEmpty ? 'Refer Factories Act S35-41' : refinedData['reg'].toString(),
           'type':       refinedData['obsType'],
           'severity':   sev,
           'confidence': result?['confidence'] ?? 75,
           'isOnline':   isOnline,
         };
-        _brief.text           = '${refinedData['name']}. ${refinedData['desc']}'.trim();
-        _description.text     = refinedData['desc']!;
-        _immediateAction.text = refinedData['action']!;
+        _brief.text           = '${refinedData['name'] ?? ''}. ${refinedData['desc'] ?? ''}'.trim();
+        _description.text     = refinedData['desc']?.toString() ?? '';
+        _immediateAction.text = refinedData['action']?.toString() ?? '';
         _dept.text            = user?['department']?.toString() ?? 'Operations';
         // Only set placeholder if GPS hasn't already filled it
         if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
@@ -418,9 +426,9 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           }
         }
         _plant                = plantFromProfile;
-        _wsaCause             = refinedData['cause']!;
+        _wsaCause             = refinedData['cause']?.toString() ?? _wsaCause;
         _severity             = sev;
-        _obsType              = refinedData['obsType']!;
+        _obsType              = refinedData['obsType']?.toString() ?? _obsType;
         _analyzing            = false;
       });
     } catch (e) {

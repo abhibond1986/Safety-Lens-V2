@@ -24,6 +24,10 @@ class GeminiVision {
   static const String _backendUrl =
       'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
 
+  // ✅ FIX: Cooldown to prevent hammering exhausted server
+  static DateTime? _lastExhaustionTime;
+  static const Duration _exhaustionCooldown = Duration(seconds: 60);
+
   // ── analyseImage (mobile / File path) ─────────────────────────────────────
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
@@ -39,6 +43,16 @@ class GeminiVision {
 
     try {
       print('GeminiVision: ═══ STARTING ANALYSIS ═══ (${bytes.length} bytes)');
+
+      // ✅ FIX: Skip server if providers were exhausted recently (cooldown)
+      if (_lastExhaustionTime != null &&
+          DateTime.now().difference(_lastExhaustionTime!) < _exhaustionCooldown) {
+        final remaining = _exhaustionCooldown.inSeconds -
+            DateTime.now().difference(_lastExhaustionTime!).inSeconds;
+        print('GeminiVision: ▶ Server cooldown active (${remaining}s remaining) → offline fallback');
+        return await _offlineFallback(bytes,
+            reason: 'AI providers cooling down (retry in ${remaining}s)');
+      }
 
       // ── Network check (mobile only) ──
       if (!kIsWeb) {
@@ -143,6 +157,8 @@ class GeminiVision {
           firstHazardDesc.contains('all providers exhausted') ||
           firstHazardDesc.contains('temporarily unavailable')) {
         print('GeminiVision: Server AI failed (providers exhausted)');
+        // ✅ FIX: Set cooldown to prevent hammering exhausted server
+        _lastExhaustionTime = DateTime.now();
         data['error'] = 'AI providers exhausted on server';
         return data;
       }
