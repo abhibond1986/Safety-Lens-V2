@@ -378,6 +378,34 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           : await GeminiVision.analyseImage(File(_pickedFile!.path));
 
       final hazards = (result?['hazards'] as List?) ?? [];
+      final isOnline = result?['_isOnline'] == true;
+
+      // ✅ FIX: If AI failed (offline/exhausted) with no hazards, show clean message
+      if (hazards.isEmpty && !isOnline) {
+        final user = await LocalDB.getCurrentUser();
+        setState(() {
+          _isOnlineMode = false;
+          _aiBrief = {
+            'identified': 'AI unavailable — fill form manually',
+            'statutory':  'Refer applicable regulations',
+            'type':       'Unsafe Condition',
+            'severity':   'MEDIUM',
+            'confidence': 0,
+          };
+          _brief.text       = '';
+          _dept.text        = user?['department']?.toString() ?? 'Operations';
+          if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
+            if (_capturedLocation != null && _capturedLocation!.isValid) {
+              _location.text = GeoService.getDisplayAddress(_capturedLocation!);
+            } else {
+              _location.text = 'To be confirmed (edit if needed)';
+            }
+          }
+          _analyzing = false;
+        });
+        return;
+      }
+
       // ✅ FIX: Safely access first hazard — guard against null/non-Map entries
       Map<String, dynamic>? first;
       if (hazards.isNotEmpty && hazards.first is Map) {
@@ -968,7 +996,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           Row(children: [
             Icon(Icons.auto_awesome, size: 14, color: _isOnlineMode ? AppColors.accent : AppColors.amber),
             const SizedBox(width: 6),
-            Text(_isOnlineMode ? 'AI Assessment' : 'Knowledge-based (Offline)',
+            Text(_isOnlineMode ? 'AI Assessment' : 'AI Unavailable — Manual Entry',
               style: TextStyle(color: _isOnlineMode ? AppColors.accent : AppColors.amber, fontSize: 12, fontWeight: FontWeight.w700)),
             const Spacer(),
             Container(
@@ -991,7 +1019,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
                 const Icon(Icons.wifi_off_rounded, color: AppColors.amber, size: 14),
                 const SizedBox(width: 8),
                 Expanded(child: Text(
-                  'Not real image analysis. Connect to internet for AI-powered detection.',
+                  'AI could not analyze image. Fill the form manually or retry when connected.',
                   style: TextStyle(color: AppColors.amber.withOpacity(0.9), fontSize: 10, height: 1.3))),
               ]),
             ),

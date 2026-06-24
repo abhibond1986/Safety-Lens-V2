@@ -18,7 +18,7 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'network_checker.dart';
-import 'admin_master_data.dart';
+// admin_master_data import removed — no longer needed after offline library removal
 
 class GeminiVision {
   static const String _backendUrl =
@@ -69,7 +69,10 @@ class GeminiVision {
       print('GeminiVision: ▶ Sending to Apps Script (server-side AI)...');
       try {
         final appsResult = await _callAppsScript(bytes);
-        if (appsResult != null && appsResult['hazards'] != null && appsResult['error'] == null) {
+        if (appsResult != null &&
+            appsResult['hazards'] != null &&
+            (appsResult['hazards'] as List).isNotEmpty &&
+            appsResult['error'] == null) {
           print('GeminiVision: ✓ SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
           return appsResult;
         }
@@ -90,7 +93,10 @@ class GeminiVision {
         await Future.delayed(const Duration(seconds: 3));
         try {
           final retryResult = await _callAppsScript(bytes);
-          if (retryResult != null && retryResult['hazards'] != null && retryResult['error'] == null) {
+          if (retryResult != null &&
+              retryResult['hazards'] != null &&
+              (retryResult['hazards'] as List).isNotEmpty &&
+              retryResult['error'] == null) {
             print('GeminiVision: ✓ RETRY SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             return retryResult;
           }
@@ -174,184 +180,27 @@ class GeminiVision {
     }
   }
 
-  // ── Offline fallback with clear messaging ─────────────────────────────────
+  // ── Offline fallback — clean message, NO fake hazards ─────────────────────
   static Future<Map<String, dynamic>> _offlineFallback(Uint8List bytes,
       {String reason = ''}) async {
-    final result = await _knowledgeBasedAnalysisAsync(bytes);
-    result['_source'] = 'offline_fallback';
-    result['_offline_reason'] = reason;
-    result['_isOnline'] = false;
-
-    result['summary'] =
-        '📚 **Offline Mode - Knowledge-Based Analysis**\n'
-        'AI analysis unavailable ($reason).\n\n'
-        'System identified common industrial safety hazards using SAIL Knowledge Base:\n'
-        '• SMPV Rules 2016 (Pressure Vessels & Gas Cylinders)\n'
-        '• Factories Act 1948 (Safety Standards)\n'
-        '• IS 14489:2018 (Safety Code for Steel Plants)\n'
-        '• CEA Regulations 2023 (Electrical Safety)\n\n'
-        '✅ **Form submission works fully offline.** When you connect to internet later, you can reschedule for full AI-powered analysis.';
-
-    return result;
-  }
-
-  // ── OFFLINE HAZARD LIBRARY ────────────────────────────────────────────────
-  static const List<Map<String, dynamic>> _hazardLibrary = [
-    {
-      'name': 'No fall arrest at height',
-      'description': 'Worker at elevation ≥1.8m without full-body harness or guardrail.',
-      'severity': 'CRITICAL',
-      'type': 'Unsafe Act',
-      'regulation': 'FA 1948 S32(c), IS 3521:1999, IS 4912:1978',
-      'correctiveAction': 'Immediately stop work at height. Issue IS 3521 full-body harness with anchor min 15kN.',
-      'wsaCause': '1. Failure to follow procedure'
-    },
-    {
-      'name': 'Missing safety helmet',
-      'description': 'Worker observed without ISI-marked safety helmet in hazardous area.',
-      'severity': 'CRITICAL',
-      'type': 'Unsafe Act',
-      'regulation': 'FA 1948 S35, IS 2925:1984',
-      'correctiveAction': 'Stop work. Issue correct IS 2925 helmet.',
-      'wsaCause': '3. Improper PPE use'
-    },
-    {
-      'name': 'Gas cylinder not chained',
-      'description': 'Compressed gas cylinder(s) stored without being chained upright — toppling risk.',
-      'severity': 'CRITICAL',
-      'type': 'Unsafe Condition',
-      'regulation': 'SMPV Rules 2016 Rule 10(1), IS 15222',
-      'correctiveAction': 'Immediately chain all cylinders upright. Keep valve protection caps in place.',
-      'wsaCause': '8. Poor housekeeping'
-    },
-    {
-      'name': 'Exposed electrical cable',
-      'description': 'Loose or unprotected electrical cable running across walkway.',
-      'severity': 'HIGH',
-      'type': 'Unsafe Condition',
-      'regulation': 'CEA Regulations 2023 Reg 21, IS 732',
-      'correctiveAction': 'De-energize via LOTO. Route cable in protective conduit or cable tray.',
-      'wsaCause': '8. Poor housekeeping'
-    },
-    {
-      'name': 'Oil spillage on walkway',
-      'description': 'Oil or liquid spillage on access walkway creating slip and fall hazard.',
-      'severity': 'HIGH',
-      'type': 'Unsafe Condition',
-      'regulation': 'FA 1948 S32(a), IS 14489:2018 Clause 9',
-      'correctiveAction': 'Barricade area. Deploy oil absorbent material. Clean and dry surface.',
-      'wsaCause': '8. Poor housekeeping'
-    },
-    {
-      'name': 'Unguarded rotating machinery',
-      'description': 'Rotating shaft, gear, or belt drive without proper enclosure guarding.',
-      'severity': 'CRITICAL',
-      'type': 'Unsafe Condition',
-      'regulation': 'FA 1948 S21, IS 14489:2018 Clause 6.2',
-      'correctiveAction': 'Stop machine via LOTO. Install interlocked fixed guard.',
-      'wsaCause': '5. Equipment failure'
-    },
-    {
-      'name': 'Electrical panel open live',
-      'description': 'Electrical panel door open exposing live busbars or terminals.',
-      'severity': 'CRITICAL',
-      'type': 'Unsafe Condition',
-      'regulation': 'CEA Regulations 2023 Reg 20, Reg 21',
-      'correctiveAction': 'Close panel door immediately. Apply LOTO before maintenance.',
-      'wsaCause': '12. Inadequate isolation'
-    },
-    {
-      'name': 'Safety footwear absent',
-      'description': 'Worker not wearing steel-toe safety shoes in designated area.',
-      'severity': 'HIGH',
-      'type': 'Unsafe Act',
-      'regulation': 'FA 1948 S35, IS 5852:1993',
-      'correctiveAction': 'Provide IS 5852 steel-toe safety footwear before resuming work.',
-      'wsaCause': '3. Improper PPE use'
-    },
-    {
-      'name': 'Emergency exit blocked',
-      'description': 'Materials blocking emergency exit route.',
-      'severity': 'HIGH',
-      'type': 'Unsafe Condition',
-      'regulation': 'FA 1948 S38, NBC 2016 Part 4',
-      'correctiveAction': 'Remove all obstructions immediately. Maintain min 1.0m clear width.',
-      'wsaCause': '8. Poor housekeeping'
-    },
-    {
-      'name': 'Floor opening unguarded',
-      'description': 'Open pit or manhole without guardrail or rigid cover.',
-      'severity': 'CRITICAL',
-      'type': 'Unsafe Condition',
-      'regulation': 'FA 1948 S33, IS 4912:1978',
-      'correctiveAction': 'Install 3-rail guardrail or rigid cover rated for foot traffic.',
-      'wsaCause': '8. Poor housekeeping'
-    },
-  ];
-
-  // ── Knowledge-based offline analysis ──────────────────────────────────────
-  static int _deriveSeed(Uint8List bytes) {
-    int seed = 0;
-    final n = bytes.length < 512 ? bytes.length : 512;
-    for (var i = 0; i < n; i++) {
-      seed = (seed * 31 + bytes[i]) & 0x7FFFFFFF;
-    }
-    return seed;
-  }
-
-  static Future<Map<String, dynamic>> _knowledgeBasedAnalysisAsync(Uint8List bytes) async {
-    try {
-      final scores = await AdminMasterData.getSeverityScores();
-      return _knowledgeBasedAnalysisWithScores(bytes, scores);
-    } catch (_) {
-      return _knowledgeBasedAnalysisWithScores(bytes, AdminMasterData.defaultSeverityScores);
-    }
-  }
-
-  static Map<String, dynamic> _knowledgeBasedAnalysisWithScores(
-      Uint8List bytes, Map<String, int> scores) {
-    final seed = _deriveSeed(bytes);
-    final count = 3 + (seed % 3);
-    final selected = <Map<String, dynamic>>[];
-    final used = <int>{};
-    var s = seed;
-    while (selected.length < count && selected.length < _hazardLibrary.length) {
-      final idx = s % _hazardLibrary.length;
-      s = (s ~/ 7 + 13) & 0x7FFFFFFF;
-      if (!used.contains(idx)) {
-        selected.add(Map<String, dynamic>.from(_hazardLibrary[idx]));
-        used.add(idx);
-      }
-    }
-
-    String risk = 'LOW';
-    int score = 30;
-    for (final h in selected) {
-      final sev = h['severity']?.toString().toUpperCase() ?? 'LOW';
-      score += scores[sev] ?? 5;
-      if (sev == 'CRITICAL') risk = 'CRITICAL';
-      else if (sev == 'HIGH' && risk != 'CRITICAL') risk = 'HIGH';
-      else if (sev == 'MEDIUM' && risk == 'LOW') risk = 'MEDIUM';
-    }
-
     return {
-      'overallRisk': risk,
-      'riskScore': score.clamp(0, 100),
-      'confidence': 75 + (seed % 15),
+      'overallRisk': 'UNKNOWN',
+      'riskScore': 0,
+      'confidence': 0,
       'people': 0,
-      'summary': 'Knowledge-based analysis: ${selected.length} common steel plant hazards identified.',
-      'hazards': selected,
-      'wsa': selected.map((h) => h['wsaCause']?.toString() ?? '').toSet().toList(),
-      'preventive': [
-        'Daily toolbox talk with PPE compliance check per IS 14489:2018',
-        'Monthly gas cylinder audit per SMPV Rules 2016',
-        'Working at height refresher every 6 months',
-      ],
-      'ptw_required': 'Verify Hot Work, WAH, Confined Space PTW as applicable',
-      'nearest_standard': 'IS 14489:2018 OHS Code of Practice for Steel Plants',
-      'imageSeed': seed,
+      'hazards': [],  // ✅ NO fake hazards — empty list
+      'summary':
+          'AI analysis unavailable ($reason).\n\n'
+          'Form submission works fully offline. '
+          'When you connect to internet later, you can retry for full AI-powered analysis.',
+      '_source': 'offline_fallback',
+      '_offline_reason': reason,
+      '_isOnline': false,
     };
   }
+
+  // NOTE: Offline hazard library removed in v22 — no more fake/random hazards
+  // when AI is unavailable. Users now see a clean "AI unavailable" message.
 
   static bool get isConfigured => true;
 }

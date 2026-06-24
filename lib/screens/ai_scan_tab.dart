@@ -1987,7 +1987,29 @@ class _AIScanTabState extends State<AIScanTab> {
         ])),
       const SizedBox(height: 10),
 
-      _hazardTable(hazards, sl),
+      // ✅ FIX: Don't show hazard table when AI failed (no real hazards)
+      if (hazards.isNotEmpty)
+        _hazardTable(hazards, sl)
+      else
+        Container(
+          padding: const EdgeInsets.all(16),
+          margin: const EdgeInsets.only(bottom: 4),
+          decoration: BoxDecoration(
+            color: AppColors.amber.withOpacity(0.06),
+            border: Border.all(color: AppColors.amber.withOpacity(0.4)),
+            borderRadius: BorderRadius.circular(12)),
+          child: Column(
+            children: [
+              const Icon(Icons.cloud_off_rounded, color: AppColors.amber, size: 32),
+              const SizedBox(height: 8),
+              Text('AI Analysis Unavailable',
+                style: TextStyle(color: sl.text1, fontSize: 14, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text('Server could not process this image. Tap "New" and retry when connectivity improves.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: sl.text3, fontSize: 11, height: 1.4)),
+            ]),
+        ),
       const SizedBox(height: 12),
 
       Row(children: [

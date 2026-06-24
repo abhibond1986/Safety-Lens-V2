@@ -1111,8 +1111,8 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
 
       if (data.usageMetadata) {
         result._tokens = {
-          in:    data.usageMetadata.promptTokenCount     || 0,
-          out:   data.usageMetadata.candidatesTokenCount || 0,
+          'in':  data.usageMetadata.promptTokenCount     || 0,
+          'out': data.usageMetadata.candidatesTokenCount || 0,
           total: data.usageMetadata.totalTokenCount      || 0
         };
       }
@@ -1580,7 +1580,11 @@ function runParallelProviders(prompt, base64, mimeType, cloudUrl) {
     Logger.log('[PARALLEL] ' + label + ' HTTP=' + code);
 
     if (code !== 200) {
-      Logger.log('[PARALLEL] ' + label + ' failed: ' + resp.getContentText().substring(0, 200));
+      try {
+        Logger.log('[PARALLEL] ' + label + ' failed: ' + resp.getContentText().substring(0, 200));
+      } catch(logErr) {
+        Logger.log('[PARALLEL] ' + label + ' failed with HTTP=' + code);
+      }
       continue;
     }
 
@@ -1680,9 +1684,9 @@ function parseGoogleResponse(resp, model) {
 
   if (data.usageMetadata) {
     result._tokens = {
-      in: data.usageMetadata.promptTokenCount || 0,
-      out: data.usageMetadata.candidatesTokenCount || 0,
-      total: data.usageMetadata.totalTokenCount || 0
+      'in':  data.usageMetadata.promptTokenCount     || 0,
+      'out': data.usageMetadata.candidatesTokenCount || 0,
+      total: data.usageMetadata.totalTokenCount      || 0
     };
   }
   return result;
@@ -2083,4 +2087,6 @@ function testPromptVersion() {
 function testFormatSheet() {
   const result = formatIncidentsSheet();
   Logger.log('formatIncidentsSheet result: ' + JSON.stringify(result));
+}
+
 }
