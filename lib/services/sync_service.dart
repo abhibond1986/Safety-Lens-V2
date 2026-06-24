@@ -647,7 +647,10 @@ class SyncService {
         'pdfBase64':  base64Encode(pdfBytes),
       });
 
-      // Apps Script redirects POST — follow redirect manually
+      print('PDF Upload: sending ${body.length} bytes to Apps Script...');
+
+      // Apps Script redirects POST → GET on googleusercontent.com
+      // Must follow redirect with GET (not re-POST) to get the JSON response
       final client = http.Client();
       http.Response resp;
       try {
@@ -655,27 +658,45 @@ class SyncService {
           Uri.parse(url),
           body: body,
           headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        ).timeout(const Duration(seconds: 60));
+        ).timeout(const Duration(seconds: 90));
+
+        // Apps Script always redirects POST to a result URL via 302
+        // The redirect is a GET — the response JSON is at that URL
         if (resp.statusCode == 302 || resp.statusCode == 301) {
           final loc = resp.headers['location'] ?? '';
+          print('PDF Upload: following redirect to ${loc.length > 80 ? loc.substring(0, 80) : loc}...');
           if (loc.isNotEmpty) {
-            resp = await client.post(
+            // ✅ FIX: Use GET for the redirect (Apps Script returns result via GET)
+            resp = await client.get(
               Uri.parse(loc),
-              body: body,
-              headers: {'Content-Type': 'text/plain;charset=utf-8'},
-            ).timeout(const Duration(seconds: 60));
+              headers: {'Accept': 'application/json'},
+            ).timeout(const Duration(seconds: 30));
           }
         }
       } finally { client.close(); }
 
+      print('PDF Upload: response status=${resp.statusCode}, bodyLen=${resp.body.length}');
+
       if (resp.statusCode == 200) {
-        final data = jsonDecode(resp.body);
-        if (data['success'] == true) {
-          return data['pdfUrl']?.toString();
+        // Guard against HTML error pages
+        final bodyTrimmed = resp.body.trim();
+        if (bodyTrimmed.startsWith('<')) {
+          print('PDF Upload: got HTML instead of JSON');
+          return null;
+        }
+        try {
+          final data = jsonDecode(bodyTrimmed);
+          if (data['success'] == true) {
+            return data['pdfUrl']?.toString();
+          }
+          print('PDF Upload: server error: ${data['error'] ?? 'unknown'}');
+        } catch (e) {
+          print('PDF Upload: JSON parse error: $e');
         }
       }
       return null;
-    } catch (_) {
+    } catch (e) {
+      print('PDF Upload: exception — $e');
       return null;
     }
   }

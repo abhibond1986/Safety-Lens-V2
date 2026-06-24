@@ -28,6 +28,13 @@ class GeminiVision {
   static DateTime? _lastExhaustionTime;
   static const Duration _exhaustionCooldown = Duration(seconds: 60);
 
+  // ✅ FIX: Track last successful call to apply rate-limiting between analyses
+  static DateTime? _lastCallTime;
+  static const Duration _minCallInterval = Duration(seconds: 5);
+
+  // ✅ FIX: Prevent concurrent AI calls (second call waits or skips)
+  static bool _isAnalyzing = false;
+
   // ── analyseImage (mobile / File path) ─────────────────────────────────────
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
     final bytes = await imageFile.readAsBytes();
@@ -44,12 +51,36 @@ class GeminiVision {
     try {
       print('GeminiVision: ═══ STARTING ANALYSIS ═══ (${bytes.length} bytes)');
 
+      // ✅ FIX: Prevent concurrent analysis — if one is already running, wait briefly then fallback
+      if (_isAnalyzing) {
+        print('GeminiVision: ⚠ Another analysis already in progress — waiting...');
+        // Wait up to 30s for the other call to finish
+        for (int i = 0; i < 60; i++) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!_isAnalyzing) break;
+        }
+        if (_isAnalyzing) {
+          print('GeminiVision: ⚠ Other analysis still running after 30s — offline fallback');
+          return await _offlineFallback(bytes, reason: 'Another analysis in progress');
+        }
+      }
+      _isAnalyzing = true;
+
+      // ✅ FIX: Rate-limit: don't fire again within 5s of last call (quota protection)
+      if (_lastCallTime != null &&
+          DateTime.now().difference(_lastCallTime!) < _minCallInterval) {
+        final wait = _minCallInterval - DateTime.now().difference(_lastCallTime!);
+        print('GeminiVision: Rate-limiting — waiting ${wait.inSeconds}s before next call');
+        await Future.delayed(wait);
+      }
+
       // ✅ FIX: Skip server if providers were exhausted recently (cooldown)
       if (_lastExhaustionTime != null &&
           DateTime.now().difference(_lastExhaustionTime!) < _exhaustionCooldown) {
         final remaining = _exhaustionCooldown.inSeconds -
             DateTime.now().difference(_lastExhaustionTime!).inSeconds;
         print('GeminiVision: ▶ Server cooldown active (${remaining}s remaining) → offline fallback');
+        _isAnalyzing = false;
         return await _offlineFallback(bytes,
             reason: 'AI providers cooling down (retry in ${remaining}s)');
       }
@@ -59,6 +90,7 @@ class GeminiVision {
         final networkStatus = await NetworkChecker.getNetworkStatus();
         if (!networkStatus['hasInternet']!) {
           print('GeminiVision: No internet → offline fallback');
+          _isAnalyzing = false;
           return await _offlineFallback(bytes, reason: 'No internet connection');
         }
       }
@@ -74,6 +106,8 @@ class GeminiVision {
             (appsResult['hazards'] as List).isNotEmpty &&
             appsResult['error'] == null) {
           print('GeminiVision: ✓ SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+          _lastCallTime = DateTime.now();
+          _isAnalyzing = false;
           return appsResult;
         }
         if (appsResult != null && appsResult['error'] != null) {
@@ -91,10 +125,13 @@ class GeminiVision {
       // ══════════════════════════════════════════════════════════════════════
       print('GeminiVision: ▶ Offline fallback (server unavailable)');
       print('GeminiVision: Total time elapsed: ${stopwatch.elapsedMilliseconds}ms');
+      _lastCallTime = DateTime.now();
+      _isAnalyzing = false;
       return await _offlineFallback(bytes,
           reason: 'AI server unavailable after ${stopwatch.elapsedMilliseconds}ms');
     } catch (e) {
       print('GeminiVision: Unexpected top-level error: $e');
+      _isAnalyzing = false;
       return await _offlineFallback(bytes, reason: e.toString());
     }
   }
@@ -113,11 +150,26 @@ class GeminiVision {
       'imageBase64': base64Encode(bytes),
     };
 
-    final response = await http.post(
-      Uri.parse(_backendUrl),
-      body: jsonEncode(requestBody),
-      headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    ).timeout(Duration(seconds: timeoutSec));
+    final client = http.Client();
+    http.Response response;
+    try {
+      response = await client.post(
+        Uri.parse(_backendUrl),
+        body: jsonEncode(requestBody),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(Duration(seconds: timeoutSec));
+
+      // ✅ FIX: Apps Script redirects POST → GET for the JSON response
+      if (response.statusCode == 302 || response.statusCode == 301) {
+        final loc = response.headers['location'] ?? '';
+        if (loc.isNotEmpty) {
+          response = await client.get(
+            Uri.parse(loc),
+            headers: {'Accept': 'application/json'},
+          ).timeout(const Duration(seconds: 30));
+        }
+      }
+    } finally { client.close(); }
 
     if (response.statusCode != 200) {
       print('GeminiVision: Apps Script HTTP ${response.statusCode}');

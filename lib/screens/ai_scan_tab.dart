@@ -1516,8 +1516,8 @@ class _AIScanTabState extends State<AIScanTab> {
       }
       print('PDF Upload: generated ${pdfBytes.length} bytes, uploading to Drive...');
 
-      // Wait a moment to ensure incident row exists in sheet before uploading PDF
-      await Future.delayed(const Duration(seconds: 3));
+      // Wait to ensure: (1) incident row exists in sheet, (2) no AI call contention
+      await Future.delayed(const Duration(seconds: 8));
 
       final url = await SyncService.uploadPdfToDrive(
         incidentId: incident['id']?.toString() ?? '',

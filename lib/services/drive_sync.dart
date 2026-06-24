@@ -22,19 +22,36 @@ class DriveSync {
   }) async {
     try {
       final b64 = base64Encode(pdfBytes);
-      final response = await http.post(
-        Uri.parse(_appsScriptUrl),
-        headers: {'Content-Type': 'text/plain'},
-        body: jsonEncode({
-          'action':     'uploadPdfToDrive',
-          'pdfBase64':  b64,
-          'fileName':   fileName,
-          'incidentId': incidentId,
-        }),
-      ).timeout(const Duration(seconds: 60));
+      final client = http.Client();
+      http.Response response;
+      try {
+        response = await client.post(
+          Uri.parse(_appsScriptUrl),
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          body: jsonEncode({
+            'action':     'uploadPdfToDrive',
+            'pdfBase64':  b64,
+            'fileName':   fileName,
+            'incidentId': incidentId,
+          }),
+        ).timeout(const Duration(seconds: 90));
+
+        // ✅ FIX: Apps Script redirects POST → GET for the response
+        if (response.statusCode == 302 || response.statusCode == 301) {
+          final loc = response.headers['location'] ?? '';
+          if (loc.isNotEmpty) {
+            response = await client.get(
+              Uri.parse(loc),
+              headers: {'Accept': 'application/json'},
+            ).timeout(const Duration(seconds: 30));
+          }
+        }
+      } finally { client.close(); }
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final bodyTrimmed = response.body.trim();
+        if (bodyTrimmed.startsWith('<')) return null;
+        final data = jsonDecode(bodyTrimmed) as Map<String, dynamic>;
         if (data['success'] == true) {
           return data['pdfUrl']?.toString();
         }
