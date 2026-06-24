@@ -425,7 +425,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       final refinedData = _applyHardenedV15Filters(rawName, rawDesc, rawAction, rawReg, rawCause);
 
       final sev        = (first?['severity']?.toString() ?? 'MEDIUM').toUpperCase();
-      final isOnline   = result?['_isOnline'] == true;
+      // isOnline already declared above (line ~381)
 
       final user              = await LocalDB.getCurrentUser();
       String plantFromProfile = user?['plant']?.toString() ?? _plant;
