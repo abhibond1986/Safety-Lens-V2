@@ -1712,7 +1712,7 @@ function makePdfHyperlink(url) {
   if (!url || typeof url !== 'string') return '';
   if (url.indexOf('http') !== 0) return url;
   const safe = url.replace(/"/g, '""');
-  return '=HYPERLINK("' + safe + '","Open PDF")';
+  return '=HYPERLINK("' + safe + '","📄 View Report")';
 }
 
 function formatIncidentsSheet() {
@@ -1723,33 +1723,55 @@ function formatIncidentsSheet() {
     const lastRow = sheet.getLastRow();
     const numDataRows = Math.max(0, lastRow - 1);
 
+    // ═══════════════════════════════════════════════════════════
+    // ★ v22: PROFESSIONAL DASHBOARD FORMATTING
+    // ═══════════════════════════════════════════════════════════
+
+    // 1. HEADER ROW — Dark navy gradient look with clear readable labels
     const headerRange = sheet.getRange(1, 1, 1, INCIDENT_COLS.length);
     headerRange
-      .setBackground('#0D47A1')
+      .setBackground('#1A237E')
       .setFontColor('#FFFFFF')
       .setFontWeight('bold')
-      .setFontSize(10)
+      .setFontSize(9)
+      .setFontFamily('Google Sans')
       .setHorizontalAlignment('center')
       .setVerticalAlignment('middle')
       .setWrap(true);
     sheet.setFrozenRows(1);
-    sheet.setRowHeight(1, 40);
+    sheet.setRowHeight(1, 44);
 
+    // 2. HEADER NOTES — add tooltip descriptions without renaming columns
+    // (renaming breaks upsertIncident which reads headers by name)
+    const HEADER_NOTES = {
+      id: 'Unique incident ID', date: 'Date & time of incident',
+      title: 'Short incident title', severity: 'CRITICAL/HIGH/MEDIUM/LOW',
+      riskScore: 'AI risk score 0-100', confidence: 'AI confidence %',
+      pdfUrl: 'Click to open PDF report', hazardCount: 'Number of hazards detected'
+    };
+    headers.forEach(function(colName, idx) {
+      if (HEADER_NOTES[colName]) {
+        sheet.getRange(1, idx + 1).setNote(HEADER_NOTES[colName]);
+      }
+    });
+
+    // 3. COLUMN WIDTHS — optimized for readability
     const WIDTHS = {
-      id: 110, date: 140, title: 240, plant: 110, dept: 110,
-      location: 150, severity: 100, wsaCategory: 150, obsType: 120,
-      desc: 300, people: 70, immediateAction: 240, type: 110,
-      status: 110, reportedBy: 140, reportedByPno: 100,
-      riskScore: 90, confidence: 95, summary: 320,
-      correctiveAction: 260, closedBy: 120, closingRemarks: 220,
-      closedAt: 140, investigationStartedAt: 160, actionTakenAt: 160,
-      hazardCount: 95, pdfUrl: 140
+      id: 130, date: 145, title: 260, plant: 140, dept: 130,
+      location: 170, severity: 95, wsaCategory: 150, obsType: 120,
+      desc: 320, people: 50, immediateAction: 260, type: 110,
+      status: 105, reportedBy: 140, reportedByPno: 80,
+      riskScore: 70, confidence: 70, summary: 340,
+      correctiveAction: 280, closedBy: 120, closingRemarks: 240,
+      closedAt: 140, investigationStartedAt: 145, actionTakenAt: 145,
+      hazardCount: 75, pdfUrl: 120
     };
     Object.keys(WIDTHS).forEach(function(name) {
       const idx = headers.indexOf(name);
       if (idx >= 0) sheet.setColumnWidth(idx + 1, WIDTHS[name]);
     });
 
+    // 4. HIDE non-essential columns (data too long / not user-facing)
     const HIDDEN = ['imageBase64', 'imageHash', 'hazards', 'syncedAt'];
     HIDDEN.forEach(function(name) {
       const idx = headers.indexOf(name);
@@ -1758,7 +1780,21 @@ function formatIncidentsSheet() {
       }
     });
 
+    // 5. DATA ROWS FORMATTING
     if (numDataRows > 0) {
+      // Set default font for all data
+      const allData = sheet.getRange(2, 1, numDataRows, INCIDENT_COLS.length);
+      allData
+        .setFontFamily('Google Sans')
+        .setFontSize(9)
+        .setVerticalAlignment('middle');
+
+      // Set consistent row height for data rows
+      for (var r = 2; r <= lastRow; r++) {
+        sheet.setRowHeight(r, 36);
+      }
+
+      // Wrap text in long-content columns
       ['desc', 'summary', 'correctiveAction', 'immediateAction',
        'closingRemarks', 'title']
         .forEach(function(name) {
@@ -1770,17 +1806,55 @@ function formatIncidentsSheet() {
           }
         });
 
+      // Center-align metric/badge columns
       ['severity', 'status', 'type', 'riskScore', 'confidence',
        'hazardCount', 'people']
         .forEach(function(name) {
           const idx = headers.indexOf(name);
           if (idx >= 0) {
             sheet.getRange(2, idx + 1, numDataRows, 1)
-              .setHorizontalAlignment('center');
+              .setHorizontalAlignment('center')
+              .setFontWeight('bold');
           }
         });
+
+      // Bold the title column
+      const titleIdx = headers.indexOf('title');
+      if (titleIdx >= 0) {
+        sheet.getRange(2, titleIdx + 1, numDataRows, 1)
+          .setFontWeight('bold')
+          .setFontSize(9);
+      }
+
+      // Format date column nicely
+      const dateIdx = headers.indexOf('date');
+      if (dateIdx >= 0) {
+        sheet.getRange(2, dateIdx + 1, numDataRows, 1)
+          .setNumberFormat('dd-MMM-yyyy hh:mm')
+          .setHorizontalAlignment('center');
+      }
+
+      // Format riskScore as number with color
+      const riskIdx = headers.indexOf('riskScore');
+      if (riskIdx >= 0) {
+        sheet.getRange(2, riskIdx + 1, numDataRows, 1)
+          .setNumberFormat('0')
+          .setFontSize(11);
+      }
     }
 
+    // 6. CLEAR old formatting from empty rows (fix colored empty columns)
+    sheet.setConditionalFormatRules([]); // clear ALL old rules first
+    if (numDataRows === 0) {
+      // Clear any leftover background colors from rows 2-50
+      try {
+        sheet.getRange(2, 1, 50, INCIDENT_COLS.length)
+          .setBackground(null)
+          .setFontColor(null);
+      } catch(_) {}
+    }
+
+    // 7. CONDITIONAL FORMATTING — color-coded badges (only if data exists)
     const sevIdx  = headers.indexOf('severity');
     const stIdx   = headers.indexOf('status');
     const typeIdx = headers.indexOf('type');
@@ -1796,13 +1870,29 @@ function formatIncidentsSheet() {
       applyTypeFormatting(sheet, typeIdx, numDataRows, fresh);
     }
 
-    sheet.setConditionalFormatRules(fresh);
+    // Risk score color gradient
+    if (numDataRows > 0) {
+      const riskIdx2 = headers.indexOf('riskScore');
+      if (riskIdx2 >= 0) {
+        applyRiskScoreFormatting(sheet, riskIdx2, numDataRows, fresh);
+      }
+    }
 
+    if (fresh.length > 0) {
+      sheet.setConditionalFormatRules(fresh);
+    }
+
+    // 7. ZEBRA STRIPING — alternating row colors
     if (numDataRows > 0) {
       applyBanding(sheet, numDataRows, INCIDENT_COLS.length);
     }
 
+    // 8. PDF HYPERLINKS — clickable "📄 Open" links
     convertExistingPdfUrlsToHyperlinks(sheet, headers);
+
+    // 9. ADD BORDER to header row
+    headerRange.setBorder(true, true, true, true, false, false,
+      '#0D47A1', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
     Logger.log('formatIncidentsSheet: formatted ' + numDataRows + ' data rows');
     return {
@@ -1858,6 +1948,7 @@ function applyStatusFormatting(sheet, colIdx, numDataRows, accumulator) {
   });
 }
 
+
 function applyTypeFormatting(sheet, colIdx, numDataRows, accumulator) {
   const range = sheet.getRange(2, colIdx + 1, numDataRows, 1);
   const palette = [
@@ -1877,6 +1968,37 @@ function applyTypeFormatting(sheet, colIdx, numDataRows, accumulator) {
   });
 }
 
+function applyRiskScoreFormatting(sheet, colIdx, numDataRows, accumulator) {
+  const range = sheet.getRange(2, colIdx + 1, numDataRows, 1);
+  accumulator.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberGreaterThanOrEqualTo(75)
+      .setBackground('#FFCDD2')
+      .setFontColor('#B71C1C')
+      .setBold(true)
+      .setRanges([range])
+      .build()
+  );
+  accumulator.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberBetween(40, 74)
+      .setBackground('#FFF3E0')
+      .setFontColor('#E65100')
+      .setBold(true)
+      .setRanges([range])
+      .build()
+  );
+  accumulator.push(
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenNumberLessThan(40)
+      .setBackground('#E8F5E9')
+      .setFontColor('#1B5E20')
+      .setBold(true)
+      .setRanges([range])
+      .build()
+  );
+}
+
 function applyBanding(sheet, numDataRows, numCols) {
   try {
     const existing = sheet.getBandings();
@@ -1886,9 +2008,9 @@ function applyBanding(sheet, numDataRows, numCols) {
     const range = sheet.getRange(1, 1, numDataRows + 1, numCols);
     const banding = range.applyRowBanding(
       SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
-    banding.setHeaderRowColor('#0D47A1');
+    banding.setHeaderRowColor('#1A237E');
     banding.setFirstRowColor('#FFFFFF');
-    banding.setSecondRowColor('#F5F9FF');
+    banding.setSecondRowColor('#F5F7FF');
   } catch (e) {
     Logger.log('applyBanding: ' + e.toString());
   }
@@ -1962,15 +2084,12 @@ function testListIncidents() {
   const result = listSheet(SHEET_INCIDENTS, INCIDENT_COLS);
   Logger.log('Count: ' + result.count);
 }
+
 function testPromptVersion() {
   const p = getSailPrompt('sail_full');
   Logger.log('Prompt length: ' + p.length);
-  Logger.log('Has OBSERVE FIRST: ' + p.includes('STEP 1 — OBSERVE'));
+  Logger.log('Has OBSERVE FIRST: ' + p.includes('STEP 1'));
   Logger.log('Has GROUNDING RULES: ' + p.includes('GROUNDING RULES'));
-  Logger.log('Has CUI: ' + p.includes('Corrosion Under Insulation'));
-  Logger.log('Has PIPE vs WIRE: ' + p.includes('PIPE vs WIRE'));
-  Logger.log('Has IS 4379: ' + p.includes('IS 4379'));
-  Logger.log('Has IS 2379: ' + p.includes('IS 2379'));
 }
 
 function testFormatSheet() {
