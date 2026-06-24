@@ -42,7 +42,10 @@ const SHEET_KNOWLEDGE = 'knowledge';
 // ★ v20: Model fallback chain — try all available free-tier models
 const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
 const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
-const OPENROUTER_MODEL = 'google/gemini-2.5-flash'; // paid fallback
+// ★ v22: Use a DIFFERENT provider on OpenRouter so it's a true fallback
+// when Google Gemini quota is exhausted. Qwen2.5-VL is free-tier vision model.
+const OPENROUTER_MODEL = 'qwen/qwen2.5-vl-72b-instruct:free'; // free vision model, different provider
+const OPENROUTER_MODEL_PAID = 'anthropic/claude-sonnet-4'; // paid fallback if free fails
 
 const INCIDENT_COLS = [
   'id', 'date', 'title', 'plant', 'dept', 'location', 'severity',
@@ -1228,89 +1231,102 @@ function callOpenRouterText(prompt) {
 }
 
 function callOpenRouterImageUrl(imageUrl, prompt) {
-  try {
-    const response = callOpenRouterWithRetry({
-      model: OPENROUTER_MODEL,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: imageUrl } }
-        ]
-      }],
-      max_tokens: 4096, temperature: 0.2
-    });
-    if (!response) return null;
-    const code = response.getResponseCode();
-    Logger.log('OpenRouter: HTTP ' + code);
-    if (code !== 200) {
-      Logger.log('OpenRouter error body: '
-        + response.getContentText().substring(0, 500));
-      return null;
+  // Try free model first, then paid fallback
+  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_PAID];
+  for (var mi = 0; mi < models.length; mi++) {
+    var modelName = models[mi];
+    try {
+      Logger.log('OpenRouter URL: trying model=' + modelName);
+      const response = callOpenRouterWithRetry({
+        model: modelName,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageUrl } }
+          ]
+        }],
+        max_tokens: 4096, temperature: 0.2
+      });
+      if (!response) continue;
+      const code = response.getResponseCode();
+      Logger.log('OpenRouter URL: model=' + modelName + ' HTTP=' + code);
+      if (code !== 200) {
+        Logger.log('OpenRouter error: ' + response.getContentText().substring(0, 300));
+        continue;
+      }
+
+      let text = JSON.parse(response.getContentText())
+        .choices[0].message.content.trim();
+      if (text.startsWith('```json')) text = text.substring(7);
+      if (text.startsWith('```'))     text = text.substring(3);
+      if (text.endsWith('```'))       text = text.slice(0, -3);
+      const f = text.indexOf('{'), l = text.lastIndexOf('}');
+      if (f >= 0 && l > f) text = text.substring(f, l + 1);
+
+      const result = JSON.parse(text.trim());
+      result._provider = 'openrouter';
+      result._model    = modelName;
+      if (result.people === undefined) result.people = 0;
+      if (!result.hazards) result.hazards = [];
+      Logger.log('OpenRouter URL: SUCCESS model=' + modelName + ' hazards=' + result.hazards.length);
+      return result;
+    } catch(err) {
+      Logger.log('OpenRouter URL: model=' + modelName + ' exception: ' + err.toString());
+      continue;
     }
-
-    let text = JSON.parse(response.getContentText())
-      .choices[0].message.content.trim();
-    if (text.startsWith('```json')) text = text.substring(7);
-    if (text.startsWith('```'))     text = text.substring(3);
-    if (text.endsWith('```'))       text = text.slice(0, -3);
-    const f = text.indexOf('{'), l = text.lastIndexOf('}');
-    if (f >= 0 && l > f) text = text.substring(f, l + 1);
-
-    const result = JSON.parse(text.trim());
-    result._provider = 'openrouter';
-    result._model    = OPENROUTER_MODEL;
-    if (result.people === undefined) result.people = 0;
-    Logger.log('OpenRouter: SUCCESS — hazards=' + (result.hazards || []).length);
-    return result;
-  } catch(err) {
-    Logger.log('OpenRouter exception: ' + err.toString());
-    return null;
   }
+  return null;
 }
 
-// ★ v17: OpenRouter with base64 data URL — works when Cloudinary fails
+// ★ v22: OpenRouter with base64 data URL — tries free model then paid fallback
 function callOpenRouterImageBase64(base64, mimeType, prompt) {
-  try {
-    const dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
-    Logger.log('OpenRouter base64: sending data URL (' + base64.length + ' chars)');
-    const response = callOpenRouterWithRetry({
-      model: OPENROUTER_MODEL,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: dataUrl } }
-        ]
-      }],
-      max_tokens: 4096, temperature: 0.2
-    });
-    if (!response) return null;
-    const code = response.getResponseCode();
-    Logger.log('OpenRouter base64: HTTP ' + code);
-    if (code !== 200) {
-      Logger.log('OpenRouter base64 error: ' + response.getContentText().substring(0, 500));
-      return null;
+  const dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
+  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_PAID];
+  for (var mi = 0; mi < models.length; mi++) {
+    var modelName = models[mi];
+    try {
+      Logger.log('OpenRouter b64: trying model=' + modelName + ' (' + base64.length + ' chars)');
+      const response = callOpenRouterWithRetry({
+        model: modelName,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: dataUrl } }
+          ]
+        }],
+        max_tokens: 4096, temperature: 0.2
+      });
+      if (!response) continue;
+      const code = response.getResponseCode();
+      Logger.log('OpenRouter b64: model=' + modelName + ' HTTP=' + code);
+      if (code !== 200) {
+        Logger.log('OpenRouter b64 error: ' + response.getContentText().substring(0, 300));
+        continue;
+      }
+
+      let text = JSON.parse(response.getContentText())
+        .choices[0].message.content.trim();
+      if (text.startsWith('```json')) text = text.substring(7);
+      if (text.startsWith('```'))     text = text.substring(3);
+      if (text.endsWith('```'))       text = text.slice(0, -3);
+      const f = text.indexOf('{'), l = text.lastIndexOf('}');
+      if (f >= 0 && l > f) text = text.substring(f, l + 1);
+
+      const result = JSON.parse(text.trim());
+      result._provider = 'openrouter';
+      result._model    = modelName;
+      if (result.people === undefined) result.people = 0;
+      if (!result.hazards) result.hazards = [];
+      Logger.log('OpenRouter b64: SUCCESS model=' + modelName + ' hazards=' + result.hazards.length);
+      return result;
+    } catch(err) {
+      Logger.log('OpenRouter b64: model=' + modelName + ' exception: ' + err.toString());
+      continue;
     }
-
-    let text = JSON.parse(response.getContentText())
-      .choices[0].message.content.trim();
-    if (text.startsWith('```json')) text = text.substring(7);
-    if (text.startsWith('```'))     text = text.substring(3);
-    if (text.endsWith('```'))       text = text.slice(0, -3);
-    const f = text.indexOf('{'), l = text.lastIndexOf('}');
-    if (f >= 0 && l > f) text = text.substring(f, l + 1);
-
-    const result = JSON.parse(text.trim());
-    result._provider = 'openrouter';
-    result._model    = OPENROUTER_MODEL;
-    if (result.people === undefined) result.people = 0;
-    Logger.log('OpenRouter base64: SUCCESS — hazards=' + (result.hazards || []).length);
-    return result;
-  } catch(err) {
-    Logger.log('OpenRouter base64 exception: ' + err.toString());
-    return null;
   }
+  return null;
 }
 
 function callOpenRouterWithRetry(payload) {
@@ -1464,193 +1480,58 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
   };
 }
 
-// ★ v22: PARALLEL provider execution — fires Gemini + OpenRouter at the same time
-// Returns the BEST result (highest confidence & most hazards), or null if both fail
+// ★ v22: FAST PROVIDER CHAIN — OpenRouter first (different provider, no Google quota issue)
+// Then Google as fallback. No more fetchAll (it waits for slowest request).
 function runParallelProviders(prompt, base64, mimeType, cloudUrl) {
   var googleKey = getGoogleKey();
   var openRouterKey = getOpenRouterKey();
-
-  if (!googleKey && !openRouterKey) {
-    Logger.log('[PARALLEL] No API keys configured');
-    return null;
-  }
-
-  // Build parallel request array for UrlFetchApp.fetchAll()
-  var requests = [];
-  var requestLabels = []; // track which request is which
-
-  // ── Google Gemini request (first available model) ──
-  if (googleKey && base64) {
-    var pure = base64;
-    var commaIdx = pure.indexOf(',');
-    if (pure.indexOf('base64') >= 0 && commaIdx > 0) pure = pure.substring(commaIdx + 1);
-    pure = pure.replace(/\s+/g, '');
-
-    if (pure.length >= 100) {
-      // Try primary model first in parallel
-      var model = GOOGLE_MODELS[0];
-      var googleUrl = 'https://generativelanguage.googleapis.com/v1beta/models/'
-        + model + ':generateContent?key=' + encodeURIComponent(googleKey);
-      var googlePayload = {
-        contents: [{
-          role: 'user',
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mimeType || 'image/jpeg', data: pure } }
-          ]
-        }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 4096, responseMimeType: 'application/json' }
-      };
-      requests.push({
-        url: googleUrl,
-        method: 'post',
-        contentType: 'application/json',
-        payload: JSON.stringify(googlePayload),
-        muteHttpExceptions: true
-      });
-      requestLabels.push('google:' + model);
-    }
-  }
-
-  // ── OpenRouter request ──
-  if (openRouterKey) {
-    var orContent;
-    if (cloudUrl) {
-      orContent = [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: cloudUrl } }
-      ];
-    } else if (base64) {
-      var dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
-      orContent = [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: dataUrl } }
-      ];
-    }
-
-    if (orContent) {
-      var orPayload = {
-        model: OPENROUTER_MODEL,
-        messages: [{ role: 'user', content: orContent }],
-        max_tokens: 4096,
-        temperature: 0.2
-      };
-      requests.push({
-        url: 'https://openrouter.ai/api/v1/chat/completions',
-        method: 'post',
-        contentType: 'application/json',
-        headers: {
-          'Authorization': 'Bearer ' + openRouterKey,
-          'HTTP-Referer': 'https://abhibond1986.github.io/Safety-Lens-V2/',
-          'X-Title': 'SAIL Safety Lens'
-        },
-        payload: JSON.stringify(orPayload),
-        muteHttpExceptions: true
-      });
-      requestLabels.push('openrouter:' + OPENROUTER_MODEL);
-    }
-  }
-
-  if (requests.length === 0) {
-    Logger.log('[PARALLEL] No valid requests to send');
-    return null;
-  }
-
-  Logger.log('[PARALLEL] Firing ' + requests.length + ' requests simultaneously: ' + requestLabels.join(', '));
   var startTime = new Date().getTime();
 
-  // ★ FIRE BOTH SIMULTANEOUSLY
-  var responses;
-  try {
-    responses = UrlFetchApp.fetchAll(requests);
-  } catch (e) {
-    Logger.log('[PARALLEL] fetchAll exception: ' + e.toString());
+  if (!googleKey && !openRouterKey) {
+    Logger.log('[AI-FAST] No API keys configured');
     return null;
   }
 
-  var elapsed = new Date().getTime() - startTime;
-  Logger.log('[PARALLEL] All responses received in ' + elapsed + 'ms');
-
-  // ── Parse responses ──
-  var results = [];
-  for (var i = 0; i < responses.length; i++) {
-    var label = requestLabels[i];
-    var resp = responses[i];
-    var code = resp.getResponseCode();
-    Logger.log('[PARALLEL] ' + label + ' HTTP=' + code);
-
-    if (code !== 200) {
-      try {
-        Logger.log('[PARALLEL] ' + label + ' failed: ' + resp.getContentText().substring(0, 200));
-      } catch(logErr) {
-        Logger.log('[PARALLEL] ' + label + ' failed with HTTP=' + code);
-      }
-      continue;
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP 1: Try OpenRouter FIRST (fast, different provider from Google)
+  // This avoids waiting for exhausted Google to time out
+  // ═══════════════════════════════════════════════════════════════════
+  if (openRouterKey) {
+    Logger.log('[AI-FAST] ▶ OpenRouter first (model=' + OPENROUTER_MODEL + ')');
+    var orResult = null;
+    if (cloudUrl) {
+      orResult = callOpenRouterImageUrl(cloudUrl, prompt);
     }
-
-    try {
-      var parsed = null;
-      if (label.indexOf('google:') === 0) {
-        parsed = parseGoogleResponse(resp, label.split(':')[1]);
-      } else if (label.indexOf('openrouter:') === 0) {
-        parsed = parseOpenRouterResponse(resp);
-      }
-
-      if (parsed && parsed.hazards && parsed.hazards.length > 0) {
-        results.push(parsed);
-        Logger.log('[PARALLEL] ' + label + ' ✓ hazards=' + parsed.hazards.length
-          + ' confidence=' + (parsed.confidence || '?'));
-      } else {
-        Logger.log('[PARALLEL] ' + label + ' returned no valid hazards');
-      }
-    } catch (parseErr) {
-      Logger.log('[PARALLEL] ' + label + ' parse error: ' + parseErr.toString());
+    if (!orResult && base64) {
+      orResult = callOpenRouterImageBase64(base64, mimeType, prompt);
     }
+    if (orResult && orResult.hazards && orResult.hazards.length > 0) {
+      var elapsed = new Date().getTime() - startTime;
+      Logger.log('[AI-FAST] ✓ OpenRouter SUCCESS in ' + elapsed + 'ms, hazards=' + orResult.hazards.length);
+      return orResult;
+    }
+    Logger.log('[AI-FAST] ✗ OpenRouter failed, trying Google...');
   }
 
-  if (results.length === 0) {
-    Logger.log('[PARALLEL] No successful results from parallel calls');
-    // Fall through to sequential retry with remaining Google models
-    if (googleKey && base64) {
-      Logger.log('[PARALLEL] Trying remaining Google models sequentially...');
-      var seqResult = callGoogleDirectImage(prompt, base64, mimeType);
-      if (seqResult) return seqResult;
+  // ═══════════════════════════════════════════════════════════════════
+  // STEP 2: Google Gemini (only if OpenRouter failed)
+  // Uses smart model fallback chain with quota detection
+  // ═══════════════════════════════════════════════════════════════════
+  if (googleKey && base64) {
+    Logger.log('[AI-FAST] ▶ Google Gemini fallback');
+    var googleResult = callGoogleDirectImage(prompt, base64, mimeType);
+    if (googleResult) {
+      var elapsed = new Date().getTime() - startTime;
+      Logger.log('[AI-FAST] ✓ Google SUCCESS in ' + elapsed + 'ms, hazards=' + (googleResult.hazards || []).length);
+      googleResult._fallback = 'openrouter_failed';
+      return googleResult;
     }
-    // Try OpenRouter with retry (in case first attempt hit transient error)
-    if (openRouterKey) {
-      Logger.log('[PARALLEL] Trying OpenRouter with retry...');
-      if (cloudUrl) {
-        var orRetry = callOpenRouterImageUrl(cloudUrl, prompt);
-        if (orRetry) return orRetry;
-      }
-      if (base64) {
-        var orRetryB64 = callOpenRouterImageBase64(base64, mimeType, prompt);
-        if (orRetryB64) return orRetryB64;
-      }
-    }
-    return null;
+    Logger.log('[AI-FAST] ✗ Google also failed');
   }
 
-  // ── Pick best result: highest confidence, then most hazards ──
-  if (results.length === 1) {
-    Logger.log('[PARALLEL] Single winner: ' + results[0]._provider + '/' + results[0]._model);
-    return results[0];
-  }
-
-  // Both succeeded — pick the better one
-  var best = results[0];
-  for (var r = 1; r < results.length; r++) {
-    var candidate = results[r];
-    var bestScore = (best.confidence || 0) + (best.hazards || []).length * 5;
-    var candScore = (candidate.confidence || 0) + (candidate.hazards || []).length * 5;
-    if (candScore > bestScore) best = candidate;
-  }
-
-  Logger.log('[PARALLEL] ★ Best result: ' + best._provider + '/' + best._model
-    + ' (confidence=' + (best.confidence || '?') + ', hazards=' + (best.hazards || []).length + ')');
-  best._parallelWinner = true;
-  best._totalProviders = results.length;
-  return best;
+  var totalElapsed = new Date().getTime() - startTime;
+  Logger.log('[AI-FAST] ✗ ALL FAILED in ' + totalElapsed + 'ms');
+  return null;
 }
 
 // Parse a Google Gemini response into structured result
@@ -2087,6 +1968,4 @@ function testPromptVersion() {
 function testFormatSheet() {
   const result = formatIncidentsSheet();
   Logger.log('formatIncidentsSheet result: ' + JSON.stringify(result));
-}
-
 }

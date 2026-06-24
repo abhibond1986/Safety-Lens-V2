@@ -86,27 +86,8 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // RETRY ONCE (in case of transient server error)
-      // ══════════════════════════════════════════════════════════════════════
-      if (retryCount == 0) {
-        print('GeminiVision: ▶ Retrying after 3s...');
-        await Future.delayed(const Duration(seconds: 3));
-        try {
-          final retryResult = await _callAppsScript(bytes);
-          if (retryResult != null &&
-              retryResult['hazards'] != null &&
-              (retryResult['hazards'] as List).isNotEmpty &&
-              retryResult['error'] == null) {
-            print('GeminiVision: ✓ RETRY SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            return retryResult;
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ Retry exception: $e');
-        }
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // OFFLINE FALLBACK
+      // NO CLIENT-SIDE RETRY — server already has model fallbacks internally
+      // (retrying just doubles wait time from 90s to 180s)
       // ══════════════════════════════════════════════════════════════════════
       print('GeminiVision: ▶ Offline fallback (server unavailable)');
       print('GeminiVision: Total time elapsed: ${stopwatch.elapsedMilliseconds}ms');
@@ -122,9 +103,9 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    // Scale timeout by payload size: small images 60s, large images up to 120s
+    // Scale timeout by payload size: allow enough time for server-side AI
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 120 : 60;
+    final timeoutSec = payloadKB > 500 ? 150 : 90;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {
