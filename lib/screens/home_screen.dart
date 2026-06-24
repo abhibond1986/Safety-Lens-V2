@@ -180,7 +180,11 @@ class _HomeScreenState extends State<HomeScreen>
                             child: Icon(
                               sel ? item.activeIcon : item.icon,
                               size: 22,
-                              color: sel ? AppColors.accent : sl.text4,
+                              color: sel
+                                  ? AppColors.accent
+                                  : sl.isDark
+                                      ? const Color(0xFFA0AEC0) // brighter for dark mode nav
+                                      : sl.text4,
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -191,7 +195,11 @@ class _HomeScreenState extends State<HomeScreen>
                               fontWeight: sel
                                   ? FontWeight.w700
                                   : FontWeight.w500,
-                              color: sel ? AppColors.accent : sl.text4,
+                              color: sel
+                                  ? AppColors.accent
+                                  : sl.isDark
+                                      ? const Color(0xFFA0AEC0) // brighter for dark mode nav
+                                      : sl.text4,
                             ),
                           ),
                         ],

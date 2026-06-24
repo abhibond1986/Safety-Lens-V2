@@ -58,7 +58,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   final _immediateAction = TextEditingController();
 
   String _plant   = 'SAIL Safety Organisation';
-  String _wsaCause = 'Slip / Fall';
+  String _wsaCause = '5. Equipment failure';
   String _severity = 'MEDIUM';
   String _obsType  = 'Unsafe Condition';
 
@@ -285,7 +285,23 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
   // Loaded dynamically from AdminMasterData (synced with admin panel)
   List<String> _plants = ['BSP', 'DSP', 'RSP', 'BSL', 'ISP', 'ASP', 'SSP', 'CFP', 'CMO', 'JGOM', 'OGOM', 'BSP(M)', 'Collieries', 'SRU Kulti', 'SSO'];
-  List<String> _wsaCauses = ['Burn / Fire', 'Chemical', 'Electrical', 'Fall from Height', 'Fall of Material', 'Gas Related', 'Hit / Caught / Pressed', 'Hot Metal / Slag / Sub', 'Machine / Equipment', 'Material Handling', 'Road / Rail', 'Slip / Fall', 'Other'];
+  // ✅ v23: Default matches AdminMasterData.defaultWsaCauses (WSA-13 root causes)
+  // Gets overwritten by _loadMasterData() with custom list from admin panel
+  List<String> _wsaCauses = const [
+    '1. Failure to follow procedure',
+    '2. Lack of hazard awareness',
+    '3. Improper PPE use',
+    '4. Unsafe body positioning',
+    '5. Equipment failure',
+    '6. Communication failure',
+    '7. Human error',
+    '8. Poor housekeeping',
+    '9. Lack of supervision',
+    '10. Fatigue / time pressure',
+    '11. Unauthorized operation',
+    '12. Inadequate isolation (LOTO/PTW)',
+    '13. Environmental conditions',
+  ];
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();

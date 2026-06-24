@@ -1,12 +1,12 @@
 // lib/widgets/wsa_bar_chart.dart
-// WSA-13 Bar Chart widget for the dashboard.
+// ✅ v23: WSA-13 Bar Chart — now uses AdminMasterData custom list as source of truth.
 // Shows count of incidents by WSA category with a plant filter dropdown.
-// Filter options: "Entire SAIL" or individual plants.
 
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
 import '../services/i18n.dart';
 import '../services/local_db.dart';
+import '../services/admin_master_data.dart';
 
 class WsaBarChart extends StatefulWidget {
   const WsaBarChart({super.key});
@@ -17,25 +17,9 @@ class WsaBarChart extends StatefulWidget {
 
 class _WsaBarChartState extends State<WsaBarChart> {
   List<Map<String, dynamic>> _incidents = [];
-  String _selectedPlant = 'all'; // 'all' = Entire SAIL
+  List<String> _wsaCategories = [];
+  String _selectedPlant = 'all';
   bool _loading = true;
-
-  // All 13 WSA categories
-  static const List<Map<String, String>> wsaCategories = [
-    {'key': 'wsa.fallFromHeight',   'match': 'Fall from Height'},
-    {'key': 'wsa.slipFall',         'match': 'Slip / Fall'},
-    {'key': 'wsa.hitCaughtPressed', 'match': 'Hit / Caught / Pressed'},
-    {'key': 'wsa.hotMetalSlag',     'match': 'Hot Metal / Slag'},
-    {'key': 'wsa.electrical',       'match': 'Electrical'},
-    {'key': 'wsa.gas',              'match': 'Gas'},
-    {'key': 'wsa.explosion',        'match': 'Explosion'},
-    {'key': 'wsa.machinery',        'match': 'Machinery'},
-    {'key': 'wsa.transport',        'match': 'Transport'},
-    {'key': 'wsa.confinedSpace',    'match': 'Confined Space'},
-    {'key': 'wsa.chemical',         'match': 'Chemical'},
-    {'key': 'wsa.ergonomic',        'match': 'Ergonomic'},
-    {'key': 'wsa.other',            'match': 'Other'},
-  ];
 
   static const List<Map<String, String>> _plants = [
     {'code': 'all',  'name': 'Entire SAIL'},
@@ -57,7 +41,13 @@ class _WsaBarChartState extends State<WsaBarChart> {
 
   Future<void> _loadData() async {
     final inc = await LocalDB.getIncidents();
-    if (mounted) setState(() { _incidents = inc; _loading = false; });
+    // ✅ v23: Load WSA categories from AdminMasterData (same source as admin panel)
+    final wsa = await AdminMasterData.getWsaCauses();
+    if (mounted) setState(() {
+      _incidents = inc;
+      _wsaCategories = wsa;
+      _loading = false;
+    });
   }
 
   List<Map<String, dynamic>> get _filteredIncidents {
@@ -68,29 +58,34 @@ class _WsaBarChartState extends State<WsaBarChart> {
     }).toList();
   }
 
+  /// Count incidents per WSA category using flexible matching.
+  /// Matches the incident's wsaCategory field against the custom list entries.
   Map<String, int> get _wsaCounts {
     final filtered = _filteredIncidents;
     final counts = <String, int>{};
-    for (final cat in wsaCategories) {
-      final matchStr = cat['match']!.toLowerCase();
-      counts[cat['key']!] = filtered.where((i) {
+
+    for (final cat in _wsaCategories) {
+      final catLower = cat.toLowerCase();
+      // Extract keywords: strip leading number+dot, split on whitespace/punctuation
+      final stripped = cat.replaceFirst(RegExp(r'^\d+\.\s*'), '').toLowerCase();
+      final keywords = stripped.split(RegExp(r'[\s/()]+'))
+          .where((w) => w.length > 2).toList();
+
+      counts[cat] = filtered.where((i) {
         final wsa = (i['wsaCategory']?.toString() ?? '').toLowerCase();
-        // Flexible matching: check if WSA category contains the match string
-        // or the match string contains the WSA category
-        return wsa.contains(matchStr) || matchStr.contains(wsa) ||
-               _fuzzyMatch(wsa, matchStr);
+        if (wsa.isEmpty) return false;
+        // Exact match
+        if (wsa == catLower) return true;
+        // Contains match (either direction)
+        if (wsa.contains(stripped) || stripped.contains(wsa)) return true;
+        // Keyword match: any keyword from the category appears in the incident's wsaCategory
+        for (final kw in keywords) {
+          if (wsa.contains(kw)) return true;
+        }
+        return false;
       }).length;
     }
     return counts;
-  }
-
-  bool _fuzzyMatch(String a, String b) {
-    // Match keywords: e.g. "fall" matches "Fall from Height"
-    final words = b.split(RegExp(r'[\s/]+'));
-    for (final w in words) {
-      if (w.length > 2 && a.contains(w)) return true;
-    }
-    return false;
   }
 
   @override
@@ -168,20 +163,22 @@ class _WsaBarChartState extends State<WsaBarChart> {
             style: TextStyle(color: sl.text3, fontSize: 11)),
           const SizedBox(height: 16),
 
-          // Bar chart
-          ...wsaCategories.map((cat) {
-            final count = counts[cat['key']!] ?? 0;
+          // Bar chart — dynamically built from custom WSA list
+          ..._wsaCategories.map((cat) {
+            final count = counts[cat] ?? 0;
             final fraction = maxCount > 0 ? count / maxCount : 0.0;
             final barColor = _barColor(count, maxCount);
+            // Display label: strip leading number for compact display
+            final label = cat.replaceFirst(RegExp(r'^\d+\.\s*'), '');
 
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(children: [
                 // Category label
                 SizedBox(
-                  width: 90,
+                  width: 100,
                   child: Text(
-                    I18n.t(cat['key']!),
+                    label,
                     style: TextStyle(color: sl.text2, fontSize: 10,
                       fontWeight: FontWeight.w500),
                     maxLines: 1, overflow: TextOverflow.ellipsis)),

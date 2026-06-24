@@ -2094,6 +2094,7 @@ class _AIScanTabState extends State<AIScanTab> {
         ),
       const SizedBox(height: 12),
 
+      // ✅ v23: Two-row button layout for proper alignment
       Row(children: [
         Expanded(child: ElevatedButton.icon(
           onPressed: _result != null
@@ -2102,65 +2103,65 @@ class _AIScanTabState extends State<AIScanTab> {
               size: 14, color: Colors.white),
           label: const Text('Review',
               style: TextStyle(color: Colors.white,
-                  fontSize: 12, fontWeight: FontWeight.w700)),
+                  fontSize: 11, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.amber,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
         )),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(child: ElevatedButton.icon(
           onPressed: _isSaved ? null : _save,
           icon: Icon(_isSaved ? Icons.check_rounded : Icons.save_outlined,
               size: 14, color: Colors.white),
           label: Text(_isSaved ? 'Saved ✓' : 'Save',
               style: const TextStyle(color: Colors.white,
-                  fontSize: 12, fontWeight: FontWeight.w700)),
+                  fontSize: 11, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
             backgroundColor: _isSaved ? Colors.grey : AppColors.green,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
         )),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(child: ElevatedButton.icon(
           onPressed: _exportPdf,
           icon: const Icon(Icons.picture_as_pdf,
               size: 14, color: Colors.white),
           label: const Text('PDF',
               style: TextStyle(color: Colors.white,
-                  fontSize: 12, fontWeight: FontWeight.w700)),
+                  fontSize: 11, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.accent,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
         )),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(child: ElevatedButton.icon(
           onPressed: _shareReport,
           icon: const Icon(Icons.share_rounded,
               size: 14, color: Colors.white),
           label: const Text('Share',
               style: TextStyle(color: Colors.white,
-                  fontSize: 12, fontWeight: FontWeight.w700)),
+                  fontSize: 11, fontWeight: FontWeight.w700)),
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF25D366),
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
         )),
-        const SizedBox(width: 8),
+        const SizedBox(width: 6),
         Expanded(child: OutlinedButton.icon(
           onPressed: _reset,
           icon: const Icon(Icons.refresh, size: 14, color: AppColors.accent),
           label: const Text('New',
               style: TextStyle(color: AppColors.accent,
-                  fontSize: 12, fontWeight: FontWeight.w700)),
+                  fontSize: 11, fontWeight: FontWeight.w700)),
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: AppColors.accent, width: 2),
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(10))),
         )),
