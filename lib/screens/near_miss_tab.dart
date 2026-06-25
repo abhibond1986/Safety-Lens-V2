@@ -64,6 +64,12 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
   String? _lastSubmissionKey;
 
+  // ★ v24: AI Description Refinement
+  bool _aiRefining = false;
+  Map<String, dynamic>? _aiSuggestion; // {refined, isNearMiss, reason, confidence}
+  DateTime? _lastDescChange;
+  static const _aiRefineDelay = Duration(seconds: 2);
+
   // GPS geo-tagging
   LocationData? _capturedLocation;
 
@@ -197,6 +203,10 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     if (_isListening && _activeMicField == targetField) {
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
+      // ★ v24: Trigger AI refinement when user stops voice input on description
+      if (targetField == _description && _description.text.trim().length >= 10) {
+        _refineWithAI(_description.text.trim());
+      }
       return;
     }
 
@@ -252,6 +262,107 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       if (mounted) setState(() { _isListening = false; _activeMicField = null; });
       _snack('Voice input failed. Try again.', AppColors.red);
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ★ v24: AI NEAR MISS REFINEMENT
+  //  Validates whether input is a genuine near miss & refines language
+  // ═══════════════════════════════════════════════════════════════
+  void _onDescriptionChanged(String text) {
+    _lastDescChange = DateTime.now();
+    // Clear previous suggestion if user is still editing
+    if (_aiSuggestion != null) {
+      setState(() => _aiSuggestion = null);
+    }
+    // Debounce: trigger AI refinement after user stops typing
+    if (text.trim().length >= 10) {
+      Future.delayed(_aiRefineDelay, () {
+        if (!mounted) return;
+        if (_lastDescChange != null &&
+            DateTime.now().difference(_lastDescChange!) >= _aiRefineDelay &&
+            _description.text.trim() == text.trim()) {
+          _refineWithAI(text.trim());
+        }
+      });
+    }
+  }
+
+  Future<void> _refineWithAI(String rawText) async {
+    if (_aiRefining || rawText.length < 10) return;
+    setState(() => _aiRefining = true);
+
+    try {
+      final prompt = '''You are an expert Safety Officer at a steel plant (SAIL). A worker has described a potential near miss incident.
+
+WORKER'S INPUT: "$rawText"
+
+Analyze this and respond in STRICT JSON format:
+{
+  "isNearMiss": true/false,
+  "confidence": 0-100,
+  "reason": "brief explanation why this is or is not a near miss",
+  "refined": "rewritten professional near-miss description with proper safety terminology, clear grammar, and structured format",
+  "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation"
+}
+
+NEAR MISS DEFINITION: An unplanned event that DID NOT result in injury/illness/damage but HAD THE POTENTIAL to do so. It involves an unexpected hazardous exposure, a close call, or a condition that could lead to an accident.
+
+NOT A NEAR MISS: routine observations, planned maintenance, general complaints, requests, work orders, or situations with no potential for harm.
+
+Respond ONLY with the JSON — no explanations outside JSON.''';
+
+      final body = await SyncService.callAiText(prompt);
+      if (!mounted) return;
+
+      if (body != null) {
+        // Extract text from Apps Script response
+        String? aiText;
+        if (body['text'] != null) {
+          aiText = body['text'].toString();
+        } else if (body['result'] != null) {
+          aiText = body['result'].toString();
+        } else {
+          aiText = jsonEncode(body);
+        }
+
+        if (aiText != null) {
+          // Extract JSON from response (might have markdown fences)
+          String jsonStr = aiText;
+          final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(jsonStr);
+          if (jsonMatch != null) jsonStr = jsonMatch.group(0)!;
+
+          try {
+            final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
+            if (mounted) {
+              setState(() {
+                _aiSuggestion = parsed;
+                _aiRefining = false;
+              });
+            }
+            return;
+          } catch (_) {}
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) setState(() => _aiRefining = false);
+  }
+
+  void _acceptAiRefinement() {
+    if (_aiSuggestion == null) return;
+    final refined = _aiSuggestion!['refined']?.toString() ?? '';
+    if (refined.isNotEmpty) {
+      setState(() {
+        _description.text = refined;
+        _description.selection = TextSelection.fromPosition(
+            TextPosition(offset: refined.length));
+        _aiSuggestion = null;
+      });
+    }
+  }
+
+  void _dismissAiSuggestion() {
+    setState(() => _aiSuggestion = null);
   }
 
   Future<void> _uploadPdfBackground(Map<String, dynamic> incident, Map<String, dynamic>? user) async {
@@ -1149,8 +1260,13 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
-          _buildTextField('Detailed Hazard Description', _description, Icons.description_outlined, sl, maxLines: 3,
-            suffix: _micButton(_description)),
+          _buildTextField('Type / use mic to record Near Miss', _description, Icons.description_outlined, sl, maxLines: 3,
+            suffix: _micButton(_description), onChanged: _onDescriptionChanged),
+          // ★ AI Suggestion Card
+          if (_aiRefining)
+            _buildAiRefiningIndicator(sl),
+          if (_aiSuggestion != null)
+            _buildAiSuggestionCard(sl),
           _buildTextField('Immediate Corrective Action', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
             suffix: _micButton(_immediateAction)),
         ],
@@ -1185,13 +1301,152 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     );
   }
 
-  Widget _buildTextField(String label, TextEditingController controller, IconData icon, SL sl, {int maxLines = 1, TextInputType keyboardType = TextInputType.text, Widget? suffix}) {
+  // ═══════════════════════════════════════════════════════════════
+  //  ★ v24: AI REFINEMENT UI WIDGETS
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildAiRefiningIndicator(SL sl) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          SizedBox(width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent)),
+          const SizedBox(width: 10),
+          Text('AI is analyzing your description...',
+            style: TextStyle(color: sl.text3, fontSize: 11, fontStyle: FontStyle.italic)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAiSuggestionCard(SL sl) {
+    final isNearMiss = _aiSuggestion!['isNearMiss'] == true;
+    final confidence = (_aiSuggestion!['confidence'] ?? 0) as num;
+    final reason = _aiSuggestion!['reason']?.toString() ?? '';
+    final refined = _aiSuggestion!['refined']?.toString() ?? '';
+
+    final cardColor = isNearMiss
+        ? (sl.isDark ? const Color(0xFF1B3A2E) : const Color(0xFFE8F5E9))
+        : (sl.isDark ? const Color(0xFF3A1B1B) : const Color(0xFFFFF3E0));
+    final borderColor = isNearMiss
+        ? const Color(0xFF43A047)
+        : const Color(0xFFF57C00);
+    final iconData = isNearMiss ? Icons.check_circle_outline : Icons.warning_amber_rounded;
+    final iconColor = isNearMiss ? const Color(0xFF43A047) : const Color(0xFFF57C00);
+    final statusText = isNearMiss
+        ? 'Valid Near Miss (${confidence.toInt()}% confidence)'
+        : 'May NOT be a Near Miss';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cardColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: borderColor.withOpacity(0.5), width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Status header
+            Row(
+              children: [
+                Icon(iconData, size: 18, color: iconColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(statusText,
+                    style: TextStyle(
+                      color: iconColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
+                ),
+                GestureDetector(
+                  onTap: _dismissAiSuggestion,
+                  child: Icon(Icons.close, size: 16, color: sl.text4),
+                ),
+              ],
+            ),
+            if (reason.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(reason,
+                style: TextStyle(color: sl.text2, fontSize: 11, height: 1.3)),
+            ],
+            if (refined.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: sl.isDark ? Colors.black26 : Colors.white.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('AI Refined Description:',
+                      style: TextStyle(color: sl.text3, fontSize: 10, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 4),
+                    Text(refined,
+                      style: TextStyle(color: sl.text1, fontSize: 12, height: 1.4)),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (refined.isNotEmpty)
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: _acceptAiRefinement,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Center(
+                          child: Text('Use AI Version',
+                            style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (refined.isNotEmpty) const SizedBox(width: 10),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _dismissAiSuggestion,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: sl.text4.withOpacity(0.5)),
+                      ),
+                      child: Center(
+                        child: Text(isNearMiss ? 'Keep My Text' : 'Submit Anyway',
+                          style: TextStyle(color: sl.text2, fontSize: 11, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField(String label, TextEditingController controller, IconData icon, SL sl, {int maxLines = 1, TextInputType keyboardType = TextInputType.text, Widget? suffix, void Function(String)? onChanged}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: TextField(
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
+        onChanged: onChanged,
         style: TextStyle(color: sl.text1, fontSize: 13),
         decoration: InputDecoration(
           labelText: label,

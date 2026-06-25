@@ -139,6 +139,29 @@ class SyncService {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  ★ v24: AI TEXT CALL (for refinement / validation)
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Send a text prompt to the backend AI (Gemini) and return the response body.
+  /// Used for near-miss description refinement, not image analysis.
+  static Future<Map<String, dynamic>?> callAiText(String prompt) async {
+    if (!await isConfigured) return null;
+    try {
+      final url = await getBackendUrl();
+      final resp = await _postWithRedirect(url, {
+        'action': 'gemini',
+        'prompt': prompt,
+      }, timeout: const Duration(seconds: 30));
+      if (resp != null && resp.statusCode == 200) {
+        return jsonDecode(resp.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  ★ v24: MASTER DATA SYNC (plants, departments, WSA, etc.)
   // ═══════════════════════════════════════════════════════════════
 
