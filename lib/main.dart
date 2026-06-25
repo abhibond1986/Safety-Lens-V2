@@ -19,7 +19,10 @@ void main() async {
   await SyncService.init();
   SyncService.drainPendingQueue().catchError((_) => 0);
   // ★ v24: Pull latest master data (plants, depts, WSA) from backend on startup
-  AdminMasterData.syncFromBackend().catchError((_) => false);
+  // Await with timeout so UI renders with fresh data (not stale defaults)
+  await AdminMasterData.syncFromBackend()
+      .timeout(const Duration(seconds: 10), onTimeout: () => false)
+      .catchError((_) => false);
   // Silent auto-update: checks GitHub releases and installs APK in background
   AppUpdater.init();
   runApp(const SafetyLensApp());
