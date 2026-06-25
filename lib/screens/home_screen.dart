@@ -144,9 +144,15 @@ class _HomeScreenState extends State<HomeScreen>
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           decoration: BoxDecoration(
-            color: sl.glassColor,
+            color: sl.isDark
+                ? const Color(0xFF1E1B3A).withOpacity(0.95) // solid dark card for visibility
+                : sl.glassColor,
             border: Border(
-              top: BorderSide(color: sl.glassBorder, width: 0.5),
+              top: BorderSide(
+                color: sl.isDark
+                    ? Colors.white.withOpacity(0.15)
+                    : sl.glassBorder,
+                width: 0.5),
             ),
           ),
           child: SafeArea(
@@ -179,7 +185,7 @@ class _HomeScreenState extends State<HomeScreen>
                               color: sel
                                   ? AppColors.accent
                                   : sl.isDark
-                                      ? const Color(0xFFA0AEC0) // brighter for dark mode nav
+                                      ? const Color(0xFFCBD5E1) // brighter for dark mode nav
                                       : sl.text4,
                             ),
                           ),
@@ -194,7 +200,7 @@ class _HomeScreenState extends State<HomeScreen>
                               color: sel
                                   ? AppColors.accent
                                   : sl.isDark
-                                      ? const Color(0xFFA0AEC0) // brighter for dark mode nav
+                                      ? const Color(0xFFCBD5E1) // brighter for dark mode nav
                                       : sl.text4,
                             ),
                           ),

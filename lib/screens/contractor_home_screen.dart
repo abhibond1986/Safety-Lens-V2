@@ -160,9 +160,15 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
       decoration: BoxDecoration(
-        color: sl.glassColor,
+        color: sl.isDark
+            ? const Color(0xFF1E1B3A).withOpacity(0.95)
+            : sl.glassColor,
         border: Border(
-          top: BorderSide(color: sl.glassBorder, width: 0.5),
+          top: BorderSide(
+            color: sl.isDark
+                ? Colors.white.withOpacity(0.15)
+                : sl.glassBorder,
+            width: 0.5),
         ),
       ),
       child: SafeArea(
@@ -192,7 +198,11 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                         child: Icon(
                           sel ? item.activeIcon : item.icon,
                           size: 22,
-                          color: sel ? AppColors.accent : sl.text4,
+                          color: sel
+                                ? AppColors.accent
+                                : sl.isDark
+                                    ? const Color(0xFFCBD5E1)
+                                    : sl.text4,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -202,7 +212,11 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
                           fontSize: 10,
                           fontWeight:
                               sel ? FontWeight.w700 : FontWeight.w500,
-                          color: sel ? AppColors.accent : sl.text4,
+                          color: sel
+                              ? AppColors.accent
+                              : sl.isDark
+                                  ? const Color(0xFFCBD5E1)
+                                  : sl.text4,
                         ),
                       ),
                     ],
