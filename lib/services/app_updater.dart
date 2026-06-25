@@ -23,13 +23,17 @@ class AppUpdater {
   static const String _repo = 'Safety-Lens-V2';
 
   /// Fallback version if native query fails — should match pubspec.yaml
-  static const String _fallbackVersion = '1.0.45';
+  static const String _fallbackVersion = '1.0.48';
 
   /// How often to check for updates (in hours)
-  static const int _checkIntervalHours = 6;
+  static const int _checkIntervalHours = 1;
+
+  /// How many times to retry offering the same version before giving up
+  static const int _maxAttempts = 5;
 
   static const String _lastCheckKey = 'app_updater_last_check';
   static const String _lastVersionKey = 'app_updater_last_installed';
+  static const String _attemptCountKey = 'app_updater_attempt_count';
   static const String _kCurrentVersion = 'app_updater_current_version';
 
   /// Method channel for native install + version query
@@ -69,17 +73,34 @@ class AppUpdater {
 
     await prefs.setInt(_lastCheckKey, now);
 
+    // Reset attempt counter if a previous install never actually completed
+    // (user is still on an older version than what was "attempted")
+    final currentVer = await getCurrentVersion();
+    final lastAttemptedVer = prefs.getString(_lastVersionKey) ?? '';
+    if (lastAttemptedVer.isNotEmpty && _isNewerVersion(lastAttemptedVer, currentVer)) {
+      // Install was offered but never completed — keep retrying
+      debugPrint('[AppUpdater] v$lastAttemptedVer was attempted but not installed (still on v$currentVer)');
+    }
+
     try {
       final updateInfo = await _checkForUpdate();
       if (updateInfo != null) {
-        // Don't re-download if we already tried this version
-        final lastInstalled = prefs.getString(_lastVersionKey) ?? '';
-        if (lastInstalled == updateInfo.version) {
-          debugPrint('[AppUpdater] Already attempted v${updateInfo.version} — skipping');
+        // Allow retrying same version up to _maxAttempts times
+        final lastAttempted = prefs.getString(_lastVersionKey) ?? '';
+        final attemptCount = prefs.getInt(_attemptCountKey) ?? 0;
+        if (lastAttempted == updateInfo.version && attemptCount >= _maxAttempts) {
+          debugPrint('[AppUpdater] Already attempted v${updateInfo.version} $attemptCount times — skipping');
           return;
         }
 
-        debugPrint('[AppUpdater] Update available: v${updateInfo.version} (current: ${await getCurrentVersion()})');
+        // Track attempt count (reset if it's a new version)
+        if (lastAttempted != updateInfo.version) {
+          await prefs.setInt(_attemptCountKey, 1);
+        } else {
+          await prefs.setInt(_attemptCountKey, attemptCount + 1);
+        }
+
+        debugPrint('[AppUpdater] Update available: v${updateInfo.version} (current: ${await getCurrentVersion()}, attempt: ${attemptCount + 1})');
         await _downloadAndInstall(updateInfo);
       } else {
         debugPrint('[AppUpdater] App is up to date (v${await getCurrentVersion()})');
