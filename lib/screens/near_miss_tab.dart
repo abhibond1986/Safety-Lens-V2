@@ -669,6 +669,16 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     return false;
   }
 
+  /// Save Report only — shows success dialog with share options (no PDF)
+  void _handleSaveOnly() {
+    _submit(exportAfter: false);
+  }
+
+  /// Save + PDF — standalone, exports PDF after saving
+  void _handleSavePdf() {
+    _submit(exportAfter: true);
+  }
+
   Future<bool> _submit({bool exportAfter = false}) async {
     if (_submitting) return false; // Prevent double-tap
     final loc = _location.text.trim();
@@ -790,16 +800,20 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         mainAxisSize: MainAxisSize.min, children: [
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: AppColors.green.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(Icons.check_circle_rounded, color: AppColors.green, size: 48)),
+            decoration: BoxDecoration(
+              color: (exported ? AppColors.accent : AppColors.green).withOpacity(0.1),
+              shape: BoxShape.circle),
+            child: Icon(
+              exported ? Icons.picture_as_pdf_rounded : Icons.check_circle_rounded,
+              color: exported ? AppColors.accent : AppColors.green, size: 48)),
           const SizedBox(height: 16),
-          Text(exported ? 'Saved + PDF Exported' : 'Near Miss Reported',
+          Text(exported ? 'Saved + PDF Exported' : 'Near Miss Saved!',
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           Text(synced ? 'Synced to cloud ☁️' : 'Saved locally (will sync later)',
             style: TextStyle(fontSize: 13, color: Colors.grey[600])),
           const SizedBox(height: 20),
-          // Share buttons
+          // Share buttons — always show for Save, show for PDF too
           Text('Share Report', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey[700])),
           const SizedBox(height: 10),
           Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
@@ -1012,27 +1026,29 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   ]);
 
   Widget _submitBtn({required String label, required IconData icon, required List<Color> colors, required VoidCallback onTap}) {
-    return Opacity(
-      opacity: _submitting ? 0.6 : 1.0,
-      child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: colors),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(color: colors.first.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
-          ]),
-        child: ElevatedButton.icon(
-          onPressed: _submitting ? null : onTap,
-          icon: _submitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : Icon(icon, size: 16, color: Colors.white),
-          label: Text(_submitting ? 'Saving...' : label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            disabledBackgroundColor: Colors.transparent,
-            padding: const EdgeInsets.symmetric(vertical: 15),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)))),
+    return AbsorbPointer(
+      absorbing: _submitting,
+      child: Opacity(
+        opacity: _submitting ? 0.6 : 1.0,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: colors),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(color: colors.first.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
+            ]),
+          child: ElevatedButton.icon(
+            onPressed: onTap,
+            icon: _submitting
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : Icon(icon, size: 16, color: Colors.white),
+            label: Text(_submitting ? 'Saving...' : label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)))),
+        ),
       ),
     );
   }
@@ -1557,14 +1573,14 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
                     label: 'Save Report',
                     icon:  Icons.save_rounded,
                     colors: const [Color(0xFF16A34A), Color(0xFF059669)],
-                    onTap: () => _submit(exportAfter: false),
+                    onTap: _handleSaveOnly,
                   )),
                   const SizedBox(width: 10),
                   Expanded(child: _submitBtn(
                     label: 'Save + PDF',
                     icon:  Icons.picture_as_pdf_rounded,
                     colors: const [Color(0xFF7B5BFF), Color(0xFF06B6D4)],
-                    onTap: () => _submit(exportAfter: true),
+                    onTap: _handleSavePdf,
                   )),
                 ]),
                 const SizedBox(height: 20),
