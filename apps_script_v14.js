@@ -1815,6 +1815,8 @@ function getSheet(name) {
           createdAt: new Date().toISOString(), lastLogin:''
         })[c] || '';
       }));
+      // Auto-resize user columns for readability
+      try { sheet.autoResizeColumns(1, USER_COLS.length); } catch(_) {}
     }
     if (name === SHEET_INCIDENTS) {
       try { formatIncidentsSheet(); } catch(_) {}

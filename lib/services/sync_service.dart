@@ -39,6 +39,37 @@ class SyncService {
     return url.isNotEmpty && url.startsWith('https://');
   }
 
+  /// Helper: POST to Apps Script, then follow 302 redirect with GET.
+  /// Apps Script processes the POST and redirects to a result URL that
+  /// must be fetched with GET to receive the JSON response.
+  static Future<http.Response?> _postWithRedirect(
+      String url, Map<String, dynamic> body,
+      {Duration timeout = const Duration(seconds: 30)}) async {
+    final client = http.Client();
+    try {
+      var resp = await client
+          .post(
+            Uri.parse(url),
+            body: jsonEncode(body),
+            headers: {'Content-Type': 'text/plain;charset=utf-8'},
+          )
+          .timeout(timeout);
+
+      // Apps Script always redirects POST → GET result URL
+      if (resp.statusCode == 302 || resp.statusCode == 301) {
+        final loc = resp.headers['location'] ?? '';
+        if (loc.isNotEmpty) {
+          resp = await client.get(Uri.parse(loc)).timeout(timeout);
+        }
+      }
+      return resp;
+    } catch (_) {
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  HEALTH CHECK
   // ═══════════════════════════════════════════════════════════════
@@ -140,7 +171,7 @@ class SyncService {
       });
 
       // Apps Script POSTs redirect to googleusercontent.com
-      // Flutter's default http.post does NOT follow redirects — must handle manually
+      // The redirect MUST be followed with GET (not re-POST) to get the JSON response
       final client   = http.Client();
       http.Response response;
       try {
@@ -152,16 +183,12 @@ class SyncService {
             )
             .timeout(const Duration(seconds: 30));
 
-        // Follow redirect if 302/301 (Apps Script always redirects)
+        // Follow redirect with GET (Apps Script processes POST, then redirects to result)
         if (response.statusCode == 302 || response.statusCode == 301) {
           final redirectUrl = response.headers['location'] ?? '';
           if (redirectUrl.isNotEmpty) {
             response = await client
-                .post(
-                  Uri.parse(redirectUrl),
-                  body: jsonEncode(body),
-                  headers: {'Content-Type': 'text/plain;charset=utf-8'},
-                )
+                .get(Uri.parse(redirectUrl))
                 .timeout(const Duration(seconds: 30));
           }
         }
@@ -223,14 +250,8 @@ class SyncService {
       final body = <String, dynamic>{'action': 'addKnowledge'};
       doc.forEach((k, v) => body[k] = (v ?? '').toString());
 
-      final response = await http
-          .post(
-            Uri.parse(url),
-            body: jsonEncode(body),
-            headers: {'Content-Type': 'text/plain;charset=utf-8'},
-          )
-          .timeout(const Duration(seconds: 30));
-      return response.statusCode == 200;
+      final resp = await _postWithRedirect(url, body);
+      return resp != null && resp.statusCode == 200;
     } catch (_) {
       return false;
     }
@@ -389,15 +410,12 @@ class SyncService {
       String username, String field, String value) async {
     try {
       final url = await getBackendUrl();
-      final resp = await http.post(Uri.parse(url),
-        body: jsonEncode({
-          'action':   'updateRole',
-          'username': username,
-          field:      value,
-        }),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'}).timeout(
-            const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
+      final resp = await _postWithRedirect(url, {
+        'action':   'updateRole',
+        'username': username,
+        field:      value,
+      });
+      if (resp != null && resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         return data['success'] == true;
       }
@@ -408,11 +426,10 @@ class SyncService {
   static Future<bool> deleteUser(String username) async {
     try {
       final url = await getBackendUrl();
-      final resp = await http.post(Uri.parse(url),
-        body: jsonEncode({'action': 'deleteUser', 'username': username}),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'}).timeout(
-            const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
+      final resp = await _postWithRedirect(url, {
+        'action': 'deleteUser', 'username': username,
+      });
+      if (resp != null && resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         return data['success'] == true;
       }
@@ -425,11 +442,8 @@ class SyncService {
       final url = await getBackendUrl();
       final body = Map<String, dynamic>.from(params);
       body['action'] = 'register';
-      final resp = await http.post(Uri.parse(url),
-        body: jsonEncode(body),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'}).timeout(
-            const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
+      final resp = await _postWithRedirect(url, body);
+      if (resp != null && resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         return data['success'] == true;
       }
@@ -478,11 +492,9 @@ class SyncService {
         if (resp.statusCode == 302 || resp.statusCode == 301) {
           final loc = resp.headers['location'] ?? '';
           if (loc.isNotEmpty) {
-            resp = await client.post(
-              Uri.parse(loc),
-              body: jsonEncode(b1),
-              headers: {'Content-Type': 'text/plain;charset=utf-8'},
-            ).timeout(const Duration(seconds: 20));
+            resp = await client
+                .get(Uri.parse(loc))
+                .timeout(const Duration(seconds: 20));
           }
         }
       } finally { client.close(); }
@@ -513,11 +525,9 @@ class SyncService {
         if (resp.statusCode == 302 || resp.statusCode == 301) {
           final loc = resp.headers['location'] ?? '';
           if (loc.isNotEmpty) {
-            resp = await client.post(
-              Uri.parse(loc),
-              body: jsonEncode(b2),
-              headers: {'Content-Type': 'text/plain;charset=utf-8'},
-            ).timeout(const Duration(seconds: 20));
+            resp = await client
+                .get(Uri.parse(loc))
+                .timeout(const Duration(seconds: 20));
           }
         }
       } finally { client.close(); }
@@ -571,9 +581,7 @@ class SyncService {
         if (resp.statusCode == 302 || resp.statusCode == 301) {
           final loc = resp.headers['location'] ?? '';
           if (loc.isNotEmpty) {
-            resp = await client.post(Uri.parse(loc),
-              body: testBody,
-              headers: {'Content-Type': 'text/plain;charset=utf-8'})
+            resp = await client.get(Uri.parse(loc))
               .timeout(const Duration(seconds: 30));
           }
         }
@@ -598,17 +606,13 @@ class SyncService {
     if (!await isConfigured) return null;
     try {
       final url = await getBackendUrl();
-      final resp = await http.post(
-        Uri.parse(url),
-        body: jsonEncode({
-          'action': 'login',
-          'username': username,
-          'passwordHash': passwordHash,
-        }),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(const Duration(seconds: 20));
+      final resp = await _postWithRedirect(url, {
+        'action': 'login',
+        'username': username,
+        'passwordHash': passwordHash,
+      });
 
-      if (resp.statusCode == 200) {
+      if (resp != null && resp.statusCode == 200) {
         final data = jsonDecode(resp.body) as Map<String, dynamic>;
         // Apps Script v9 returns { success: true, user: {...} }
         // or { success: true, uid, name, username, isAdmin, ... }
@@ -708,12 +712,10 @@ class SyncService {
     if (!await isConfigured) return false;
     try {
       final url = await getBackendUrl();
-      final resp = await http.post(
-        Uri.parse(url),
-        body: jsonEncode({'action': 'deleteIncident', 'id': id}),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(const Duration(seconds: 20));
-      if (resp.statusCode == 200) {
+      final resp = await _postWithRedirect(url, {
+        'action': 'deleteIncident', 'id': id,
+      });
+      if (resp != null && resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         return data['ok'] == true || data['success'] == true;
       }
