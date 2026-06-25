@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- App's internal cache directory for APK updates -->
+    <cache-path name="apk_updates" path="/" />
+    <!-- External cache (fallback) -->
+    <external-cache-path name="external_apk" path="/" />
+</paths>

@@ -1,10 +1,16 @@
 // lib/services/app_updater.dart
-// Silent auto-update service — downloads APK in background and installs
-// with minimal/no user interaction via Android PackageInstaller API.
+// ★ v24: Auto-update service — downloads APK and triggers install.
+//
+// Flow:
+//   1. Gets current app version from Android PackageManager
+//   2. Checks GitHub Releases API for a newer version
+//   3. Downloads APK to cache
+//   4. Triggers install via PackageInstaller (silent if same signing key)
+//      OR falls back to ACTION_VIEW intent (shows one-tap install prompt)
 
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,20 +22,36 @@ class AppUpdater {
   static const String _owner = 'abhibond1986';
   static const String _repo = 'Safety-Lens-V2';
 
-  /// Current app version — update this to match pubspec.yaml on each release
-  static const String currentVersion = '1.0.0';
+  /// Fallback version if native query fails — should match pubspec.yaml
+  static const String _fallbackVersion = '1.0.45';
 
   /// How often to check for updates (in hours)
-  static const int _checkIntervalHours = 6; // check every 6 hours
+  static const int _checkIntervalHours = 6;
 
   static const String _lastCheckKey = 'app_updater_last_check';
-  static const String _lastAutoInstallKey = 'app_updater_last_auto_install';
+  static const String _lastVersionKey = 'app_updater_last_installed';
+  static const String _kCurrentVersion = 'app_updater_current_version';
 
-  /// Method channel for native install
+  /// Method channel for native install + version query
   static const MethodChannel _channel =
       MethodChannel('com.sail.safety/app_updater');
 
-  /// Initialize — check for updates and silently install if available.
+  /// Cached current version
+  static String? _currentVersion;
+
+  /// Get current app version from native Android PackageManager
+  static Future<String> getCurrentVersion() async {
+    if (_currentVersion != null) return _currentVersion!;
+    try {
+      final version = await _channel.invokeMethod<String>('getAppVersion');
+      _currentVersion = version ?? _fallbackVersion;
+    } catch (_) {
+      _currentVersion = _fallbackVersion;
+    }
+    return _currentVersion!;
+  }
+
+  /// Initialize — check for updates and install if available.
   /// Call this from main.dart after app startup.
   static Future<void> init() async {
     if (kIsWeb) return;
@@ -50,10 +72,17 @@ class AppUpdater {
     try {
       final updateInfo = await _checkForUpdate();
       if (updateInfo != null) {
-        debugPrint('[AppUpdater] Update available: v${updateInfo.version}');
-        await _silentDownloadAndInstall(updateInfo);
+        // Don't re-download if we already tried this version
+        final lastInstalled = prefs.getString(_lastVersionKey) ?? '';
+        if (lastInstalled == updateInfo.version) {
+          debugPrint('[AppUpdater] Already attempted v${updateInfo.version} — skipping');
+          return;
+        }
+
+        debugPrint('[AppUpdater] Update available: v${updateInfo.version} (current: ${await getCurrentVersion()})');
+        await _downloadAndInstall(updateInfo);
       } else {
-        debugPrint('[AppUpdater] App is up to date');
+        debugPrint('[AppUpdater] App is up to date (v${await getCurrentVersion()})');
       }
     } catch (e) {
       debugPrint('[AppUpdater] Check failed: $e');
@@ -79,8 +108,9 @@ class AppUpdater {
     final body = (data['body'] ?? '') as String;
 
     final remoteVersion = tagName.replaceAll(RegExp(r'^v'), '');
+    final currentVer = await getCurrentVersion();
 
-    if (!_isNewerVersion(remoteVersion, currentVersion)) {
+    if (!_isNewerVersion(remoteVersion, currentVer)) {
       return null;
     }
 
@@ -128,10 +158,10 @@ class AppUpdater {
     }
   }
 
-  /// Download APK silently to internal storage, then trigger native install
-  static Future<void> _silentDownloadAndInstall(UpdateInfo info) async {
+  /// Download APK and trigger install
+  static Future<void> _downloadAndInstall(UpdateInfo info) async {
     try {
-      debugPrint('[AppUpdater] Downloading APK from ${info.downloadUrl}');
+      debugPrint('[AppUpdater] Downloading APK (${info.apkSize} bytes)...');
 
       // Download to app's internal cache directory (no permissions needed)
       final cacheDir = await getTemporaryDirectory();
@@ -142,41 +172,24 @@ class AppUpdater {
         await apkFile.delete();
       }
 
-      // Stream-download the APK
-      final request = http.Request('GET', Uri.parse(info.downloadUrl));
-      final streamedResponse = await request.send().timeout(
-        const Duration(minutes: 10),
-      );
-
-      if (streamedResponse.statusCode != 200) {
-        // Handle GitHub redirect (302 → actual download URL)
-        if (streamedResponse.statusCode == 302) {
-          final redirectUrl = streamedResponse.headers['location'];
-          if (redirectUrl != null) {
-            final redirectResponse = await http.get(Uri.parse(redirectUrl))
-                .timeout(const Duration(minutes: 10));
-            await apkFile.writeAsBytes(redirectResponse.bodyBytes);
-          } else {
-            throw Exception('Redirect with no location header');
-          }
-        } else {
-          throw Exception('Download failed: HTTP ${streamedResponse.statusCode}');
-        }
-      } else {
-        final bytes = await streamedResponse.stream.toBytes();
-        await apkFile.writeAsBytes(bytes);
+      // Download the APK — GitHub uses redirects for asset downloads
+      final apkBytes = await _downloadWithRedirects(info.downloadUrl);
+      if (apkBytes == null || apkBytes.isEmpty) {
+        debugPrint('[AppUpdater] Download returned empty');
+        return;
       }
 
-      debugPrint('[AppUpdater] APK downloaded: ${apkFile.lengthSync()} bytes');
+      await apkFile.writeAsBytes(apkBytes);
+      debugPrint('[AppUpdater] APK saved: ${apkFile.lengthSync()} bytes');
 
-      // Verify file is reasonable size (at least 1MB — not a 404 page)
-      if (apkFile.lengthSync() < 1024 * 1024) {
-        debugPrint('[AppUpdater] Downloaded file too small — likely not a valid APK');
+      // Verify file is reasonable size (at least 5MB for a Flutter app)
+      if (apkFile.lengthSync() < 5 * 1024 * 1024) {
+        debugPrint('[AppUpdater] Downloaded file too small (${apkFile.lengthSync()} bytes) — likely not a valid APK');
         await apkFile.delete();
         return;
       }
 
-      // Trigger silent install via native Android code
+      // Trigger install via native Android code
       final result = await _channel.invokeMethod('installApk', {
         'apkPath': apkFile.path,
       });
@@ -185,21 +198,52 @@ class AppUpdater {
 
       // Record that we triggered an install for this version
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_lastAutoInstallKey, info.version);
+      await prefs.setString(_lastVersionKey, info.version);
     } catch (e) {
-      debugPrint('[AppUpdater] Silent install failed: $e');
+      debugPrint('[AppUpdater] Download/install failed: $e');
     }
   }
 
-  /// Force check now (e.g., from settings screen)
+  /// Download file following HTTP redirects (GitHub uses 302s for assets)
+  static Future<List<int>?> _downloadWithRedirects(String url, {int maxRedirects = 5}) async {
+    var currentUrl = url;
+    for (int i = 0; i < maxRedirects; i++) {
+      final request = http.Request('GET', Uri.parse(currentUrl));
+      request.followRedirects = false;
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(minutes: 10),
+      );
+
+      if (streamedResponse.statusCode == 200) {
+        return await streamedResponse.stream.toBytes();
+      } else if (streamedResponse.statusCode == 302 || streamedResponse.statusCode == 301) {
+        final redirectUrl = streamedResponse.headers['location'];
+        if (redirectUrl == null || redirectUrl.isEmpty) {
+          debugPrint('[AppUpdater] Redirect with no location header');
+          return null;
+        }
+        currentUrl = redirectUrl;
+        debugPrint('[AppUpdater] Following redirect → ${currentUrl.substring(0, 80)}...');
+      } else {
+        debugPrint('[AppUpdater] Download HTTP ${streamedResponse.statusCode}');
+        return null;
+      }
+    }
+    debugPrint('[AppUpdater] Too many redirects');
+    return null;
+  }
+
+  /// Force check now (e.g., from settings/admin screen)
   static Future<String> checkNow() async {
     try {
+      final currentVer = await getCurrentVersion();
       final info = await _checkForUpdate();
       if (info != null) {
-        await _silentDownloadAndInstall(info);
-        return 'Update v${info.version} downloading and installing...';
+        await _downloadAndInstall(info);
+        return 'Update v${info.version} downloading... (current: v$currentVer)';
       }
-      return 'App is up to date (v$currentVersion)';
+      return 'App is up to date (v$currentVer)';
     } catch (e) {
       return 'Check failed: $e';
     }
