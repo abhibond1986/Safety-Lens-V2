@@ -63,6 +63,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   String _obsType  = 'Unsafe Condition';
 
   String? _lastSubmissionKey;
+  bool _submitting = false;
 
   // ★ v24: AI Description Refinement
   bool _aiRefining = false;
@@ -669,79 +670,93 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   }
 
   Future<bool> _submit({bool exportAfter = false}) async {
+    if (_submitting) return false; // Prevent double-tap
     final loc = _location.text.trim();
     if (loc.isEmpty || loc == 'To be confirmed (edit if needed)') {
       _snack('Please enter the actual location', AppColors.red);
       return false;
     }
     if (await _checkDuplicate()) return false;
+    setState(() => _submitting = true);
 
-    // Capture GPS location (non-blocking, best-effort)
     try {
-      _capturedLocation = await GeoService.getCurrentLocation().timeout(
-        const Duration(seconds: 8),
-        onTimeout: () => LocationData(error: 'GPS timeout'),
-      );
-    } catch (_) {
-      _capturedLocation = null;
-    }
-
-    final user = await LocalDB.getCurrentUser();
-    final incident = {
-      'id':              DateTime.now().millisecondsSinceEpoch.toString(),
-      'title':           _aiBrief?['identified']?.toString() ?? _brief.text.split('.').first.trim(),
-      'plant':           _plant,
-      'dept':            _dept.text.trim(),
-      'location':        loc,
-      'severity':        _severity,
-      'wsaCategory':     _wsaCause,
-      'obsType':         _obsType,
-      'desc':            '${_brief.text}\n\n${_description.text}'.trim(),
-      'immediateAction': _immediateAction.text.trim(),
-      'type':            'NEAR_MISS',
-      'status':          'OPEN',
-      'reportedBy':      user?['name'] ?? 'Unknown',
-      'reportedByPno':   user?['pno']  ?? '',
-      'date':            DateTime.now().toIso8601String(),
-      'imageBase64':     _imageBytes != null ? base64Encode(_imageBytes!) : null,
-    };
-
-    // Add GPS data if available
-    if (_capturedLocation != null && _capturedLocation!.isValid) {
-      incident['latitude'] = _capturedLocation!.latitude;
-      incident['longitude'] = _capturedLocation!.longitude;
-      incident['locationAccuracy'] = _capturedLocation!.accuracy;
-      incident['locationAddress'] = _capturedLocation!.address;
-      incident['locationTimestamp'] = _capturedLocation!.timestamp.toIso8601String();
-    }
-
-    await LocalDB.saveIncident(incident);
-    final synced = await SyncService.pushIncident(incident).catchError((_) => false);
-    _uploadPdfBackground(incident, user);
-    _lastSubmissionKey = _buildSubmissionKey();
-
-    if (exportAfter) {
+      // Capture GPS location (non-blocking, best-effort)
       try {
-        await PdfExport.downloadOrShareIncident(
-          incident:    incident,
-          reporterName: user?['name']?.toString() ?? 'SAIL Safety Officer',
-          reporterPno:  user?['pno']?.toString()  ?? '',
-          imageBytes:  _imageBytes,
+        _capturedLocation = await GeoService.getCurrentLocation().timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => LocationData(error: 'GPS timeout'),
         );
-      } catch (e) {
-        if (mounted) _snack('PDF export failed: $e', AppColors.red);
+      } catch (_) {
+        _capturedLocation = null;
       }
-    }
 
-    if (mounted) {
-      setState(() {
-        _pickedFile = null; _imageBytes = null; _aiBrief = null;
-        _brief.clear(); _dept.clear(); _location.clear();
-        _description.clear(); _immediateAction.clear();
-      });
-      _showSaveSuccessDialog(incident, synced, exportAfter);
+      final user = await LocalDB.getCurrentUser();
+      final incident = {
+        'id':              DateTime.now().millisecondsSinceEpoch.toString(),
+        'title':           _aiBrief?['identified']?.toString() ?? _brief.text.split('.').first.trim(),
+        'plant':           _plant,
+        'dept':            _dept.text.trim(),
+        'location':        loc,
+        'severity':        _severity,
+        'wsaCategory':     _wsaCause,
+        'obsType':         _obsType,
+        'desc':            '${_brief.text}\n\n${_description.text}'.trim(),
+        'immediateAction': _immediateAction.text.trim(),
+        'type':            'NEAR_MISS',
+        'status':          'OPEN',
+        'reportedBy':      user?['name'] ?? 'Unknown',
+        'reportedByPno':   user?['pno']  ?? '',
+        'date':            DateTime.now().toIso8601String(),
+        'imageBase64':     _imageBytes != null ? base64Encode(_imageBytes!) : null,
+      };
+
+      // Add GPS data if available
+      if (_capturedLocation != null && _capturedLocation!.isValid) {
+        incident['latitude'] = _capturedLocation!.latitude;
+        incident['longitude'] = _capturedLocation!.longitude;
+        incident['locationAccuracy'] = _capturedLocation!.accuracy;
+        incident['locationAddress'] = _capturedLocation!.address;
+        incident['locationTimestamp'] = _capturedLocation!.timestamp.toIso8601String();
+      }
+
+      await LocalDB.saveIncident(incident);
+      // Start network sync but don't block — show success after max 5s
+      final syncFuture = SyncService.pushIncident(incident).catchError((_) => false);
+      _uploadPdfBackground(incident, user);
+      _lastSubmissionKey = _buildSubmissionKey();
+      final synced = await syncFuture.timeout(
+        const Duration(seconds: 5), onTimeout: () => false);
+
+      if (exportAfter) {
+        try {
+          await PdfExport.downloadOrShareIncident(
+            incident:    incident,
+            reporterName: user?['name']?.toString() ?? 'SAIL Safety Officer',
+            reporterPno:  user?['pno']?.toString()  ?? '',
+            imageBytes:  _imageBytes,
+          );
+        } catch (e) {
+          if (mounted) _snack('PDF export failed: $e', AppColors.red);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _pickedFile = null; _imageBytes = null; _aiBrief = null;
+          _brief.clear(); _dept.clear(); _location.clear();
+          _description.clear(); _immediateAction.clear();
+        });
+        _showSaveSuccessDialog(incident, synced, exportAfter);
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        setState(() => _submitting = false);
+        _snack('Save failed: $e', AppColors.red);
+      }
+      return false;
     }
-    return true;
   }
 
   void _snack(String msg, Color color) {
@@ -997,22 +1012,28 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   ]);
 
   Widget _submitBtn({required String label, required IconData icon, required List<Color> colors, required VoidCallback onTap}) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: colors),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(color: colors.first.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
-        ]),
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 16, color: Colors.white),
-        label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)))),
+    return Opacity(
+      opacity: _submitting ? 0.6 : 1.0,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(colors: colors),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: [
+            BoxShadow(color: colors.first.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3)),
+          ]),
+        child: ElevatedButton.icon(
+          onPressed: _submitting ? null : onTap,
+          icon: _submitting
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : Icon(icon, size: 16, color: Colors.white),
+          label: Text(_submitting ? 'Saving...' : label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            disabledBackgroundColor: Colors.transparent,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)))),
+      ),
     );
   }
 
