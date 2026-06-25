@@ -1,5 +1,9 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v23
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v24
+//
+// CHANGES FROM v23:
+//   ✅ Auto-repair headers: getSheet() detects missing/wrong column headers and fixes them
+//   ✅ Fixes legacy sheets created by older script versions with fewer columns
 //
 // CHANGES FROM v22:
 //   ✅ TRUE PARALLEL: UrlFetchApp.fetchAll() fires Gemini + OpenRouter simultaneously
@@ -71,7 +75,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v23', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v24', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -92,7 +96,7 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v23',
+          version: 'v24',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey(),
@@ -1815,11 +1819,33 @@ function getSheet(name) {
           createdAt: new Date().toISOString(), lastLogin:''
         })[c] || '';
       }));
-      // Auto-resize user columns for readability
       try { sheet.autoResizeColumns(1, USER_COLS.length); } catch(_) {}
     }
     if (name === SHEET_INCIDENTS) {
       try { formatIncidentsSheet(); } catch(_) {}
+    }
+  } else {
+    // ★ v24: REPAIR headers if sheet exists but has fewer headers than expected
+    const cols = name === SHEET_INCIDENTS ? INCIDENT_COLS :
+                 name === SHEET_USERS     ? USER_COLS     :
+                 name === SHEET_FEEDBACK  ? FEEDBACK_COLS :
+                                            KNOWLEDGE_COLS;
+    const existingHeaders = sheet.getRange(1, 1, 1, cols.length).getValues()[0];
+    let needsRepair = false;
+    for (var h = 0; h < cols.length; h++) {
+      if (!existingHeaders[h] || existingHeaders[h] !== cols[h]) {
+        needsRepair = true;
+        break;
+      }
+    }
+    if (needsRepair) {
+      sheet.getRange(1, 1, 1, cols.length).setValues([cols]);
+      sheet.getRange(1,1,1,cols.length)
+        .setFontWeight('bold').setBackground('#0D47A1').setFontColor('white');
+      sheet.setFrozenRows(1);
+      if (name === SHEET_INCIDENTS) {
+        try { formatIncidentsSheet(); } catch(_) {}
+      }
     }
   }
   return sheet;
