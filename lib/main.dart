@@ -17,7 +17,7 @@ void main() async {
   await LocalDB.init();
   await SyncService.init();
   SyncService.drainPendingQueue().catchError((_) => 0);
-  // Check for app updates silently in background (every 2 days)
+  // Silent auto-update: checks GitHub releases and installs APK in background
   AppUpdater.init();
   runApp(const SafetyLensApp());
 }
