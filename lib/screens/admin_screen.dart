@@ -866,17 +866,14 @@ class _AdminScreenState extends State<AdminScreen>
   Widget _moduleAnalytics(SL sl) {
     // Compute aggregates
     final byPlant   = <String, int>{};
-    final byWsa     = <String, int>{};
     final bySev     = <String, int>{};
     final byMonth   = <String, int>{};
     final mttrSums  = <String, List<int>>{}; // plant → list of days
     int totalRisk = 0; int riskCount = 0;
     for (final inc in _incidents) {
       final plant = (inc['plant']?.toString() ?? '—').trim();
-      final wsa   = (inc['wsaCategory']?.toString() ?? '—').trim();
       final sev   = (inc['severity']?.toString().toUpperCase() ?? 'MEDIUM');
       byPlant[plant] = (byPlant[plant] ?? 0) + 1;
-      byWsa[wsa]     = (byWsa[wsa]     ?? 0) + 1;
       bySev[sev]     = (bySev[sev]     ?? 0) + 1;
 
       final dateStr = inc['date']?.toString() ?? '';
@@ -906,14 +903,23 @@ class _AdminScreenState extends State<AdminScreen>
     }
 
     final avgRisk = riskCount == 0 ? 0 : (totalRisk / riskCount).round();
-    // Ensure WSA Pareto uses the custom list categories
+    // ── WSA Pareto: map incident wsaCategory → custom list using fuzzy match ──
     final wsaCustomList = _customLists['wsa'] ?? [];
-    // Initialize all custom WSA categories with 0
-    for (final wCat in wsaCustomList) {
-      byWsa.putIfAbsent(wCat, () => 0);
+    final paretoMap = <String, int>{};
+    for (final cat in wsaCustomList) {
+      paretoMap[cat] = 0;
     }
-    final paretoWsa = byWsa.entries
-        .where((e) => e.value > 0) // only show categories with incidents
+    // Re-count incidents matching each custom list category
+    for (final inc in _incidents) {
+      final rawWsa = (inc['wsaCategory']?.toString() ?? '').trim();
+      if (rawWsa.isEmpty || rawWsa == '—') continue;
+      final matched = _matchWsaCategory(rawWsa, wsaCustomList);
+      if (matched != null) {
+        paretoMap[matched] = (paretoMap[matched] ?? 0) + 1;
+      }
+    }
+    final paretoWsa = paretoMap.entries
+        .where((e) => e.value > 0)
         .toList()
         ..sort((a, b) => b.value.compareTo(a.value));
     final topPlants = byPlant.entries.toList()
@@ -1073,6 +1079,51 @@ class _AdminScreenState extends State<AdminScreen>
         textAlign: TextAlign.right,
         style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700))),
     ]);
+  }
+
+  /// Fuzzy-match an incident's wsaCategory against the custom WSA list.
+  /// Returns the matching custom list entry, or null if no match.
+  String? _matchWsaCategory(String rawWsa, List<String> customList) {
+    final rawLower = rawWsa.toLowerCase().trim();
+    // Strip leading number prefix from raw value (e.g. "5. Equipment failure" → "equipment failure")
+    final rawStripped = rawLower.replaceFirst(RegExp(r'^\d+\.\s*'), '');
+
+    for (final cat in customList) {
+      final catLower = cat.toLowerCase();
+      final catStripped = catLower.replaceFirst(RegExp(r'^\d+\.\s*'), '');
+
+      // Exact match
+      if (rawLower == catLower || rawStripped == catStripped) return cat;
+      // Contains match (either direction)
+      if (rawStripped.contains(catStripped) || catStripped.contains(rawStripped)) return cat;
+    }
+
+    // Keyword match: split raw value into keywords and find best match
+    final rawKeywords = rawStripped.split(RegExp(r'[\s/()]+'))
+        .where((w) => w.length > 2).toList();
+
+    String? bestMatch;
+    int bestScore = 0;
+    for (final cat in customList) {
+      final catStripped = cat.toLowerCase().replaceFirst(RegExp(r'^\d+\.\s*'), '');
+      final catKeywords = catStripped.split(RegExp(r'[\s/()]+'))
+          .where((w) => w.length > 2).toList();
+
+      int score = 0;
+      for (final kw in rawKeywords) {
+        if (catStripped.contains(kw)) score += 2;
+        for (final ck in catKeywords) {
+          if (kw == ck) score += 3;
+        }
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = cat;
+      }
+    }
+    // Require at least one meaningful keyword match
+    if (bestScore >= 2) return bestMatch;
+    return null;
   }
 
   Widget _paretoRow(String name, int count, int max, Color color, SL sl) {

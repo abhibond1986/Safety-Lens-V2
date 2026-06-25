@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
+import '../../services/admin_master_data.dart';
 
 class DataAnalysisTab extends StatefulWidget {
   const DataAnalysisTab({super.key});
@@ -13,6 +14,7 @@ class DataAnalysisTab extends StatefulWidget {
 
 class _DataAnalysisTabState extends State<DataAnalysisTab> {
   List<Map<String, dynamic>> _incidents = [];
+  List<String> _wsaCategories = [];
   bool _loading = true;
 
   @override
@@ -23,7 +25,8 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
 
   Future<void> _load() async {
     final inc = await LocalDB.getIncidents();
-    if (mounted) setState(() { _incidents = inc; _loading = false; });
+    final wsa = await AdminMasterData.getWsaCauses();
+    if (mounted) setState(() { _incidents = inc; _wsaCategories = wsa; _loading = false; });
   }
 
   // Severity counts
@@ -48,16 +51,47 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
     return Map.fromEntries(sorted);
   }
 
-  // Category counts
+  // Category counts — mapped to custom WSA list via fuzzy matching
   Map<String, int> get _categoryCounts {
     final map = <String, int>{};
     for (final i in _incidents) {
-      final cat = i['wsaCategory']?.toString() ?? 'Other';
-      map[cat] = (map[cat] ?? 0) + 1;
+      final raw = (i['wsaCategory']?.toString() ?? '').trim();
+      if (raw.isEmpty) continue;
+      final matched = _matchWsaCategory(raw);
+      final label = matched ?? raw; // fallback to raw if no match
+      map[label] = (map[label] ?? 0) + 1;
     }
     final sorted = map.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     return Map.fromEntries(sorted);
+  }
+
+  /// Fuzzy-match a raw wsaCategory value to the custom list
+  String? _matchWsaCategory(String rawWsa) {
+    final rawLower = rawWsa.toLowerCase();
+    final rawStripped = rawLower.replaceFirst(RegExp(r'^\d+\.\s*'), '');
+
+    for (final cat in _wsaCategories) {
+      final catLower = cat.toLowerCase();
+      final catStripped = catLower.replaceFirst(RegExp(r'^\d+\.\s*'), '');
+      if (rawLower == catLower || rawStripped == catStripped) return cat;
+      if (rawStripped.contains(catStripped) || catStripped.contains(rawStripped)) return cat;
+    }
+
+    // Keyword match
+    final rawKeywords = rawStripped.split(RegExp(r'[\s/()]+'))
+        .where((w) => w.length > 2).toList();
+    String? best;
+    int bestScore = 0;
+    for (final cat in _wsaCategories) {
+      final catStripped = cat.toLowerCase().replaceFirst(RegExp(r'^\d+\.\s*'), '');
+      int score = 0;
+      for (final kw in rawKeywords) {
+        if (catStripped.contains(kw)) score += 2;
+      }
+      if (score > bestScore) { bestScore = score; best = cat; }
+    }
+    return bestScore >= 2 ? best : null;
   }
 
   // Type counts
