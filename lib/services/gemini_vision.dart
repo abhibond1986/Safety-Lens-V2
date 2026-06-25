@@ -140,9 +140,9 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    // Scale timeout: NVIDIA free model needs ~40-70s for vision analysis
+    // Scale timeout: Server-side parallel AI has 45s budget, so 60s client is plenty
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 120 : 90;
+    final timeoutSec = payloadKB > 500 ? 75 : 60;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {

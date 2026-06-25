@@ -1443,6 +1443,19 @@ function runProviderChain(prompt, base64, mimeType, cloudUrl) {
     + ', hasCloudUrl=' + (!!cloudUrl)
     + ', mode=TRUE_PARALLEL');
 
+  // ★ v24: FAST BAIL — if both providers are already on cooldown, return immediately
+  // instead of wasting 60s waiting for fetchAll to timeout
+  if (isProviderCoolingDown('google') && isProviderCoolingDown('openrouter')) {
+    Logger.log('[AI] ⚡ FAST BAIL: both providers on cooldown — returning instantly');
+    return {
+      overallRisk: 'UNKNOWN', riskScore: 0, confidence: 0, people: 0,
+      summary: 'AI services temporarily unavailable. All providers exhausted. Please try again in 1-2 minutes.',
+      hazards: [],
+      _provider: 'none', _error: 'All AI providers on cooldown', _isOnline: false,
+      imageUrl: cloudUrl || null
+    };
+  }
+
   // ✅ v23: TRUE PARALLEL — Gemini + OpenRouter race simultaneously via fetchAll()
   if (primary !== 'google_only') {
     var parallelResult = runTrueParallel(prompt, base64, mimeType, cloudUrl);
