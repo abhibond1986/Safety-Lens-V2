@@ -139,6 +139,62 @@ class SyncService {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  ★ v24: MASTER DATA SYNC (plants, departments, WSA, etc.)
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Push master data (plants, depts, WSA causes etc.) to backend.
+  /// Called whenever admin edits these lists.
+  static Future<bool> pushMasterData({
+    List<Map<String, String>>? plants,
+    List<String>? departments,
+    List<String>? wsaCauses,
+    List<String>? severities,
+    List<String>? statuses,
+    List<String>? obsTypes,
+    String? updatedBy,
+  }) async {
+    if (!await isConfigured) return false;
+    try {
+      final url = await getBackendUrl();
+      final body = <String, dynamic>{'action': 'saveMasterData'};
+      if (plants != null)      body['plants'] = plants;
+      if (departments != null) body['departments'] = departments;
+      if (wsaCauses != null)   body['wsaCauses'] = wsaCauses;
+      if (severities != null)  body['severities'] = severities;
+      if (statuses != null)    body['statuses'] = statuses;
+      if (obsTypes != null)    body['obsTypes'] = obsTypes;
+      if (updatedBy != null)   body['updatedBy'] = updatedBy;
+
+      final resp = await _postWithRedirect(url, body);
+      if (resp != null && resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        return data['ok'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pull latest master data from backend. Returns the data map or null.
+  static Future<Map<String, dynamic>?> pullMasterData() async {
+    if (!await isConfigured) return null;
+    try {
+      final url = await getBackendUrl();
+      final resp = await _postWithRedirect(url, {'action': 'getMasterData'});
+      if (resp != null && resp.statusCode == 200) {
+        final parsed = jsonDecode(resp.body);
+        if (parsed['ok'] == true && parsed['data'] != null) {
+          return Map<String, dynamic>.from(parsed['data'] as Map);
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  INCIDENTS
   // ═══════════════════════════════════════════════════════════════
 

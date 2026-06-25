@@ -227,6 +227,10 @@ function handle(e) {
       case 'addKnowledge':  result = addRow(SHEET_KNOWLEDGE, KNOWLEDGE_COLS, params); break;
       case 'listKnowledge': result = listSheet(SHEET_KNOWLEDGE, KNOWLEDGE_COLS); break;
 
+      // ★ v24: MASTER DATA SYNC — plants, departments, WSA causes, etc.
+      case 'saveMasterData': result = saveMasterData(params); break;
+      case 'getMasterData':  result = getMasterData(); break;
+
       case 'uploadPdfToDrive': {
         const b64   = params.pdfBase64  || '';
         const name  = params.fileName   || 'SafetyLens_Report.pdf';
@@ -1862,6 +1866,80 @@ function getSheet(name) {
     }
   }
   return sheet;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  ★ v24: MASTER DATA SYNC — single source of truth for plants/depts/WSA
+//  Stored in a 'masterdata' sheet as key-value JSON rows.
+// ════════════════════════════════════════════════════════════════════════
+const SHEET_MASTERDATA = 'masterdata';
+const MASTERDATA_KEYS = ['plants', 'departments', 'wsaCauses', 'severities', 'statuses', 'obsTypes'];
+
+function saveMasterData(params) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_MASTERDATA);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_MASTERDATA);
+    sheet.appendRow(['key', 'value', 'updatedAt', 'updatedBy']);
+    sheet.getRange(1,1,1,4).setFontWeight('bold').setBackground('#0D47A1').setFontColor('white');
+    sheet.setFrozenRows(1);
+  }
+
+  var saved = [];
+  var now = new Date().toISOString();
+  var actor = params.updatedBy || 'admin';
+
+  MASTERDATA_KEYS.forEach(function(key) {
+    if (params[key] !== undefined && params[key] !== null) {
+      var jsonVal = (typeof params[key] === 'string') ? params[key] : JSON.stringify(params[key]);
+      // Find existing row for this key
+      var data = sheet.getDataRange().getValues();
+      var found = false;
+      for (var r = 1; r < data.length; r++) {
+        if (data[r][0] === key) {
+          sheet.getRange(r + 1, 2).setValue(jsonVal);
+          sheet.getRange(r + 1, 3).setValue(now);
+          sheet.getRange(r + 1, 4).setValue(actor);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        sheet.appendRow([key, jsonVal, now, actor]);
+      }
+      saved.push(key);
+    }
+  });
+
+  return { ok: true, saved: saved, updatedAt: now };
+}
+
+function getMasterData() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_MASTERDATA);
+  if (!sheet) {
+    // No master data saved yet — return empty (clients will use defaults)
+    return { ok: true, data: {}, isEmpty: true };
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var result = {};
+  var updatedAt = '';
+  for (var r = 1; r < data.length; r++) {
+    var key = data[r][0];
+    var val = data[r][1];
+    var ts  = data[r][2];
+    if (key && MASTERDATA_KEYS.indexOf(key) >= 0) {
+      try {
+        result[key] = JSON.parse(val);
+      } catch (_) {
+        result[key] = val;
+      }
+      if (ts && ts > updatedAt) updatedAt = ts;
+    }
+  }
+
+  return { ok: true, data: result, updatedAt: updatedAt };
 }
 
 function listSheet(sheetName, cols) {

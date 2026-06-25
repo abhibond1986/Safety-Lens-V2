@@ -6,6 +6,7 @@
 
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'sync_service.dart';
 
 class AdminMasterData {
   // ── SAIL PLANTS (14 units + Others) ──────────────────────────────
@@ -128,22 +129,91 @@ class AdminMasterData {
   static Future<List<String>> getStatuses()    => _getList(_kStatuses, defaultStatuses);
   static Future<List<String>> getObsTypes()    => _getList(_kObsTypes, defaultObservationTypes);
 
-  // ── SAVE helpers ─────────────────────────────────────────────────
-  static Future<void> savePlants(List<Map<String, String>> v) async {
+  // ── SAVE helpers (local + push to backend) ──────────────────────
+  static Future<void> savePlants(List<Map<String, String>> v, {bool syncToBackend = true}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kPlants, jsonEncode(v));
+    if (syncToBackend) {
+      // Fire-and-forget push to backend
+      SyncService.pushMasterData(plants: v).catchError((_) => false);
+    }
   }
 
-  static Future<void> _saveList(String key, List<String> v) async {
+  static Future<void> _saveList(String key, List<String> v, {bool syncToBackend = true}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(key, jsonEncode(v));
+    if (syncToBackend) {
+      // Push the specific list to backend
+      switch (key) {
+        case _kDepts:      SyncService.pushMasterData(departments: v).catchError((_) => false); break;
+        case _kWsa:        SyncService.pushMasterData(wsaCauses: v).catchError((_) => false); break;
+        case _kSeverities: SyncService.pushMasterData(severities: v).catchError((_) => false); break;
+        case _kStatuses:   SyncService.pushMasterData(statuses: v).catchError((_) => false); break;
+        case _kObsTypes:   SyncService.pushMasterData(obsTypes: v).catchError((_) => false); break;
+      }
+    }
   }
 
-  static Future<void> saveDepartments(List<String> v) => _saveList(_kDepts, v);
-  static Future<void> saveWsaCauses(List<String> v)   => _saveList(_kWsa, v);
-  static Future<void> saveSeverities(List<String> v)  => _saveList(_kSeverities, v);
-  static Future<void> saveStatuses(List<String> v)    => _saveList(_kStatuses, v);
-  static Future<void> saveObsTypes(List<String> v)    => _saveList(_kObsTypes, v);
+  static Future<void> saveDepartments(List<String> v, {bool syncToBackend = true}) =>
+      _saveList(_kDepts, v, syncToBackend: syncToBackend);
+  static Future<void> saveWsaCauses(List<String> v, {bool syncToBackend = true}) =>
+      _saveList(_kWsa, v, syncToBackend: syncToBackend);
+  static Future<void> saveSeverities(List<String> v, {bool syncToBackend = true}) =>
+      _saveList(_kSeverities, v, syncToBackend: syncToBackend);
+  static Future<void> saveStatuses(List<String> v, {bool syncToBackend = true}) =>
+      _saveList(_kStatuses, v, syncToBackend: syncToBackend);
+  static Future<void> saveObsTypes(List<String> v, {bool syncToBackend = true}) =>
+      _saveList(_kObsTypes, v, syncToBackend: syncToBackend);
+
+  // ── PULL from backend & update local storage ───────────────────
+  /// Call on app startup to fetch latest master data from server.
+  /// Returns true if data was updated from server.
+  static Future<bool> syncFromBackend() async {
+    try {
+      final remote = await SyncService.pullMasterData();
+      if (remote == null || remote.isEmpty) return false;
+
+      bool updated = false;
+
+      if (remote['plants'] is List && (remote['plants'] as List).isNotEmpty) {
+        final plants = (remote['plants'] as List)
+            .map((e) => Map<String, String>.from(
+                (e as Map).map((k, v) => MapEntry(k.toString(), v.toString()))))
+            .toList();
+        await savePlants(plants, syncToBackend: false);
+        updated = true;
+      }
+      if (remote['departments'] is List && (remote['departments'] as List).isNotEmpty) {
+        final depts = (remote['departments'] as List).map((e) => e.toString()).toList();
+        await saveDepartments(depts, syncToBackend: false);
+        updated = true;
+      }
+      if (remote['wsaCauses'] is List && (remote['wsaCauses'] as List).isNotEmpty) {
+        final wsa = (remote['wsaCauses'] as List).map((e) => e.toString()).toList();
+        await saveWsaCauses(wsa, syncToBackend: false);
+        updated = true;
+      }
+      if (remote['severities'] is List && (remote['severities'] as List).isNotEmpty) {
+        final sev = (remote['severities'] as List).map((e) => e.toString()).toList();
+        await saveSeverities(sev, syncToBackend: false);
+        updated = true;
+      }
+      if (remote['statuses'] is List && (remote['statuses'] as List).isNotEmpty) {
+        final st = (remote['statuses'] as List).map((e) => e.toString()).toList();
+        await saveStatuses(st, syncToBackend: false);
+        updated = true;
+      }
+      if (remote['obsTypes'] is List && (remote['obsTypes'] as List).isNotEmpty) {
+        final obs = (remote['obsTypes'] as List).map((e) => e.toString()).toList();
+        await saveObsTypes(obs, syncToBackend: false);
+        updated = true;
+      }
+
+      return updated;
+    } catch (_) {
+      return false;
+    }
+  }
 
   // ── SEVERITY SCORING (admin-configurable) ─────────────────────────
   static const String _kSeverityScores = 'admin_severity_scores';
