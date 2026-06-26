@@ -44,6 +44,7 @@ const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
 // when Google Gemini quota is exhausted.
 // nvidia/nemotron-nano-12b-v2-vl:free — NVIDIA free vision model (NOT Google, avoids shared quota)
 const OPENROUTER_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'; // NVIDIA free vision, fast 12B
+const OPENROUTER_MODEL_FREE2 = 'nvidia/llama-nemotron-embed-vl-1b-v2:free'; // NVIDIA free vision, lightweight 1B
 const OPENROUTER_MODEL_PAID = 'anthropic/claude-sonnet-4'; // paid fallback if free fails
 
 const INCIDENT_COLS = [
@@ -89,6 +90,17 @@ function handle(e) {
 
     const action = params.action || 'health';
     let result;
+
+    // ★ v25: API Authentication — validate token for sensitive actions
+    var publicActions = ['health', 'ping', 'login', 'register', 'getApiKeys', 'getMasterData', 'gemini', 'analyzeUrl', 'diagnose'];
+    if (publicActions.indexOf(action) < 0) {
+      var authResult = validateAuthToken(params._authToken, params._authUser);
+      if (!authResult.valid) {
+        return ContentService
+          .createTextOutput(JSON.stringify({ ok: false, error: 'Unauthorized: ' + authResult.reason }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
 
     switch (action) {
       case 'health':
@@ -563,14 +575,7 @@ function loginUser(username, passwordHash) {
     if (!username || !passwordHash)
       return { success: false, error: 'Username and password required' };
 
-    if (username === 'admin' && passwordHash === simpleHash('admin')) {
-      return {
-        success: true, uid: 'SYSTEM_ADMIN', name: 'System Admin',
-        username: 'admin', isAdmin: true, status: 'active',
-        plant: 'Corporate – Ranchi', department: 'Safety HQ',
-        designation: 'Administrator'
-      };
-    }
+    // ★ v25: Hardcoded admin backdoor REMOVED for security
 
     const sheet   = getSheet(SHEET_USERS);
     const data    = sheet.getDataRange().getValues();
@@ -578,6 +583,7 @@ function loginUser(username, passwordHash) {
     const usernameCol     = headers.indexOf('username');
     const pnoCol          = headers.indexOf('pno');
     const passwordHashCol = headers.indexOf('passwordHash');
+    const saltCol         = headers.indexOf('salt');
     const statusCol       = headers.indexOf('status');
     const lastLoginCol    = headers.indexOf('lastLogin');
     const isAdminCol      = headers.indexOf('isAdmin');
@@ -597,10 +603,15 @@ function loginUser(username, passwordHash) {
 
         const user = {};
         headers.forEach(function(h, j) {
-          if (h !== 'passwordHash') user[h] = data[i][j];
+          // ★ v25: Exclude sensitive fields from response
+          if (h !== 'passwordHash' && h !== 'salt') user[h] = data[i][j];
         });
         user.isAdmin = String(data[i][isAdminCol]).toUpperCase() === 'TRUE';
-        return { success: true, user: user };
+
+        // ★ v25: Create session token for authenticated API calls
+        var session = createSession(rowUsername || rowPno);
+
+        return { success: true, user: user, sessionToken: session.token, tokenExpiry: session.expiry };
       }
     }
     return { success: false, error: 'Invalid username or password' };
@@ -718,6 +729,65 @@ function simpleHash(str) {
   }
   if (h < 0) return '-' + ((-h) >>> 0).toString(36);
   return h.toString(36);
+}
+
+
+// ============================================================
+//  ★ v25: SESSION TOKEN MANAGEMENT
+// ============================================================
+var SHEET_SESSIONS = 'sessions';
+
+/**
+ * Create a session token for a user. Stores in 'sessions' sheet.
+ * Token expires after 7 days.
+ */
+function createSession(username) {
+  var token = Utilities.getUuid() + '-' + Utilities.getUuid();
+  var now = new Date();
+  var expiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_SESSIONS);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_SESSIONS);
+    sheet.appendRow(['username', 'token', 'created', 'expiry']);
+  }
+
+  sheet.appendRow([username, token, now.toISOString(), expiry.toISOString()]);
+  return { token: token, expiry: expiry.toISOString() };
+}
+
+/**
+ * Validate an auth token. Returns { valid: true } or { valid: false, reason: '...' }
+ */
+function validateAuthToken(token, username) {
+  if (!token || !username) {
+    return { valid: false, reason: 'Missing token or username' };
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_SESSIONS);
+  if (!sheet) {
+    return { valid: false, reason: 'No sessions exist' };
+  }
+
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0];
+  var userCol   = headers.indexOf('username');
+  var tokenCol  = headers.indexOf('token');
+  var expiryCol = headers.indexOf('expiry');
+
+  var now = new Date();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][userCol]) === username && String(data[i][tokenCol]) === token) {
+      var expiry = new Date(data[i][expiryCol]);
+      if (now > expiry) {
+        return { valid: false, reason: 'Token expired' };
+      }
+      return { valid: true };
+    }
+  }
+  return { valid: false, reason: 'Token not found' };
 }
 
 
@@ -1236,7 +1306,7 @@ function callOpenRouterText(prompt) {
 
 function callOpenRouterImageUrl(imageUrl, prompt) {
   // Try free model first, then paid fallback
-  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_PAID];
+  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_FREE2, OPENROUTER_MODEL_PAID];
   for (var mi = 0; mi < models.length; mi++) {
     var modelName = models[mi];
     try {
@@ -1286,7 +1356,7 @@ function callOpenRouterImageUrl(imageUrl, prompt) {
 // ★ v22: OpenRouter with base64 data URL — tries free model then paid fallback
 function callOpenRouterImageBase64(base64, mimeType, prompt) {
   const dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
-  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_PAID];
+  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_FREE2, OPENROUTER_MODEL_PAID];
   for (var mi = 0; mi < models.length; mi++) {
     var modelName = models[mi];
     try {
