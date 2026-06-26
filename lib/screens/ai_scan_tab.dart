@@ -30,12 +30,14 @@ class AIScanTab extends StatefulWidget {
   final VoidCallback? toggleTheme;
   final VoidCallback? onSignOut;
   final bool isDark;
+  final bool showAppBar;
   const AIScanTab({
     super.key,
     this.user,
     this.toggleTheme,
     this.onSignOut,
     this.isDark = true,
+    this.showAppBar = true,
   });
   @override
   State<AIScanTab> createState() => _AIScanTabState();
@@ -1773,14 +1775,15 @@ class _AIScanTabState extends State<AIScanTab> {
     return Container(
       color: Colors.transparent,
       child: SafeArea(child: Column(children: [
-        UniversalAppBar(
-          title: I18n.t('aiScan.title'),
-          subtitle: I18n.t('aiScan.subtitle'),
-          user: widget.user,
-          toggleTheme: widget.toggleTheme,
-          onSignOut: widget.onSignOut,
-          isDark: widget.isDark,
-        ),
+        if (widget.showAppBar)
+          UniversalAppBar(
+            title: I18n.t('aiScan.title'),
+            subtitle: I18n.t('aiScan.subtitle'),
+            user: widget.user,
+            toggleTheme: widget.toggleTheme,
+            onSignOut: widget.onSignOut,
+            isDark: widget.isDark,
+          ),
         Expanded(child: SingleChildScrollView(
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 80),

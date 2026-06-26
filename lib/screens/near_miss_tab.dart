@@ -32,12 +32,14 @@ class NearMissTab extends StatefulWidget {
   final VoidCallback? toggleTheme;
   final VoidCallback? onSignOut;
   final bool isDark;
+  final bool showAppBar;
   const NearMissTab({
     super.key,
     this.user,
     this.toggleTheme,
     this.onSignOut,
     this.isDark = true,
+    this.showAppBar = true,
   });
   @override
   State<NearMissTab> createState() => _NearMissTabState();
@@ -1559,13 +1561,14 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
       color: Colors.transparent,
       child: SafeArea(
         child: Column(children: [
-          UniversalAppBar(
-            title: I18n.t('nearMiss.title'),
-            user: widget.user,
-            toggleTheme: widget.toggleTheme,
-            onSignOut: widget.onSignOut,
-            isDark: widget.isDark,
-          ),
+          if (widget.showAppBar)
+            UniversalAppBar(
+              title: I18n.t('nearMiss.title'),
+              user: widget.user,
+              toggleTheme: widget.toggleTheme,
+              onSignOut: widget.onSignOut,
+              isDark: widget.isDark,
+            ),
           Expanded(child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
             child: Column(

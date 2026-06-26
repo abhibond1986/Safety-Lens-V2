@@ -56,6 +56,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         toggleTheme: widget.toggleTheme,
         onSignOut: _exitToLogin,
         isDark: isDark,
+        showAppBar: false, // Contractor screen has its own AppBar
       ),
       // 1 — Near Miss
       NearMissTab(
@@ -63,6 +64,7 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
         toggleTheme: widget.toggleTheme,
         onSignOut: _exitToLogin,
         isDark: isDark,
+        showAppBar: false, // Contractor screen has its own AppBar
       ),
     ];
 
