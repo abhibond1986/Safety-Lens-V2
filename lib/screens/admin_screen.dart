@@ -3112,7 +3112,10 @@ class _AdminScreenState extends State<AdminScreen>
     final passCtrl  = TextEditingController(text: 'sail@123');
     final desigCtrl = TextEditingController();
     final pnoCtrl   = TextEditingController();
+    final deptOtherCtrl = TextEditingController();
     String? selectedPlant;
+    String? selectedDept;
+    bool showOtherDept = false;
     bool makeAdmin = false;
 
     final ok = await showDialog<bool>(context: context, builder: (_) =>
@@ -3156,6 +3159,39 @@ class _AdminScreenState extends State<AdminScreen>
                         style: TextStyle(color: sl.text1, fontSize: 11)),
                   )).toList(),
                   onChanged: (v) => setSt(() => selectedPlant = v))),
+              const SizedBox(height: 10),
+              Text('Department', style: TextStyle(color: sl.text3, fontSize: 10)),
+              const SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: sl.bg, borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: sl.border)),
+                child: DropdownButton<String>(
+                  value: selectedDept,
+                  isExpanded: true,
+                  underline: const SizedBox(),
+                  hint: Text('Select department', style: TextStyle(
+                      color: sl.text4, fontSize: 11)),
+                  dropdownColor: sl.card,
+                  style: TextStyle(color: sl.text1, fontSize: 11),
+                  items: [..._deptsEditable, 'Other'].map((d) => DropdownMenuItem(
+                    value: d,
+                    child: Text(d,
+                        style: TextStyle(
+                          color: d == 'Other' ? AppColors.accent : sl.text1,
+                          fontSize: 11,
+                          fontStyle: d == 'Other' ? FontStyle.italic : FontStyle.normal)),
+                  )).toList(),
+                  onChanged: (v) => setSt(() {
+                    selectedDept = v;
+                    showOtherDept = v == 'Other';
+                    if (v != 'Other') deptOtherCtrl.clear();
+                  }))),
+              if (showOtherDept) ...[
+                const SizedBox(height: 8),
+                _addUserField('Enter Department Name', deptOtherCtrl, sl),
+              ],
               const SizedBox(height: 12),
               Row(children: [
                 Checkbox(
@@ -3183,6 +3219,9 @@ class _AdminScreenState extends State<AdminScreen>
         ])));
     if (ok != true) return;
 
+    final effectiveDept = showOtherDept
+        ? deptOtherCtrl.text.trim()
+        : (selectedDept ?? '');
     final userData = <String, dynamic>{
       'name':        nameCtrl.text.trim(),
       'username':    unameCtrl.text.trim().toLowerCase(),
@@ -3190,6 +3229,7 @@ class _AdminScreenState extends State<AdminScreen>
       'designation': desigCtrl.text.trim(),
       'pno':         pnoCtrl.text.trim(),
       'plant':       selectedPlant ?? '',
+      'department':  effectiveDept,
       'isAdmin':     makeAdmin.toString(),
       'status':      'active',
     };

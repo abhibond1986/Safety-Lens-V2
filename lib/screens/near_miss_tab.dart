@@ -54,12 +54,14 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   bool        _isOnlineMode = true;
 
   final _brief           = TextEditingController();
-  final _dept            = TextEditingController();
+  final _deptOther       = TextEditingController(); // For "Other" custom department
   final _location        = TextEditingController();
   final _description     = TextEditingController();
   final _immediateAction = TextEditingController();
 
   String _plant   = 'SAIL Safety Organisation';
+  String _selectedDept = '';          // Currently selected department from dropdown
+  bool   _showOtherDept = false;     // Whether "Other" is selected
   String _wsaCause = '5. Equipment failure';
   String _severity = 'MEDIUM';
   String _obsType  = 'Unsafe Condition';
@@ -116,13 +118,33 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     try {
       final plants = await AdminMasterData.getPlants();
       final wsa    = await AdminMasterData.getWsaCauses();
+      final depts  = await AdminMasterData.getDepartments();
       if (!mounted) return;
       setState(() {
         final plantNames = plants.map((p) => p['name'] ?? p['code'] ?? '').where((s) => s.isNotEmpty).toList();
         if (plantNames.isNotEmpty) _plants = plantNames;
         if (wsa.isNotEmpty) _wsaCauses = wsa;
+        if (depts.isNotEmpty) _departments = depts;
       });
     } catch (_) {}
+  }
+
+  /// Get the effective department value (from dropdown or "Other" text field)
+  String get _effectiveDept {
+    if (_showOtherDept) return _deptOther.text.trim();
+    return _selectedDept.isNotEmpty ? _selectedDept : '';
+  }
+
+  /// Set department from user profile — checks if it's in the dropdown list
+  void _setDeptFromProfile(String dept) {
+    if (_departments.contains(dept)) {
+      _selectedDept = dept;
+      _showOtherDept = false;
+    } else if (dept.isNotEmpty) {
+      _selectedDept = 'Other';
+      _showOtherDept = true;
+      _deptOther.text = dept;
+    }
   }
 
   static bool _micPermissionGranted = false;
@@ -392,13 +414,15 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   void dispose() {
     _micPulseCtrl.dispose();
     _speech.cancel();
-    _brief.dispose(); _dept.dispose(); _location.dispose();
+    _brief.dispose(); _deptOther.dispose(); _location.dispose();
     _description.dispose(); _immediateAction.dispose();
     super.dispose();
   }
 
   // Loaded dynamically from AdminMasterData (synced with admin panel)
   List<String> _plants = ['BSP', 'DSP', 'RSP', 'BSL', 'ISP', 'ASP', 'SSP', 'CFP', 'CMO', 'JGOM', 'OGOM', 'BSP(M)', 'Collieries', 'SRU Kulti', 'SSO'];
+  // ★ Departments loaded from AdminMasterData — includes "Other" appended at end
+  List<String> _departments = List<String>.from(AdminMasterData.defaultDepartments);
   // ✅ v23: Default matches AdminMasterData.defaultWsaCauses (WSA-13 root causes)
   // Gets overwritten by _loadMasterData() with custom list from admin panel
   List<String> _wsaCauses = const [
@@ -523,7 +547,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
             'confidence': 0,
           };
           _brief.text       = '';
-          _dept.text        = user?['department']?.toString() ?? 'Operations';
+          _setDeptFromProfile(user?['department']?.toString() ?? 'Operations');
           if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
             if (_capturedLocation != null && _capturedLocation!.isValid) {
               _location.text = GeoService.getDisplayAddress(_capturedLocation!);
@@ -574,7 +598,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         _brief.text           = '${refinedData['name'] ?? ''}. ${refinedData['desc'] ?? ''}'.trim();
         _description.text     = refinedData['desc']?.toString() ?? '';
         _immediateAction.text = refinedData['action']?.toString() ?? '';
-        _dept.text            = user?['department']?.toString() ?? 'Operations';
+        _setDeptFromProfile(user?['department']?.toString() ?? 'Operations');
         // Only set placeholder if GPS hasn't already filled it
         if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
           if (_capturedLocation != null && _capturedLocation!.isValid) {
@@ -716,7 +740,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         'id':              DateTime.now().millisecondsSinceEpoch.toString(),
         'title':           _aiBrief?['identified']?.toString() ?? _brief.text.split('.').first.trim(),
         'plant':           _plant,
-        'dept':            _dept.text.trim(),
+        'dept':            _effectiveDept,
         'location':        loc,
         'severity':        _severity,
         'wsaCategory':     _wsaCause,
@@ -766,7 +790,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         setState(() {
           _submitting = false;
           _pickedFile = null; _imageBytes = null; _aiBrief = null;
-          _brief.clear(); _dept.clear(); _location.clear();
+          _brief.clear(); _deptOther.clear(); _selectedDept = ''; _showOtherDept = false; _location.clear();
           _description.clear(); _immediateAction.clear();
         });
         _showSaveSuccessDialog(incident, synced, exportAfter);
@@ -1303,7 +1327,9 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
           _stepLabel('2', 'Observation Particulars', sl),
           const SizedBox(height: 14),
           _buildDropdownField('Plant/Unit', _plant, _plants, (v) => setState(() => _plant = v!), sl),
-          _buildTextField('Department/Shop', _dept, Icons.business_rounded, sl),
+          _buildDeptDropdown(sl),
+          if (_showOtherDept)
+            _buildTextField('Enter Department Name', _deptOther, Icons.edit_outlined, sl),
           _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl,
             suffix: _micButton(_location)),
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
@@ -1508,6 +1534,66 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
           filled: true,
           fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+        ),
+      ),
+    );
+  }
+
+  /// Department dropdown with "Other" option
+  Widget _buildDeptDropdown(SL sl) {
+    // Build items list: departments from admin + "Other" at end
+    final items = [..._departments, 'Other'];
+    final currentValue = _showOtherDept
+        ? 'Other'
+        : (items.contains(_selectedDept) ? _selectedDept : '');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: DropdownButtonFormField<String>(
+        value: currentValue.isEmpty ? null : currentValue,
+        hint: Text('Department/Shop', style: TextStyle(color: sl.text3, fontSize: 11.5)),
+        items: items.map((e) => DropdownMenuItem(
+          value: e,
+          child: Text(
+            e,
+            style: TextStyle(
+              fontSize: 12,
+              fontStyle: e == 'Other' ? FontStyle.italic : FontStyle.normal,
+              color: e == 'Other' ? AppColors.accent : sl.text1,
+            ),
+          ),
+        )).toList(),
+        onChanged: (v) {
+          setState(() {
+            if (v == 'Other') {
+              _selectedDept = 'Other';
+              _showOtherDept = true;
+            } else {
+              _selectedDept = v ?? '';
+              _showOtherDept = false;
+              _deptOther.clear();
+            }
+          });
+        },
+        dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
+        style: TextStyle(color: sl.text1, fontSize: 12),
+        icon: Icon(Icons.keyboard_arrow_down_rounded, color: sl.text3),
+        decoration: InputDecoration(
+          labelText: 'Department/Shop',
+          labelStyle: TextStyle(color: sl.text3, fontSize: 11.5),
+          prefixIcon: Icon(Icons.business_rounded, size: 18, color: sl.text3),
+          filled: true,
+          fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
