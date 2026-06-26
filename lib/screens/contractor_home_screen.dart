@@ -7,6 +7,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart';
+import '../services/sync_service.dart';
+import '../services/background_sync.dart';
 import 'login_screen.dart';
 import 'ai_scan_tab.dart';
 import 'near_miss_tab.dart';
@@ -126,6 +128,26 @@ class _ContractorHomeScreenState extends State<ContractorHomeScreen> {
           ],
         ),
         actions: [
+          // ★ Sync to Google Sheets button
+          IconButton(
+            icon: Icon(Icons.cloud_upload_outlined, color: sl.text3, size: 20),
+            tooltip: 'Sync to Sheets',
+            onPressed: () async {
+              final count = await SyncService.getPendingCount();
+              if (count == 0) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('All reports already synced ✓'), duration: Duration(seconds: 2)));
+                }
+                return;
+              }
+              final synced = await BackgroundSync.syncNow();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Synced $synced report(s) to Google Sheets'), duration: const Duration(seconds: 2)));
+              }
+            },
+          ),
           IconButton(
             icon: Icon(
               isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,

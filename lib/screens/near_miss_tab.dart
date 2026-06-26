@@ -743,7 +743,8 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
       await LocalDB.saveIncident(incident);
       // Start network sync but don't block — show success after max 5s
       final syncFuture = SyncService.pushIncident(incident).catchError((_) => false);
-      _uploadPdfBackground(incident, user);
+      // Only generate/upload PDF in background if user chose Save+PDF
+      if (exportAfter) _uploadPdfBackground(incident, user);
       _lastSubmissionKey = _buildSubmissionKey();
       final synced = await syncFuture.timeout(
         const Duration(seconds: 5), onTimeout: () => false);
