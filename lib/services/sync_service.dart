@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
+import 'auth_token_service.dart';
+import 'app_logger.dart';
 
 /// SAIL Safety Lens — Google Sheets Sync Service
 ///
@@ -42,11 +44,19 @@ class SyncService {
   /// Helper: POST to Apps Script, then follow 302 redirect with GET.
   /// Apps Script processes the POST and redirects to a result URL that
   /// must be fetched with GET to receive the JSON response.
+  /// ★ Includes auth token in headers for API authentication.
   static Future<http.Response?> _postWithRedirect(
       String url, Map<String, dynamic> body,
       {Duration timeout = const Duration(seconds: 30)}) async {
     final client = http.Client();
     try {
+      // Attach auth token to request body for server-side validation
+      final authHeaders = await AuthTokenService.getAuthHeaders();
+      if (authHeaders.isNotEmpty) {
+        body['_authToken'] = authHeaders['X-Auth-Token'] ?? '';
+        body['_authUser'] = authHeaders['X-User-Id'] ?? '';
+      }
+
       var resp = await client
           .post(
             Uri.parse(url),
@@ -63,7 +73,9 @@ class SyncService {
         }
       }
       return resp;
-    } catch (_) {
+    } catch (e, stack) {
+      AppLogger.error('SyncService', 'POST request failed',
+          error: e, stack: stack, action: body['action']?.toString());
       return null;
     } finally {
       client.close();
@@ -420,6 +432,9 @@ class SyncService {
     if (raw == null) return 0;
     return (jsonDecode(raw) as List).length;
   }
+
+  /// Alias for widget use
+  static Future<int> getPendingCount() => pendingQueueSize();
 
   // ═══════════════════════════════════════════════════════════════
   //  STATUS

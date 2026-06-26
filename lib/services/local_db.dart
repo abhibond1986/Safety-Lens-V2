@@ -10,6 +10,7 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'kb_seed_data.dart';
+import 'crypto_utils.dart';
 
 class LocalDB {
   static late SharedPreferences _prefs;
@@ -30,40 +31,29 @@ class LocalDB {
 
   static Future<void> _seedIfEmpty() async {
     if (_prefs.getString(_kUsers) == null) {
-      final seed = [
-        {
-          'username': 'abhishek.kumar', 'password': 'demo',
-          'name': 'Abhishek Kumar', 'designation': 'AGM',
-          'plant': 'SAIL Safety Organisation',
-          'pno': 'SAIL-SSO-001', 'mobile': '9999999999',
-          'email': 'abhishek@sail.in',
-          'isAdmin': true,
-        },
-        {
-          'username': 'demo', 'password': 'demo',
-          'name': 'R.K. Sharma', 'designation': 'Sr. Safety Officer',
-          'plant': 'BSP Bhilai',
-          'pno': 'BSP-2024-001', 'mobile': '9876543210',
-          'email': 'rks@sail.in',
-          'isAdmin': false,
-        },
-        {
-          'username': 'rajesh.kumar', 'password': 'demo',
-          'name': 'Rajesh Kumar', 'designation': 'Safety Officer',
-          'plant': 'BSP Bhilai',
-          'pno': 'BSP-2024-002', 'mobile': '9876543211',
-          'email': 'rajesh@sail.in',
-          'isAdmin': false,
-        },
-        {
-          'username': 'priya.singh', 'password': 'demo',
-          'name': 'Priya Singh', 'designation': 'Safety Supervisor',
-          'plant': 'ISP Burnpur',
-          'pno': 'ISP-2024-001', 'mobile': '9876543212',
-          'email': 'priya@sail.in',
-          'isAdmin': false,
-        },
+      // Seed users with hashed passwords (default password: 'demo')
+      final seed = <Map<String, dynamic>>[];
+      final seedData = [
+        {'username': 'abhishek.kumar', 'name': 'Abhishek Kumar', 'designation': 'AGM',
+         'plant': 'SAIL Safety Organisation', 'pno': 'SAIL-SSO-001',
+         'mobile': '9999999999', 'email': 'abhishek@sail.in', 'isAdmin': true},
+        {'username': 'demo', 'name': 'R.K. Sharma', 'designation': 'Sr. Safety Officer',
+         'plant': 'BSP Bhilai', 'pno': 'BSP-2024-001',
+         'mobile': '9876543210', 'email': 'rks@sail.in', 'isAdmin': false},
+        {'username': 'rajesh.kumar', 'name': 'Rajesh Kumar', 'designation': 'Safety Officer',
+         'plant': 'BSP Bhilai', 'pno': 'BSP-2024-002',
+         'mobile': '9876543211', 'email': 'rajesh@sail.in', 'isAdmin': false},
+        {'username': 'priya.singh', 'name': 'Priya Singh', 'designation': 'Safety Supervisor',
+         'plant': 'ISP Burnpur', 'pno': 'ISP-2024-001',
+         'mobile': '9876543212', 'email': 'priya@sail.in', 'isAdmin': false},
       ];
+      for (final u in seedData) {
+        final salt = CryptoUtils.generateSalt();
+        u['salt'] = salt;
+        u['passwordHash'] = CryptoUtils.hashPassword('demo', salt);
+        u['status'] = 'active';
+        seed.add(u);
+      }
       await _prefs.setString(_kUsers, jsonEncode(seed));
     }
 
@@ -169,47 +159,91 @@ class LocalDB {
 
   static Future<Map<String, dynamic>?> signIn(
       String username, String password) async {
-    if (username == 'admin' && password == 'admin') {
-      final adminUser = {
-        'username': 'admin', 'password': 'admin',
-        'name': 'System Admin', 'designation': 'Administrator',
-        'plant': 'Corporate – Ranchi', 'department': 'Safety HQ',
-        'pno': 'ADMIN001', 'isAdmin': true, 'status': 'active',
-      };
-      await _prefs.setString(_kCurrentUser, jsonEncode(adminUser));
-      return adminUser;
-    }
-
+    // Check local users first
     final users = await getUsers();
     for (final u in users) {
-      final uname   = u['username']?.toString() ?? '';
-      final email   = u['email']?.toString() ?? '';
-      final stored  = u['password']?.toString() ?? '';
-      final storedH = u['passwordHash']?.toString() ?? '';
-      if ((uname == username || email == username) &&
-          (stored == password || storedH == password)) {
-        // Block disabled users from logging in
-        final status = (u['status']?.toString().toLowerCase() ?? 'active');
-        if (status == 'disabled' || status == 'blocked') return null;
-        await _prefs.setString(_kCurrentUser, jsonEncode(u));
-        return u;
+      final uname  = u['username']?.toString() ?? '';
+      final email  = u['email']?.toString() ?? '';
+      if (uname != username && email != username) continue;
+
+      // Block disabled users
+      final status = (u['status']?.toString().toLowerCase() ?? 'active');
+      if (status == 'disabled' || status == 'blocked') return null;
+
+      // Try secure hash verification first
+      final salt = u['salt']?.toString() ?? '';
+      final storedHash = u['passwordHash']?.toString() ?? '';
+      if (salt.isNotEmpty && storedHash.isNotEmpty) {
+        if (CryptoUtils.verifyPassword(password, salt, storedHash)) {
+          final safeUser = Map<String, dynamic>.from(u)
+            ..remove('password')..remove('passwordHash')..remove('salt');
+          await _prefs.setString(_kCurrentUser, jsonEncode(safeUser));
+          return safeUser;
+        }
+      }
+
+      // Legacy fallback: plaintext password (migrate on successful login)
+      final stored = u['password']?.toString() ?? '';
+      if (stored.isNotEmpty && stored == password) {
+        // Migrate to hashed password
+        await _migratePassword(u, password);
+        final safeUser = Map<String, dynamic>.from(u)
+          ..remove('password')..remove('passwordHash')..remove('salt');
+        await _prefs.setString(_kCurrentUser, jsonEncode(safeUser));
+        return safeUser;
+      }
+
+      // Legacy fallback: old simpleHash (from backend)
+      if (storedHash.isNotEmpty && salt.isEmpty && storedHash == password) {
+        await _migratePassword(u, password);
+        final safeUser = Map<String, dynamic>.from(u)
+          ..remove('password')..remove('passwordHash')..remove('salt');
+        await _prefs.setString(_kCurrentUser, jsonEncode(safeUser));
+        return safeUser;
       }
     }
 
+    // Check cached users from backend
     final cached = await getAllUsers();
     for (final u in cached) {
-      final uname   = u['username']?.toString() ?? '';
-      final storedH = u['passwordHash']?.toString() ?? '';
-      if (uname == username && storedH == password) {
-        // Block disabled users from logging in
-        final status = (u['status']?.toString().toLowerCase() ?? 'active');
-        if (status == 'disabled' || status == 'blocked') return null;
-        await _prefs.setString(_kCurrentUser, jsonEncode(u));
-        return u;
+      final uname = u['username']?.toString() ?? '';
+      if (uname != username) continue;
+
+      final status = (u['status']?.toString().toLowerCase() ?? 'active');
+      if (status == 'disabled' || status == 'blocked') return null;
+
+      final salt = u['salt']?.toString() ?? '';
+      final storedHash = u['passwordHash']?.toString() ?? '';
+      if (salt.isNotEmpty && storedHash.isNotEmpty) {
+        if (CryptoUtils.verifyPassword(password, salt, storedHash)) {
+          final safeUser = Map<String, dynamic>.from(u)
+            ..remove('password')..remove('passwordHash')..remove('salt');
+          await _prefs.setString(_kCurrentUser, jsonEncode(safeUser));
+          return safeUser;
+        }
       }
     }
 
     return null;
+  }
+
+  /// Migrate a legacy plaintext password to SHA-256 + salt
+  static Future<void> _migratePassword(Map<String, dynamic> user, String password) async {
+    final salt = CryptoUtils.generateSalt();
+    final hash = CryptoUtils.hashPassword(password, salt);
+    user['salt'] = salt;
+    user['passwordHash'] = hash;
+    user.remove('password'); // Remove plaintext
+
+    // Update in users list
+    final users = await getUsers();
+    for (int i = 0; i < users.length; i++) {
+      if (users[i]['username'] == user['username']) {
+        users[i] = user;
+        break;
+      }
+    }
+    await _prefs.setString(_kUsers, jsonEncode(users));
   }
 
   static Future<Map<String, dynamic>?> register(
@@ -218,21 +252,36 @@ class LocalDB {
     if (users.any((u) => u['username'] == userData['username'])) {
       return null;
     }
+
+    // Hash the password before storing
+    final rawPassword = userData['password']?.toString() ?? '';
+    if (rawPassword.isNotEmpty) {
+      final salt = CryptoUtils.generateSalt();
+      userData['salt'] = salt;
+      userData['passwordHash'] = CryptoUtils.hashPassword(rawPassword, salt);
+      userData.remove('password'); // Never store plaintext
+    }
+
     users.add(userData);
     await _prefs.setString(_kUsers, jsonEncode(users));
-    await _prefs.setString(_kCurrentUser, jsonEncode(userData));
-    return userData;
+
+    // Store safe user (no credentials) in current session
+    final safeUser = Map<String, dynamic>.from(userData)
+      ..remove('password')..remove('passwordHash')..remove('salt');
+    await _prefs.setString(_kCurrentUser, jsonEncode(safeUser));
+    return safeUser;
   }
 
-  static Future<bool> resetPassword(String username) async {
-    if (username == 'admin') return true;
+  static Future<bool> resetPassword(String username, {String newPassword = 'sail@123'}) async {
     final users = await getUsers();
     bool found = false;
     for (int i = 0; i < users.length; i++) {
       if (users[i]['username']?.toString() == username ||
           users[i]['email']?.toString() == username) {
-        users[i]['password'] = 'sail@123';
-        users[i]['passwordHash'] = 'sail@123';
+        final salt = CryptoUtils.generateSalt();
+        users[i]['salt'] = salt;
+        users[i]['passwordHash'] = CryptoUtils.hashPassword(newPassword, salt);
+        users[i].remove('password'); // Remove any legacy plaintext
         found = true;
         break;
       }

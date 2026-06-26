@@ -7,6 +7,8 @@ import 'services/local_db.dart';
 import 'services/sync_service.dart';
 import 'services/admin_master_data.dart';
 import 'services/app_updater.dart';
+import 'services/image_storage.dart';
+import 'services/background_sync.dart';
 import 'services/i18n.dart';  // ← ADDED: fixes "I18n not defined" error
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
@@ -17,6 +19,9 @@ void main() async {
   await LocaleService().load();
   await LocalDB.init();
   await SyncService.init();
+  await ImageStorage.init();
+  // Migrate legacy base64 images to file storage (one-time, non-blocking)
+  ImageStorage.migrateInlineImages().catchError((_) => 0);
   SyncService.drainPendingQueue().catchError((_) => 0);
   // ★ v24: Pull latest master data (plants, depts, WSA) from backend on startup
   // Await with timeout so UI renders with fresh data (not stale defaults)
@@ -25,6 +30,8 @@ void main() async {
       .catchError((_) => false);
   // Silent auto-update: checks GitHub releases and installs APK in background
   AppUpdater.init();
+  // ★ v25: Periodic background sync — retries pending items every 5 minutes
+  BackgroundSync.start();
   runApp(const SafetyLensApp());
 }
 

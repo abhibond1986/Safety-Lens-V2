@@ -4,6 +4,8 @@ import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
 import '../services/admin_master_data.dart';
+import '../services/auth_token_service.dart';
+import '../services/validators.dart';
 import '../services/i18n.dart';
 import '../widgets/glass_card.dart';
 import 'home_screen.dart';
@@ -96,16 +98,23 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _login() async {
-    if (_userCtrl.text.trim().isEmpty || _passCtrl.text.isEmpty) {
-      setState(() => _err = 'Please fill all fields');
-      return;
-    }
+    final username = _userCtrl.text.trim();
+    final password = _passCtrl.text;
+
+    // Validate inputs
+    final usernameErr = Validators.validateRequired(username, 'Username');
+    if (usernameErr != null) { setState(() => _err = usernameErr); return; }
+    final passwordErr = Validators.validatePassword(password);
+    if (passwordErr != null) { setState(() => _err = passwordErr); return; }
+
     setState(() { _loading = true; _err = ''; });
     try {
-      final user = await LocalDB.signIn(
-        _userCtrl.text.trim(), _passCtrl.text);
+      final user = await LocalDB.signIn(username, password);
       if (!mounted) return;
       if (user != null) {
+        // Generate session token for authenticated API calls
+        final userId = user['pno']?.toString() ?? user['username']?.toString() ?? '';
+        await AuthTokenService.generateToken(userId);
         _goHome();
       } else {
         setState(() => _err = 'Invalid credentials');
@@ -124,10 +133,15 @@ class _LoginScreenState extends State<LoginScreen> {
     final desig = _regDesigCtrl.text.trim();
     final plant = _effectivePlant;
 
-    if ([name, user, pass, desig, plant].any((s) => s.isEmpty)) {
-      setState(() => _err = 'Please fill all fields including plant');
-      return;
-    }
+    // Validate all fields
+    final nameErr = Validators.validateName(name);
+    if (nameErr != null) { setState(() => _err = nameErr); return; }
+    final userErr = Validators.validateUsername(user);
+    if (userErr != null) { setState(() => _err = userErr); return; }
+    final passErr = Validators.validatePassword(pass);
+    if (passErr != null) { setState(() => _err = passErr); return; }
+    if (desig.isEmpty) { setState(() => _err = 'Designation is required'); return; }
+    if (plant.isEmpty) { setState(() => _err = 'Please select a plant'); return; }
     setState(() { _loading = true; _err = ''; });
     try {
       final userData = {

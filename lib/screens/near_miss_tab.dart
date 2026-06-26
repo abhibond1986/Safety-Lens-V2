@@ -626,22 +626,31 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   Future<bool> _checkDuplicate() async {
     final key = _buildSubmissionKey();
     if (_lastSubmissionKey == key) {
-      _snack('This report appears to be a duplicate.', const Color(0xFFD97706));
+      _snack('This exact report was just submitted.', const Color(0xFFD97706));
       return true;
     }
     final existing = await LocalDB.getIncidents();
-    final tenMinAgo = DateTime.now().subtract(const Duration(minutes: 10));
+    final fiveMinAgo = DateTime.now().subtract(const Duration(minutes: 5));
     final loc   = _location.text.trim().toLowerCase();
     final plant = _plant.toLowerCase();
+    final title = (_aiBrief?['identified']?.toString() ?? _brief.text.split('.').first).trim().toLowerCase();
+    final wsaCause = _wsaCause.toLowerCase();
 
+    // Only flag as duplicate if same plant + location + similar title/cause within 5 min
     final found = existing.where((inc) {
       try {
         final incDate = DateTime.parse(inc['date']?.toString() ?? '');
-        if (incDate.isBefore(tenMinAgo)) return false;
+        if (incDate.isBefore(fiveMinAgo)) return false;
       } catch (_) { return false; }
       final incLoc   = inc['location']?.toString().toLowerCase() ?? '';
       final incPlant = inc['plant']?.toString().toLowerCase()    ?? '';
-      return inc['type'] == 'NEAR_MISS' && incPlant == plant && incLoc == loc;
+      final incTitle = inc['title']?.toString().toLowerCase() ?? '';
+      final incWsa   = inc['wsaCategory']?.toString().toLowerCase() ?? '';
+      // Must match plant + location + (title OR WSA cause)
+      return inc['type'] == 'NEAR_MISS' &&
+             incPlant == plant &&
+             incLoc == loc &&
+             (incTitle == title || incWsa == wsaCause);
     }).toList();
 
     if (found.isNotEmpty) {
@@ -656,7 +665,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
             SizedBox(width: 8),
             Text('Possible Duplicate', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           ]),
-          content: const Text('A near miss from this exact location was already reported within the last 10 minutes.\n\nSubmit anyway?', style: TextStyle(fontSize: 13, height: 1.5)),
+          content: const Text('A similar near miss (same location & category) was reported in the last 5 minutes.\n\nSubmit anyway?', style: TextStyle(fontSize: 13, height: 1.5)),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
             ElevatedButton(
