@@ -99,7 +99,8 @@ function handle(e) {
       'gemini', 'analyzeUrl', 'diagnose',
       'addIncident', 'updateIncident', 'updateIncidentStatus', 'listIncidents',
       'addFeedback', 'listFeedback', 'uploadPdfToDrive',
-      'addKnowledge', 'listKnowledge', 'formatSheet', 'formatIncidentsSheet'];
+      'addKnowledge', 'listKnowledge', 'formatSheet', 'formatIncidentsSheet',
+      'upsertUser'];
     if (publicActions.indexOf(action) < 0) {
       var authResult = validateAuthToken(params._authToken, params._authUser);
       if (!authResult.valid) {

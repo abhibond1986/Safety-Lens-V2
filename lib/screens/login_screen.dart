@@ -136,11 +136,27 @@ class _LoginScreenState extends State<LoginScreen> {
           // so that API calls (addIncident, etc.) are authenticated.
           // Fire this in background — don't block login on network.
           final passwordHash = _simpleHash(password);
-          SyncService.loginOnline(username, passwordHash).catchError((_) => null);
-          // Meanwhile, store a local token as fallback (won't work for server auth
-          // but keeps the app functional offline)
+          // Meanwhile, store a local token as fallback
           final userId = user['pno']?.toString() ?? user['username']?.toString() ?? '';
           await AuthTokenService.generateToken(userId);
+          // Try server login; if it fails, ensure user exists on server
+          // so cross-device login works next time.
+          SyncService.loginOnline(username, passwordHash).then((result) {
+            if (result == null) {
+              // Server doesn't know this user — push them
+              final pushData = <String, dynamic>{
+                'name': user['name']?.toString() ?? '',
+                'username': username,
+                'designation': user['designation']?.toString() ?? '',
+                'plant': user['plant']?.toString() ?? '',
+                'pno': user['pno']?.toString() ?? '',
+                'passwordHash': passwordHash,
+                'isAdmin': user['isAdmin']?.toString() ?? 'false',
+                'status': 'active',
+              };
+              SyncService.pushUser(pushData);
+            }
+          }).catchError((_) => null);
         }
         _goHome();
       } else {

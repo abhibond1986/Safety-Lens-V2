@@ -625,8 +625,7 @@ class SyncService {
 
     final url = await getBackendUrl();
 
-    // Strip any password material that shouldn't go over the wire
-    // unless explicitly set on this payload (the caller knows best).
+    // Build clean body from user data
     final body = <String, dynamic>{};
     user.forEach((k, v) {
       if (v == null) { body[k] = ''; return; }
@@ -634,70 +633,37 @@ class SyncService {
       body[k] = v.toString();
     });
 
-    // Attempt 1: action=upsertUser (preferred when backend supports it)
+    // Attempt 1: action=upsertUser (creates or updates user on server)
     try {
       final b1 = Map<String, dynamic>.from(body)..['action'] = 'upsertUser';
-      final client = http.Client();
-      http.Response resp;
-      try {
-        resp = await client.post(
-          Uri.parse(url),
-          body: jsonEncode(b1),
-          headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        ).timeout(const Duration(seconds: 20));
-        if (resp.statusCode == 302 || resp.statusCode == 301) {
-          final loc = resp.headers['location'] ?? '';
-          if (loc.isNotEmpty) {
-            resp = await client
-                .get(Uri.parse(loc))
-                .timeout(const Duration(seconds: 20));
-          }
+      final resp = await _postWithRedirect(url, b1);
+      if (resp != null && resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        if (data is Map && (data['success'] == true || data['ok'] == true)) {
+          print('SyncService: pushUser SUCCESS via upsertUser for $uname');
+          return true;
         }
-      } finally { client.close(); }
-
-      if (resp.statusCode == 200) {
-        try {
-          final data = jsonDecode(resp.body);
-          if (data is Map &&
-              (data['success'] == true || data['ok'] == true)) {
-            return true;
-          }
-        } catch (_) {}
+        print('SyncService: pushUser upsertUser response: ${resp.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('SyncService: pushUser upsertUser error: $e');
+    }
 
-    // Attempt 2: fall back to register (Apps Script v9 accepts this
-    // and silently updates an existing user if `username` matches).
+    // Attempt 2: fall back to register (for older backend versions)
     try {
       final b2 = Map<String, dynamic>.from(body)..['action'] = 'register';
-      final client = http.Client();
-      http.Response resp;
-      try {
-        resp = await client.post(
-          Uri.parse(url),
-          body: jsonEncode(b2),
-          headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        ).timeout(const Duration(seconds: 20));
-        if (resp.statusCode == 302 || resp.statusCode == 301) {
-          final loc = resp.headers['location'] ?? '';
-          if (loc.isNotEmpty) {
-            resp = await client
-                .get(Uri.parse(loc))
-                .timeout(const Duration(seconds: 20));
-          }
+      final resp = await _postWithRedirect(url, b2);
+      if (resp != null && resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        if (data is Map && (data['success'] == true || data['ok'] == true)) {
+          print('SyncService: pushUser SUCCESS via register for $uname');
+          return true;
         }
-      } finally { client.close(); }
-
-      if (resp.statusCode == 200) {
-        try {
-          final data = jsonDecode(resp.body);
-          if (data is Map &&
-              (data['success'] == true || data['ok'] == true)) {
-            return true;
-          }
-        } catch (_) {}
+        print('SyncService: pushUser register response: ${resp.body}');
       }
-    } catch (_) {}
+    } catch (e) {
+      print('SyncService: pushUser register error: $e');
+    }
 
     return false;
   }
