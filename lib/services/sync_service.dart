@@ -531,16 +531,33 @@ class SyncService {
     // Push any queued offline writes
     final pushed = await drainPendingQueue();
 
-    // Pull latest incidents from Sheets
+    // Pull latest incidents from Sheets — merge with local
+    // Server is source of truth: add missing, update existing
     final pulled = await fetchIncidents();
     if (pulled.isNotEmpty) {
       final local    = await LocalDB.getIncidents();
-      final localIds = local.map((i) => i['id']?.toString()).toSet();
+      final localMap = <String, Map<String, dynamic>>{};
+      for (final l in local) {
+        final id = l['id']?.toString() ?? '';
+        if (id.isNotEmpty) localMap[id] = l;
+      }
       for (final remote in pulled) {
-        if (!localIds.contains(remote['id']?.toString())) {
+        final id = remote['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        if (!localMap.containsKey(id)) {
+          // New incident from server — add locally
           await LocalDB.saveIncident(remote);
+        } else {
+          // Existing incident — update with server data (server is truth)
+          final merged = Map<String, dynamic>.from(localMap[id]!);
+          remote.forEach((k, v) {
+            if (v != null && v.toString().isNotEmpty) merged[k] = v;
+          });
+          localMap[id] = merged;
         }
       }
+      // Replace all local incidents with merged data
+      await LocalDB.replaceAllIncidents(localMap.values.toList());
     }
 
     // Pull latest users from Sheets and cache them
