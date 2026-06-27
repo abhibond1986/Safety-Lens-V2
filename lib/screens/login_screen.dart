@@ -5,6 +5,7 @@ import '../services/local_db.dart';
 import '../services/sync_service.dart';
 import '../services/admin_master_data.dart';
 import '../services/auth_token_service.dart';
+import '../services/crypto_utils.dart';
 import '../services/validators.dart';
 import '../services/i18n.dart';
 import '../widgets/glass_card.dart';
@@ -119,9 +120,13 @@ class _LoginScreenState extends State<LoginScreen> {
         final passwordHash = _simpleHash(password);
         final remoteUser = await SyncService.loginOnline(username, passwordHash);
         if (remoteUser != null) {
-          // Cache the user locally for future offline logins
+          // Cache the user locally WITH password credentials for future offline logins
           remoteUser['username'] ??= username;
           remoteUser['status'] ??= 'active';
+          // Store a proper CryptoUtils hash so LocalDB.signIn works offline
+          final salt = CryptoUtils.generateSalt();
+          remoteUser['salt'] = salt;
+          remoteUser['passwordHash'] = CryptoUtils.hashPassword(password, salt);
           await LocalDB.upsertUser(remoteUser);
           user = Map<String, dynamic>.from(remoteUser)
             ..remove('passwordHash')..remove('password')..remove('salt');
@@ -224,12 +229,15 @@ class _LoginScreenState extends State<LoginScreen> {
       final ok = await LocalDB.register(userData);
       if (!mounted) return;
       if (ok != null) {
-        // ✅ FIX: Send passwordHash (simpleHash) to backend so other devices
-        // can login with the same credentials via Apps Script
+        // ✅ FIX: Register user on backend so other devices can login
+        // Uses both register (for new users) and upsertUser (to update hash)
         final pushData = Map<String, dynamic>.from(userData);
         pushData.remove('password'); // Don't send plaintext password
         pushData['passwordHash'] = _simpleHash(pass); // Backend expects this
-        SyncService.pushUser(pushData).catchError((_) => false);
+        // Try registration first (direct, public action), then upsertUser as backup
+        SyncService.registerOnline(pushData).then((registered) {
+          if (!registered) SyncService.pushUser(pushData);
+        }).catchError((_) => SyncService.pushUser(pushData).catchError((_) => false));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${I18n.t('common.success')}! Welcome, $name'),
           backgroundColor: Colors.green,

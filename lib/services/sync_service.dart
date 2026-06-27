@@ -768,6 +768,33 @@ class SyncService {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  REGISTER ONLINE — direct call to Apps Script 'register' action
+  // ═══════════════════════════════════════════════════════════════
+  static Future<bool> registerOnline(Map<String, dynamic> userData) async {
+    if (!await isConfigured) return false;
+    try {
+      final url = await getBackendUrl();
+      final body = <String, dynamic>{'action': 'register'};
+      userData.forEach((k, v) {
+        if (v != null) body[k] = v.toString();
+      });
+      final resp = await _postWithRedirect(url, body);
+      if (resp != null && resp.statusCode == 200) {
+        final data = jsonDecode(resp.body);
+        if (data is Map && data['success'] == true) {
+          print('SyncService: registerOnline SUCCESS for ${userData['username']}');
+          return true;
+        }
+        print('SyncService: registerOnline failed: ${resp.body}');
+      }
+      return false;
+    } catch (e) {
+      print('SyncService: registerOnline error: $e');
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  UPLOAD PDF TO DRIVE — returns shareable URL, updates incident
   // ═══════════════════════════════════════════════════════════════
   static Future<String?> uploadPdfToDrive({
