@@ -531,13 +531,36 @@ class SyncService {
     // Push any queued offline writes
     final pushed = await drainPendingQueue();
 
-    // Pull latest incidents from Sheets — merge with local
-    // Server is source of truth: add missing, update existing
+    // Pull latest incidents from Sheets
     final pulled = await fetchIncidents();
+    final serverIds = <String>{};
+    for (final r in pulled) {
+      final id = r['id']?.toString() ?? '';
+      if (id.isNotEmpty) serverIds.add(id);
+    }
+
+    // Push local-only incidents to server (ones that never made it)
+    final localIncidents = await LocalDB.getIncidents();
+    int extraPushed = 0;
+    for (final local in localIncidents) {
+      final id = local['id']?.toString() ?? '';
+      if (id.isNotEmpty && !serverIds.contains(id)) {
+        // This incident exists locally but not on server — push it
+        final ok = await pushIncident(local, fromQueue: true);
+        if (ok) extraPushed++;
+      }
+    }
+    if (extraPushed > 0) {
+      print('SyncService.fullSync: pushed $extraPushed local-only incidents to server');
+      // Re-fetch to get complete server data after our pushes
+      pulled.clear();
+      pulled.addAll(await fetchIncidents());
+    }
+
+    // Merge: server is source of truth for shared data
     if (pulled.isNotEmpty) {
-      final local    = await LocalDB.getIncidents();
       final localMap = <String, Map<String, dynamic>>{};
-      for (final l in local) {
+      for (final l in localIncidents) {
         final id = l['id']?.toString() ?? '';
         if (id.isNotEmpty) localMap[id] = l;
       }
@@ -545,10 +568,9 @@ class SyncService {
         final id = remote['id']?.toString() ?? '';
         if (id.isEmpty) continue;
         if (!localMap.containsKey(id)) {
-          // New incident from server — add locally
-          await LocalDB.saveIncident(remote);
+          localMap[id] = remote;
         } else {
-          // Existing incident — update with server data (server is truth)
+          // Existing — merge server data over local
           final merged = Map<String, dynamic>.from(localMap[id]!);
           remote.forEach((k, v) {
             if (v != null && v.toString().isNotEmpty) merged[k] = v;
