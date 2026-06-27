@@ -727,27 +727,42 @@ class SyncService {
   // ═══════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> loginOnline(
       String username, String passwordHash) async {
-    if (!await isConfigured) return null;
+    if (!await isConfigured) {
+      print('SyncService.loginOnline: backend not configured');
+      return null;
+    }
     try {
       final url = await getBackendUrl();
+      print('SyncService.loginOnline: attempting login for "$username" with hash "$passwordHash"');
       final resp = await _postWithRedirect(url, {
         'action': 'login',
         'username': username,
         'passwordHash': passwordHash,
       });
 
-      if (resp != null && resp.statusCode == 200) {
+      if (resp == null) {
+        print('SyncService.loginOnline: null response (network error or timeout)');
+        return null;
+      }
+
+      print('SyncService.loginOnline: status=${resp.statusCode}, bodyLen=${resp.body.length}');
+
+      if (resp.statusCode == 200) {
         final bodyText = resp.body.trim();
-        if (bodyText.startsWith('<')) return null; // HTML error page
+        if (bodyText.startsWith('<')) {
+          print('SyncService.loginOnline: got HTML response, not JSON');
+          return null;
+        }
         final data = jsonDecode(bodyText) as Map<String, dynamic>;
-        // Apps Script v14+ returns:
-        // { success: true, user: {...}, sessionToken: '...', tokenExpiry: '...' }
+        print('SyncService.loginOnline: response data=${data.keys.toList()}, success=${data['success']}');
+
         if (data['success'] == true) {
           // ✅ Store the server-issued session token
           final serverToken = data['sessionToken']?.toString() ?? '';
           if (serverToken.isNotEmpty) {
             final userId = username;
             await AuthTokenService.storeServerToken(serverToken, userId);
+            print('SyncService.loginOnline: stored server token for $userId');
           }
 
           if (data['user'] is Map) {
@@ -759,10 +774,13 @@ class SyncService {
           flat.remove('sessionToken');
           flat.remove('tokenExpiry');
           if (flat['username'] != null) return flat;
+        } else {
+          print('SyncService.loginOnline: login rejected — ${data['error'] ?? 'unknown error'}');
         }
       }
       return null;
-    } catch (_) {
+    } catch (e) {
+      print('SyncService.loginOnline: exception — $e');
       return null;
     }
   }

@@ -302,6 +302,11 @@ class LocalDB {
     return jsonDecode(raw) as Map<String, dynamic>;
   }
 
+  /// Set the current logged-in user (used after remote login)
+  static Future<void> setCurrentUser(Map<String, dynamic> user) async {
+    await _prefs.setString(_kCurrentUser, jsonEncode(user));
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  USERS
   // ═══════════════════════════════════════════════════════════════

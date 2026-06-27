@@ -128,13 +128,16 @@ class _LoginScreenState extends State<LoginScreen> {
           remoteUser['salt'] = salt;
           remoteUser['passwordHash'] = CryptoUtils.hashPassword(password, salt);
           await LocalDB.upsertUser(remoteUser);
+          // Set as current user (without credentials) so HomeScreen sees it
           user = Map<String, dynamic>.from(remoteUser)
             ..remove('passwordHash')..remove('password')..remove('salt');
+          await LocalDB.setCurrentUser(user!);
           gotServerToken = true; // loginOnline already stored the server token
         }
       }
 
       if (!mounted) return;
+      print('LoginScreen._login: user=${user != null ? "found" : "null"}, gotServerToken=$gotServerToken');
       if (user != null) {
         final Map<String, dynamic> confirmedUser = user;
         if (!gotServerToken) {
