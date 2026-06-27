@@ -15,7 +15,9 @@ class AuthTokenService {
   /// Token validity duration (7 days)
   static const Duration tokenValidity = Duration(days: 7);
 
-  /// Generate and store a new session token after login
+  /// Generate and store a new session token after login.
+  /// NOTE: This creates a LOCAL token. For server-authenticated API calls,
+  /// use storeServerToken() with the token returned by the login API.
   static Future<String> generateToken(String userId) async {
     final prefs = await SharedPreferences.getInstance();
     final token = CryptoUtils.generateToken();
@@ -26,6 +28,18 @@ class AuthTokenService {
     await prefs.setString(_kUserId, userId);
 
     return token;
+  }
+
+  /// Store a server-issued session token (from Apps Script login response).
+  /// This is the token the server validates for authenticated API calls.
+  static Future<void> storeServerToken(String token, String userId) async {
+    final prefs = await SharedPreferences.getInstance();
+    // Server tokens are valid for 7 days (set by Apps Script createSession)
+    final expiry = DateTime.now().add(tokenValidity).toIso8601String();
+
+    await prefs.setString(_kToken, token);
+    await prefs.setString(_kTokenExpiry, expiry);
+    await prefs.setString(_kUserId, userId);
   }
 
   /// Get current valid token (null if expired or not present)

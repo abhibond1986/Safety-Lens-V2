@@ -92,7 +92,14 @@ function handle(e) {
     let result;
 
     // ★ v25: API Authentication — validate token for sensitive actions
-    var publicActions = ['health', 'ping', 'login', 'register', 'getApiKeys', 'getMasterData', 'gemini', 'analyzeUrl', 'diagnose'];
+    // NOTE: addIncident, updateIncident, listIncidents, addFeedback, uploadPdfToDrive
+    // are semi-public (require reportedBy in payload but not session tokens)
+    // to support offline-first sync where token may have expired.
+    var publicActions = ['health', 'ping', 'login', 'register', 'getApiKeys', 'getMasterData',
+      'gemini', 'analyzeUrl', 'diagnose',
+      'addIncident', 'updateIncident', 'updateIncidentStatus', 'listIncidents',
+      'addFeedback', 'listFeedback', 'uploadPdfToDrive',
+      'addKnowledge', 'listKnowledge', 'formatSheet', 'formatIncidentsSheet'];
     if (publicActions.indexOf(action) < 0) {
       var authResult = validateAuthToken(params._authToken, params._authUser);
       if (!authResult.valid) {

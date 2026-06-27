@@ -111,6 +111,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       // 1. Try local DB first (fast, works offline)
       var user = await LocalDB.signIn(username, password);
+      bool gotServerToken = false;
 
       // 2. If local login fails, try the remote backend (Google Sheets)
       //    This handles cross-device login (e.g. registered on web, login on mobile)
@@ -124,14 +125,23 @@ class _LoginScreenState extends State<LoginScreen> {
           await LocalDB.upsertUser(remoteUser);
           user = Map<String, dynamic>.from(remoteUser)
             ..remove('passwordHash')..remove('password')..remove('salt');
+          gotServerToken = true; // loginOnline already stored the server token
         }
       }
 
       if (!mounted) return;
       if (user != null) {
-        // Generate session token for authenticated API calls
-        final userId = user['pno']?.toString() ?? user['username']?.toString() ?? '';
-        await AuthTokenService.generateToken(userId);
+        if (!gotServerToken) {
+          // ✅ FIX: For local login, also obtain a server session token
+          // so that API calls (addIncident, etc.) are authenticated.
+          // Fire this in background — don't block login on network.
+          final passwordHash = _simpleHash(password);
+          SyncService.loginOnline(username, passwordHash).catchError((_) => null);
+          // Meanwhile, store a local token as fallback (won't work for server auth
+          // but keeps the app functional offline)
+          final userId = user['pno']?.toString() ?? user['username']?.toString() ?? '';
+          await AuthTokenService.generateToken(userId);
+        }
         _goHome();
       } else {
         setState(() => _err = 'Invalid credentials');

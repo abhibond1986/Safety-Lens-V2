@@ -62,6 +62,20 @@ class SyncService {
         body['_authUser'] = authHeaders['X-User-Id'] ?? '';
       }
 
+      // ✅ FIX: Always ensure _authUser is present — fall back to current
+      // logged-in user's identity if auth token is missing/expired.
+      // The deployed Apps Script requires at least a username to identify requests.
+      if ((body['_authUser'] == null || body['_authUser'].toString().isEmpty)) {
+        try {
+          final currentUser = await LocalDB.getCurrentUser();
+          if (currentUser != null) {
+            body['_authUser'] = currentUser['pno']?.toString()
+                ?? currentUser['username']?.toString()
+                ?? '';
+          }
+        } catch (_) {}
+      }
+
       final encodedBody = jsonEncode(body);
 
       if (kIsWeb) {
@@ -742,6 +756,8 @@ class SyncService {
 
   // ═══════════════════════════════════════════════════════════════
   //  ONLINE LOGIN — tries Apps Script; returns user map or null
+  //  ★ v25: Also stores the server-issued session token for
+  //  authenticated API calls (addIncident, updateIncident, etc.)
   // ═══════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> loginOnline(
       String username, String passwordHash) async {
@@ -755,16 +771,27 @@ class SyncService {
       });
 
       if (resp != null && resp.statusCode == 200) {
-        final data = jsonDecode(resp.body) as Map<String, dynamic>;
-        // Apps Script v9 returns { success: true, user: {...} }
-        // or { success: true, uid, name, username, isAdmin, ... }
+        final bodyText = resp.body.trim();
+        if (bodyText.startsWith('<')) return null; // HTML error page
+        final data = jsonDecode(bodyText) as Map<String, dynamic>;
+        // Apps Script v14+ returns:
+        // { success: true, user: {...}, sessionToken: '...', tokenExpiry: '...' }
         if (data['success'] == true) {
+          // ✅ Store the server-issued session token
+          final serverToken = data['sessionToken']?.toString() ?? '';
+          if (serverToken.isNotEmpty) {
+            final userId = username;
+            await AuthTokenService.storeServerToken(serverToken, userId);
+          }
+
           if (data['user'] is Map) {
             return Map<String, dynamic>.from(data['user'] as Map);
           }
           // Flat format (admin hardcode path)
           final flat = Map<String, dynamic>.from(data);
           flat.remove('success');
+          flat.remove('sessionToken');
+          flat.remove('tokenExpiry');
           if (flat['username'] != null) return flat;
         }
       }
