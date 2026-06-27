@@ -131,13 +131,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
       if (user != null) {
+        final Map<String, dynamic> confirmedUser = user;
         if (!gotServerToken) {
           // ✅ FIX: For local login, also obtain a server session token
           // so that API calls (addIncident, etc.) are authenticated.
           // Fire this in background — don't block login on network.
           final passwordHash = _simpleHash(password);
           // Meanwhile, store a local token as fallback
-          final userId = user['pno']?.toString() ?? user['username']?.toString() ?? '';
+          final userId = confirmedUser['pno']?.toString() ?? confirmedUser['username']?.toString() ?? '';
           await AuthTokenService.generateToken(userId);
           // Try server login; if it fails, ensure user exists on server
           // so cross-device login works next time.
@@ -145,13 +146,13 @@ class _LoginScreenState extends State<LoginScreen> {
             if (result == null) {
               // Server doesn't know this user — push them
               final pushData = <String, dynamic>{
-                'name': user['name']?.toString() ?? '',
+                'name': confirmedUser['name']?.toString() ?? '',
                 'username': username,
-                'designation': user['designation']?.toString() ?? '',
-                'plant': user['plant']?.toString() ?? '',
-                'pno': user['pno']?.toString() ?? '',
+                'designation': confirmedUser['designation']?.toString() ?? '',
+                'plant': confirmedUser['plant']?.toString() ?? '',
+                'pno': confirmedUser['pno']?.toString() ?? '',
                 'passwordHash': passwordHash,
-                'isAdmin': user['isAdmin']?.toString() ?? 'false',
+                'isAdmin': confirmedUser['isAdmin']?.toString() ?? 'false',
                 'status': 'active',
               };
               SyncService.pushUser(pushData);
