@@ -35,6 +35,11 @@ jobs:
       - name: List web output
         run: ls -la build/web/
 
+      - name: Copy app icon as favicon and web root icon
+        run: |
+          cp assets/images/app_icon.png build/web/app_icon.png
+          cp assets/images/app_icon.png build/web/favicon.png
+
       - name: Add SPA fallback for routing
         run: cp build/web/index.html build/web/404.html
 

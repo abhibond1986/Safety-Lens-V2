@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
@@ -44,11 +45,15 @@ class SyncService {
   /// Helper: POST to Apps Script, then follow 302 redirect with GET.
   /// Apps Script processes the POST and redirects to a result URL that
   /// must be fetched with GET to receive the JSON response.
-  /// ★ Includes auth token in headers for API authentication.
+  ///
+  /// ★ On Flutter Web: the browser automatically follows redirects, so
+  ///   we get the final response directly. No manual redirect needed.
+  /// ★ On mobile/desktop: http.Client does NOT follow redirects by default,
+  ///   so we manually follow the 302 with a GET.
+  /// ★ Includes auth token in body for server-side validation.
   static Future<http.Response?> _postWithRedirect(
       String url, Map<String, dynamic> body,
       {Duration timeout = const Duration(seconds: 30)}) async {
-    final client = http.Client();
     try {
       // Attach auth token to request body for server-side validation
       final authHeaders = await AuthTokenService.getAuthHeaders();
@@ -57,28 +62,60 @@ class SyncService {
         body['_authUser'] = authHeaders['X-User-Id'] ?? '';
       }
 
-      var resp = await client
-          .post(
-            Uri.parse(url),
-            body: jsonEncode(body),
-            headers: {'Content-Type': 'text/plain;charset=utf-8'},
-          )
-          .timeout(timeout);
+      final encodedBody = jsonEncode(body);
 
-      // Apps Script always redirects POST → GET result URL
-      if (resp.statusCode == 302 || resp.statusCode == 301) {
-        final loc = resp.headers['location'] ?? '';
-        if (loc.isNotEmpty) {
-          resp = await client.get(Uri.parse(loc)).timeout(timeout);
+      if (kIsWeb) {
+        // ═══ WEB PATH ═══
+        // On web, the browser's fetch API follows redirects automatically.
+        // Apps Script processes the POST, redirects to googleusercontent.com
+        // with the JSON result. The browser follows this and we get the
+        // final response (status 200 + JSON body) directly.
+        //
+        // Using 'text/plain' content-type avoids CORS preflight (simple request).
+        final resp = await http
+            .post(
+              Uri.parse(url),
+              body: encodedBody,
+              headers: {'Content-Type': 'text/plain;charset=utf-8'},
+            )
+            .timeout(timeout);
+
+        // Debug: log what we got
+        print('SyncService[web]: POST ${body['action']} → status=${resp.statusCode}, '
+            'bodyLen=${resp.body.length}, '
+            'isHtml=${resp.body.trimLeft().startsWith('<')}');
+
+        return resp;
+      } else {
+        // ═══ MOBILE/DESKTOP PATH ═══
+        // http.Client does not auto-follow redirects, so we must manually
+        // follow the 302 → GET to get the JSON response.
+        final client = http.Client();
+        try {
+          var resp = await client
+              .post(
+                Uri.parse(url),
+                body: encodedBody,
+                headers: {'Content-Type': 'text/plain;charset=utf-8'},
+              )
+              .timeout(timeout);
+
+          // Apps Script always redirects POST → GET result URL
+          if (resp.statusCode == 302 || resp.statusCode == 301) {
+            final loc = resp.headers['location'] ?? '';
+            if (loc.isNotEmpty) {
+              resp = await client.get(Uri.parse(loc)).timeout(timeout);
+            }
+          }
+          return resp;
+        } finally {
+          client.close();
         }
       }
-      return resp;
     } catch (e, stack) {
       AppLogger.error('SyncService', 'POST request failed',
           error: e, stack: stack, action: body['action']?.toString());
       return null;
-    } finally {
-      client.close();
     }
   }
 

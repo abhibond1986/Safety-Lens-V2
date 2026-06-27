@@ -150,26 +150,38 @@ class GeminiVision {
       'imageBase64': base64Encode(bytes),
     };
 
-    final client = http.Client();
     http.Response response;
-    try {
-      response = await client.post(
+
+    if (kIsWeb) {
+      // On web, browser automatically follows the Apps Script 302 redirect.
+      // We get the final response directly (200 + JSON).
+      response = await http.post(
         Uri.parse(_backendUrl),
         body: jsonEncode(requestBody),
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
       ).timeout(Duration(seconds: timeoutSec));
+    } else {
+      // On mobile/desktop, manually follow redirect
+      final client = http.Client();
+      try {
+        response = await client.post(
+          Uri.parse(_backendUrl),
+          body: jsonEncode(requestBody),
+          headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        ).timeout(Duration(seconds: timeoutSec));
 
-      // ✅ FIX: Apps Script redirects POST → GET for the JSON response
-      if (response.statusCode == 302 || response.statusCode == 301) {
-        final loc = response.headers['location'] ?? '';
-        if (loc.isNotEmpty) {
-          response = await client.get(
-            Uri.parse(loc),
-            headers: {'Accept': 'application/json'},
-          ).timeout(const Duration(seconds: 30));
+        // Apps Script redirects POST → GET for the JSON response
+        if (response.statusCode == 302 || response.statusCode == 301) {
+          final loc = response.headers['location'] ?? '';
+          if (loc.isNotEmpty) {
+            response = await client.get(
+              Uri.parse(loc),
+              headers: {'Accept': 'application/json'},
+            ).timeout(const Duration(seconds: 30));
+          }
         }
-      }
-    } finally { client.close(); }
+      } finally { client.close(); }
+    }
 
     if (response.statusCode != 200) {
       print('GeminiVision: Apps Script HTTP ${response.statusCode}');

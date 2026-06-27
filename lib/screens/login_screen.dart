@@ -109,7 +109,24 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() { _loading = true; _err = ''; });
     try {
-      final user = await LocalDB.signIn(username, password);
+      // 1. Try local DB first (fast, works offline)
+      var user = await LocalDB.signIn(username, password);
+
+      // 2. If local login fails, try the remote backend (Google Sheets)
+      //    This handles cross-device login (e.g. registered on web, login on mobile)
+      if (user == null) {
+        final passwordHash = _simpleHash(password);
+        final remoteUser = await SyncService.loginOnline(username, passwordHash);
+        if (remoteUser != null) {
+          // Cache the user locally for future offline logins
+          remoteUser['username'] ??= username;
+          remoteUser['status'] ??= 'active';
+          await LocalDB.upsertUser(remoteUser);
+          user = Map<String, dynamic>.from(remoteUser)
+            ..remove('passwordHash')..remove('password')..remove('salt');
+        }
+      }
+
       if (!mounted) return;
       if (user != null) {
         // Generate session token for authenticated API calls
@@ -124,6 +141,33 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Simple hash for online login — MUST match Apps Script's simpleHash exactly:
+  /// ```js
+  /// function simpleHash(str) {
+  ///   var h = 0;
+  ///   for (var i = 0; i < str.length; i++) {
+  ///     h = ((h << 5) - h) + str.charCodeAt(i);
+  ///     h = h & h;  // Convert to 32-bit signed integer
+  ///   }
+  ///   if (h < 0) return '-' + ((-h) >>> 0).toString(36);
+  ///   return h.toString(36);
+  /// }
+  /// ```
+  String _simpleHash(String str) {
+    int h = 0;
+    for (int i = 0; i < str.length; i++) {
+      h = ((h << 5) - h) + str.codeUnitAt(i);
+      // Emulate JavaScript's `h = h & h` (converts to 32-bit signed int)
+      h = (h & 0xFFFFFFFF).toSigned(32);
+    }
+    if (h < 0) {
+      // Emulate JS: (-h) >>> 0 converts to unsigned 32-bit
+      final unsigned = (-h) & 0xFFFFFFFF;
+      return '-${unsigned.toRadixString(36)}';
+    }
+    return h.toRadixString(36);
   }
 
   Future<void> _register() async {
@@ -153,8 +197,12 @@ class _LoginScreenState extends State<LoginScreen> {
       final ok = await LocalDB.register(userData);
       if (!mounted) return;
       if (ok != null) {
-        // Sync new user to backend (fire-and-forget)
-        SyncService.pushUser(userData).catchError((_) => false);
+        // ✅ FIX: Send passwordHash (simpleHash) to backend so other devices
+        // can login with the same credentials via Apps Script
+        final pushData = Map<String, dynamic>.from(userData);
+        pushData.remove('password'); // Don't send plaintext password
+        pushData['passwordHash'] = _simpleHash(pass); // Backend expects this
+        SyncService.pushUser(pushData).catchError((_) => false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${I18n.t('common.success')}! Welcome, $name'),
           backgroundColor: Colors.green,
