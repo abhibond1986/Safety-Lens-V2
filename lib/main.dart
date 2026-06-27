@@ -22,6 +22,8 @@ void main() async {
   await ImageStorage.init();
   // Migrate legacy base64 images to file storage (one-time, non-blocking)
   ImageStorage.migrateInlineImages().catchError((_) => 0);
+  // ✅ FIX: Purge bloated imageBase64 from local storage to fix QuotaExceededError
+  LocalDB.purgeStoredImages().catchError((_) => 0);
   SyncService.drainPendingQueue().catchError((_) => 0);
   // ★ v24: Pull latest master data (plants, depts, WSA) from backend on startup
   // Await with timeout so UI renders with fresh data (not stale defaults)

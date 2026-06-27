@@ -443,14 +443,40 @@ class LocalDB {
     // incident['locationAddress']  - Human-readable address
     // incident['locationTimestamp'] - When GPS was captured
 
-    final existingIdx = all.indexWhere(
-        (i) => i['id']?.toString() == incident['id']?.toString());
-    if (existingIdx >= 0) {
-      all[existingIdx] = incident;
-    } else {
-      all.add(incident);
+    // ✅ FIX: Strip imageBase64 before local storage to prevent
+    // QuotaExceededError. Images are already uploaded to Cloudinary
+    // and sent to Google Sheets separately — no need to store locally.
+    final toStore = Map<String, dynamic>.from(incident);
+    toStore.remove('imageBase64');
+
+    // Also strip imageBase64 from any existing entries (in case purge hasn't run yet)
+    for (final existing in all) {
+      existing.remove('imageBase64');
     }
-    await _prefs.setString(_kIncidents, jsonEncode(all));
+
+    final existingIdx = all.indexWhere(
+        (i) => i['id']?.toString() == toStore['id']?.toString());
+    if (existingIdx >= 0) {
+      all[existingIdx] = toStore;
+    } else {
+      all.add(toStore);
+    }
+
+    try {
+      await _prefs.setString(_kIncidents, jsonEncode(all));
+    } catch (e) {
+      // If still over quota (unlikely after stripping images), try removing
+      // oldest incidents to make room
+      if (e.toString().contains('QuotaExceeded')) {
+        // Keep only last 50 incidents
+        all.sort((a, b) => (b['date'] ?? '').toString()
+            .compareTo((a['date'] ?? '').toString()));
+        final trimmed = all.take(50).toList();
+        await _prefs.setString(_kIncidents, jsonEncode(trimmed));
+      } else {
+        rethrow;
+      }
+    }
   }
 
   static Future<void> deleteIncident(String id) async {
@@ -465,7 +491,42 @@ class LocalDB {
   // ═══════════════════════════════════════════════════════════════
   static Future<void> replaceAllIncidents(
       List<Map<String, dynamic>> incidents) async {
-    await _prefs.setString(_kIncidents, jsonEncode(incidents));
+    // Strip imageBase64 to prevent storage quota overflow
+    final cleaned = incidents.map((inc) {
+      final copy = Map<String, dynamic>.from(inc);
+      copy.remove('imageBase64');
+      return copy;
+    }).toList();
+    await _prefs.setString(_kIncidents, jsonEncode(cleaned));
+  }
+
+  /// ✅ FIX: Purge bloated imageBase64 fields from existing stored incidents.
+  /// Call this once on app startup to reclaim storage quota.
+  /// Returns number of incidents cleaned.
+  static Future<int> purgeStoredImages() async {
+    final raw = _prefs.getString(_kIncidents);
+    if (raw == null) return 0;
+
+    try {
+      final list = (jsonDecode(raw) as List)
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+      int cleaned = 0;
+      for (final inc in list) {
+        if (inc.containsKey('imageBase64') &&
+            inc['imageBase64'] != null &&
+            inc['imageBase64'].toString().length > 10) {
+          inc.remove('imageBase64');
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) {
+        await _prefs.setString(_kIncidents, jsonEncode(list));
+      }
+      return cleaned;
+    } catch (_) {
+      return 0;
+    }
   }
 
   static Future<void> replaceAllUsers(

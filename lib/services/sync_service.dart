@@ -235,10 +235,12 @@ class SyncService {
 
   /// Push a single incident to the backend.
   /// If offline/failed, adds to pending queue for later retry.
+  /// Set [fromQueue] = true when called from drainPendingQueue to avoid
+  /// re-adding to the queue (the caller handles retry tracking).
   static Future<bool> pushIncident(
-      Map<String, dynamic> incident) async {
+      Map<String, dynamic> incident, {bool fromQueue = false}) async {
     if (!await isConfigured) {
-      await _addToPendingQueue('addIncident', incident);
+      if (!fromQueue) await _addToPendingQueue('addIncident', incident);
       return false;
     }
     try {
@@ -261,48 +263,55 @@ class SyncService {
         body[k] = str.length > 2000 ? str.substring(0, 2000) : str;
       });
 
-      // Apps Script POSTs redirect to googleusercontent.com
-      // The redirect MUST be followed with GET (not re-POST) to get the JSON response
-      final client   = http.Client();
-      http.Response response;
-      try {
-        response = await client
-            .post(
-              Uri.parse(url),
-              body: jsonEncode(body),
-              headers: {'Content-Type': 'text/plain;charset=utf-8'},
-            )
-            .timeout(const Duration(seconds: 30));
+      // Use the shared helper that handles redirects + logging
+      final resp = await _postWithRedirect(url, body);
 
-        // Follow redirect with GET (Apps Script processes POST, then redirects to result)
-        if (response.statusCode == 302 || response.statusCode == 301) {
-          final redirectUrl = response.headers['location'] ?? '';
-          if (redirectUrl.isNotEmpty) {
-            response = await client
-                .get(Uri.parse(redirectUrl))
-                .timeout(const Duration(seconds: 30));
-          }
-        }
-      } finally {
-        client.close();
+      if (resp == null) {
+        AppLogger.error('SyncService', 'pushIncident: no response (network/timeout)',
+            action: 'addIncident');
+        if (!fromQueue) await _addToPendingQueue('addIncident', incident);
+        return false;
       }
 
-      if (response.statusCode == 200) {
+      if (resp.statusCode == 200) {
+        final bodyText = resp.body.trim();
+        // Guard against HTML error pages from Apps Script
+        if (bodyText.startsWith('<') || bodyText.startsWith('<!')) {
+          AppLogger.error('SyncService',
+              'pushIncident: got HTML instead of JSON (check Apps Script deployment)',
+              action: 'addIncident');
+          if (!fromQueue) await _addToPendingQueue('addIncident', incident);
+          return false;
+        }
         try {
-          final data = jsonDecode(response.body);
+          final data = jsonDecode(bodyText);
           if (data['ok'] == true) {
             await _markSyncTime();
+            print('SyncService: pushIncident SUCCESS — id=${incident['id']}, type=${incident['type']}');
             return true;
           }
-          // Apps Script returned error — still got through, log it
-        } catch (_) {
-          // Non-JSON response — Apps Script HTML error page
+          // Apps Script returned a structured error
+          final errMsg = data['error']?.toString() ?? 'Unknown error';
+          AppLogger.error('SyncService',
+              'pushIncident: server rejected — $errMsg',
+              action: 'addIncident');
+        } catch (e) {
+          AppLogger.error('SyncService',
+              'pushIncident: JSON parse failed — body=${bodyText.length > 200 ? bodyText.substring(0, 200) : bodyText}',
+              error: e, action: 'addIncident');
         }
+      } else {
+        AppLogger.error('SyncService',
+            'pushIncident: HTTP ${resp.statusCode}',
+            action: 'addIncident');
       }
-      await _addToPendingQueue('addIncident', incident);
+
+      if (!fromQueue) await _addToPendingQueue('addIncident', incident);
       return false;
-    } catch (_) {
-      await _addToPendingQueue('addIncident', incident);
+    } catch (e, stack) {
+      AppLogger.error('SyncService', 'pushIncident: exception',
+          error: e, stack: stack, action: 'addIncident');
+      if (!fromQueue) await _addToPendingQueue('addIncident', incident);
       return false;
     }
   }
@@ -414,7 +423,9 @@ class SyncService {
       final payload = Map<String, dynamic>.from(item['payload'] ?? {});
       bool ok = false;
       if (action == 'addIncident') {
-        ok = await pushIncident(payload);
+        // ✅ FIX: Pass fromQueue=true to prevent pushIncident from
+        // re-adding to the queue (which caused duplicate entries)
+        ok = await pushIncident(payload, fromQueue: true);
       }
       if (ok) {
         synced++;
