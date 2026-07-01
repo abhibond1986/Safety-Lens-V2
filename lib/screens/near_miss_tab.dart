@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:permission_handler/permission_handler.dart';
@@ -89,19 +90,20 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   late AnimationController _micPulseCtrl;
   late Animation<double> _micPulse;
 
-  // ✅ FIX v17: Use I18n.currentLang directly (not LocaleService which may lag)
-  // Locale IDs follow BCP-47 format recognized by both Android and Chrome Web Speech API
+  // ★ v25: Voice locale map — user can pick language via long-press on mic
+  // But default is now based on _selectedVoiceLang which user can toggle
   static const Map<String, String> _voiceLocaleMap = {
     'en': 'en-IN',
-    'hi': 'hi-IN',   // Devanagari output
+    'hi': 'hi-IN',   // Devanagari output — Hindi speech → Hindi text
     'bn': 'bn-IN',   // Bengali script output
     'or': 'or-IN',   // Odia script output
   };
 
+  // ★ v25: Selected voice language — starts as app language but user can change
+  String _selectedVoiceLang = I18n.currentLang;
+
   String get _voiceLocaleId {
-    // ✅ Use I18n.currentLang which is always in sync with user's selection
-    final lang = I18n.currentLang;
-    return _voiceLocaleMap[lang] ?? 'en-IN';
+    return _voiceLocaleMap[_selectedVoiceLang] ?? 'hi-IN';
   }
 
   @override
@@ -273,7 +275,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     final baseText = targetField.text;
     _activeMicField = targetField;
     _pauseTimedOut = false;
-    debugPrint('Speech: Starting with locale=${_voiceLocaleId} (I18n.currentLang=${I18n.currentLang})');
+    debugPrint('Speech: Starting with locale=${_voiceLocaleId} (selectedVoiceLang=$_selectedVoiceLang)');
     try {
       setState(() => _isListening = true);
       await _speech.listen(
@@ -400,7 +402,12 @@ If the input does NOT qualify as a near miss, set isNearMiss=false and clearly e
 
 Respond ONLY with the JSON — no explanations outside JSON.''';
 
-      final body = await SyncService.callAiText(prompt);
+      // ★ v25: Try SyncService first, then fallback to GeminiVision backend
+      Map<String, dynamic>? body = await SyncService.callAiText(prompt);
+      // Fallback: call GeminiVision's backend directly for text prompt
+      if (body == null) {
+        body = await _callAiTextFallback(prompt);
+      }
       if (!mounted) return;
 
       if (body != null) {
@@ -435,6 +442,37 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     } catch (_) {}
 
     if (mounted) setState(() => _aiRefining = false);
+  }
+
+  /// ★ v25: Fallback AI text call using GeminiVision's backend directly
+  Future<Map<String, dynamic>?> _callAiTextFallback(String prompt) async {
+    try {
+      const backendUrl = 'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
+      final body = jsonEncode({'action': 'gemini', 'prompt': prompt});
+      final resp = await http.post(
+        Uri.parse(backendUrl),
+        body: body,
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 30));
+      if (resp.statusCode == 200) {
+        final decoded = jsonDecode(resp.body);
+        if (decoded is Map<String, dynamic>) return decoded;
+      }
+      // Handle redirect (mobile)
+      if (resp.statusCode == 302 || resp.statusCode == 301) {
+        final redirectUrl = resp.headers['location'];
+        if (redirectUrl != null) {
+          final getResp = await http.get(Uri.parse(redirectUrl)).timeout(const Duration(seconds: 15));
+          if (getResp.statusCode == 200) {
+            final decoded = jsonDecode(getResp.body);
+            if (decoded is Map<String, dynamic>) return decoded;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('AI fallback error: $e');
+    }
+    return null;
   }
 
   void _acceptAiRefinement() {
@@ -771,6 +809,33 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   /// Save Report only — shows success dialog with share options (no PDF)
   void _handleSaveOnly() {
     _submit(exportAfter: false);
+  }
+
+  /// ★ v25: Share Report — saves first, then triggers share sheet
+  void _handleShareReport() async {
+    final success = await _submit(exportAfter: false);
+    if (success && mounted) {
+      // Build share text from current form data
+      final shareText = '''🚨 NEAR MISS REPORT — ${_plant}
+━━━━━━━━━━━━━━━━━━━━
+📍 Location: ${_location.text.trim()}
+🏭 Department: $_effectiveDept
+⚠️ Category: $_wsaCause
+🔴 Severity: $_severity
+📋 Type: $_obsType
+
+📝 Description:
+${_description.text.trim()}
+
+🔧 Immediate Action:
+${_immediateAction.text.trim()}
+
+📅 Date: ${DateTime.now().toString().split('.').first}
+👷 Reported via Safety Lens App''';
+      try {
+        await Share.share(shareText, subject: 'Near Miss Report — $_plant');
+      } catch (_) {}
+    }
   }
 
   /// Save + PDF — standalone, exports PDF after saving
@@ -1399,7 +1464,9 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
-          _buildTextField('Tap mic → speak in any language → AI frames it', _description, Icons.description_outlined, sl, maxLines: 3,
+          // ★ v25: Voice language selector chips
+          _buildVoiceLangChips(sl),
+          _buildTextField('Tap mic → speak in ${_selectedVoiceLang == "hi" ? "Hindi" : _selectedVoiceLang == "bn" ? "Bengali" : _selectedVoiceLang == "or" ? "Odia" : "English"} → AI frames it', _description, Icons.description_outlined, sl, maxLines: 3,
             suffix: _micButton(_description), onChanged: _onDescriptionChanged),
           // ★ AI Suggestion Card
           if (_aiRefining)
@@ -1413,13 +1480,14 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     );
   }
 
-  /// ✅ v17: Animated mic button with pulse when active
+  /// ★ v25: Animated mic button — tap to start, long-press to pick language
   Widget _micButton(TextEditingController field) {
     final isActive = _isListening && _activeMicField == field;
     return AnimatedBuilder(
       animation: _micPulse,
       builder: (_, __) => GestureDetector(
         onTap: () => _toggleVoice(field),
+        onLongPress: () => _showVoiceLangPicker(),
         child: Container(
           width: 36, height: 36,
           margin: const EdgeInsets.only(right: 4),
@@ -1437,6 +1505,92 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
               size: 18)),
         ),
       ),
+    );
+  }
+
+  /// ★ v25: Language picker popup for voice input
+  void _showVoiceLangPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('Select Voice Language', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text('Speak in this language — text will appear in native script',
+            style: TextStyle(fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 16),
+          _langOption('hi', 'हिन्दी (Hindi)', '🇮🇳'),
+          _langOption('en', 'English', '🇬🇧'),
+          _langOption('bn', 'বাংলা (Bengali)', '🇮🇳'),
+          _langOption('or', 'ଓଡ଼ିଆ (Odia)', '🇮🇳'),
+          const SizedBox(height: 8),
+        ]),
+      ),
+    );
+  }
+
+  /// ★ v25: Inline language selector chips above description field
+  Widget _buildVoiceLangChips(SL sl) {
+    const langs = [
+      {'code': 'hi', 'label': 'हिन्दी', 'short': 'Hindi'},
+      {'code': 'en', 'label': 'English', 'short': 'EN'},
+      {'code': 'bn', 'label': 'বাংলা', 'short': 'Bengali'},
+      {'code': 'or', 'label': 'ଓଡ଼ିଆ', 'short': 'Odia'},
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [
+        Icon(Icons.translate_rounded, size: 14, color: sl.text3),
+        const SizedBox(width: 6),
+        Text('Voice:', style: TextStyle(color: sl.text3, fontSize: 10, fontWeight: FontWeight.w600)),
+        const SizedBox(width: 6),
+        ...langs.map((l) {
+          final isSelected = _selectedVoiceLang == l['code'];
+          return Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedVoiceLang = l['code']!),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isSelected ? AppColors.accent.withOpacity(0.15) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? AppColors.accent : sl.border.withOpacity(0.4),
+                    width: isSelected ? 1.5 : 1),
+                ),
+                child: Text(l['label']!,
+                  style: TextStyle(
+                    color: isSelected ? AppColors.accent : sl.text3,
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400)),
+              ),
+            ),
+          );
+        }),
+      ]),
+    );
+  }
+
+  Widget _langOption(String code, String label, String flag) {
+    final isSelected = _selectedVoiceLang == code;
+    return ListTile(
+      leading: Text(flag, style: const TextStyle(fontSize: 22)),
+      title: Text(label, style: TextStyle(
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
+        color: isSelected ? AppColors.accent : null)),
+      trailing: isSelected ? const Icon(Icons.check_circle, color: AppColors.accent, size: 20) : null,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      tileColor: isSelected ? AppColors.accent.withOpacity(0.08) : null,
+      onTap: () {
+        setState(() => _selectedVoiceLang = code);
+        Navigator.pop(context);
+        _snack('Voice language: $label — speak and text will appear in native script', AppColors.accent);
+      },
     );
   }
 
@@ -1777,16 +1931,24 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
                 _imageSection(sl),
                 _detailsSection(sl),
                 const SizedBox(height: 16),
+                // ★ v25: 3 action buttons — Save, Share Report, PDF
                 Row(children: [
                   Expanded(child: _submitBtn(
-                    label: 'Save Report',
+                    label: 'Save',
                     icon:  Icons.save_rounded,
                     colors: const [Color(0xFF16A34A), Color(0xFF059669)],
                     onTap: _handleSaveOnly,
                   )),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(child: _submitBtn(
-                    label: 'Save + PDF',
+                    label: 'Share',
+                    icon:  Icons.share_rounded,
+                    colors: const [Color(0xFFF59E0B), Color(0xFFF97316)],
+                    onTap: _handleShareReport,
+                  )),
+                  const SizedBox(width: 8),
+                  Expanded(child: _submitBtn(
+                    label: 'PDF',
                     icon:  Icons.picture_as_pdf_rounded,
                     colors: const [Color(0xFF7B5BFF), Color(0xFF06B6D4)],
                     onTap: _handleSavePdf,
