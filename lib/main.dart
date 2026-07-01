@@ -30,6 +30,8 @@ void main() async {
   await AdminMasterData.syncFromBackend()
       .timeout(const Duration(seconds: 10), onTimeout: () => false)
       .catchError((_) => false);
+  // ★ v25: Pull latest Knowledge Base from backend (non-blocking)
+  SyncService.syncKnowledgeBase().catchError((_) => false);
   // Silent auto-update: checks GitHub releases and installs APK in background
   AppUpdater.init();
   // ★ v25: Periodic background sync — retries pending items every 5 minutes

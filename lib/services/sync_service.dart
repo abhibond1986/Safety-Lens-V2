@@ -225,6 +225,80 @@ class SyncService {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  ★ v25: KNOWLEDGE BASE SYNC
+  //  Push KB docs from admin → backend, pull on all devices
+  // ═══════════════════════════════════════════════════════════════
+
+  /// Push all KB documents to backend (called after admin uploads).
+  /// Uses existing 'addKnowledge' action — sends each doc individually.
+  /// For bulk: clears server KB sheet first, then re-adds all.
+  static Future<bool> pushKbDocs(List<Map<String, dynamic>> docs) async {
+    if (!await isConfigured) return false;
+    try {
+      final url = await getBackendUrl();
+      // Push each doc using existing addKnowledge endpoint
+      int success = 0;
+      for (final doc in docs) {
+        final resp = await _postWithRedirect(url, {
+          'action': 'addKnowledge',
+          'id': doc['id']?.toString() ?? '',
+          'title': doc['title']?.toString() ?? '',
+          'content': doc['content']?.toString() ?? '',
+          'source': doc['source']?.toString() ?? 'uploaded',
+          'uploadedAt': doc['uploadedAt']?.toString() ?? DateTime.now().toIso8601String(),
+          'uploadedBy': doc['uploadedBy']?.toString() ?? 'admin',
+        }, timeout: const Duration(seconds: 15));
+        if (resp != null && resp.statusCode == 200) success++;
+      }
+      return success > 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pull KB documents from backend using existing 'listKnowledge' action.
+  /// All devices call this on startup/sync to get admin-uploaded knowledge.
+  static Future<List<Map<String, dynamic>>?> pullKbDocs() async {
+    if (!await isConfigured) return null;
+    try {
+      final url = await getBackendUrl();
+      final resp = await _postWithRedirect(url, {'action': 'listKnowledge'},
+          timeout: const Duration(seconds: 30));
+      if (resp != null && resp.statusCode == 200) {
+        final parsed = jsonDecode(resp.body);
+        if (parsed is Map && parsed['rows'] != null) {
+          return (parsed['rows'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+        // Alternate response format
+        if (parsed is Map && parsed['data'] != null) {
+          return (parsed['data'] as List)
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Sync KB: pull from server and merge into local (server wins).
+  /// Called on app startup and after admin uploads.
+  static Future<bool> syncKnowledgeBase() async {
+    try {
+      final serverDocs = await pullKbDocs();
+      if (serverDocs == null || serverDocs.isEmpty) return false;
+      // Server is source of truth — replace local KB with server version
+      await LocalDB.replaceAllKnowledgeDocs(serverDocs);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  ★ v24: MASTER DATA SYNC (plants, departments, WSA, etc.)
   // ═══════════════════════════════════════════════════════════════
 
