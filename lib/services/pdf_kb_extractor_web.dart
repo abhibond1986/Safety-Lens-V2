@@ -55,15 +55,22 @@ class PdfKbExtractor {
 
   static Future<String> extractTextFromPdf(Uint8List pdfBytes) async {
     await _ensurePdfJs();
-    final jsUint8Array = js_util.callConstructor(
-      js_util.getProperty(js.context, 'Uint8Array'),
-      [js_util.jsify(pdfBytes.toList())],
-    );
-    final pdfjsLib = js_util.getProperty(js.context, 'pdfjsLib');
-    final loadingTask = js_util.callMethod(pdfjsLib, 'getDocument',
-        [js_util.jsify({'data': jsUint8Array})]);
+    // ★ v25 FIX: Use a helper JS function to avoid dart2js Uint8Array constructor issues.
+    // Inject a tiny helper once, then call it with the byte list.
+    js.context.callMethod('eval', ['''
+      if (!window.__safetyLensMakeU8) {
+        window.__safetyLensMakeU8 = function(arr) { return new Uint8Array(arr); };
+      }
+    ''']);
+    final jsArray = js.JsObject.jsify(pdfBytes.toList());
+    final jsUint8Array = js.context.callMethod('__safetyLensMakeU8', [jsArray]);
+
+    final pdfjsLib = js.context['pdfjsLib'];
+    final loadingTask = pdfjsLib.callMethod('getDocument', [
+      js.JsObject.jsify({'data': jsUint8Array})
+    ]);
     final pdfDoc = await js_util.promiseToFuture<dynamic>(
-        js_util.getProperty(loadingTask, 'promise'));
+        js_util.getProperty(loadingTask as Object, 'promise'));
     final int numPages = js_util.getProperty(pdfDoc, 'numPages') as int;
     final buffer = StringBuffer();
     for (int pageNum = 1; pageNum <= numPages; pageNum++) {
