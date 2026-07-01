@@ -81,7 +81,9 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   final stt.SpeechToText _speech         = stt.SpeechToText();
   bool                    _speechAvailable = false;
   bool                    _isListening     = false;
+  bool                    _pauseTimedOut   = false; // ★ v25: track pause-timeout vs error
   TextEditingController? _activeMicField;
+  String                  _detectedLang    = 'en'; // ★ v25: auto-detected input language
 
   // Mic pulse animation
   late AnimationController _micPulseCtrl;
@@ -166,8 +168,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         onError: (e) {
           debugPrint('Speech error: ${e.errorMsg} (permanent: ${e.permanent})');
           if (mounted) setState(() => _isListening = false);
-          // ✅ Auto-retry on non-permanent errors
-          if (!e.permanent && _activeMicField != null) {
+          // ✅ Auto-retry on non-permanent errors (but NOT after pause-timeout)
+          if (!e.permanent && _activeMicField != null && !_pauseTimedOut) {
             Future.delayed(const Duration(seconds: 1), () {
               if (mounted && _isListening) _restartListening();
             });
@@ -175,8 +177,15 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         },
         onStatus: (s) {
           debugPrint('Speech status: $s');
+          // ★ v25: When speech ends after 6-7s pause, STOP (don't restart)
+          // and auto-trigger AI refinement
           if (s == 'done' && _isListening && _activeMicField != null) {
-            _restartListening();
+            final field = _activeMicField;
+            setState(() { _isListening = false; _activeMicField = null; });
+            // Auto-trigger AI if this was the description field
+            if (field == _description && _description.text.trim().length >= 10) {
+              _refineWithAI(_description.text.trim());
+            }
           } else if (s == 'notListening') {
             if (mounted) setState(() => _isListening = false);
           }
@@ -194,6 +203,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     if (!_isListening || _activeMicField == null) return;
     final field    = _activeMicField!;
     final baseText = field.text;
+    _pauseTimedOut = false;
     try {
       await Future.delayed(const Duration(milliseconds: 300));
       await _speech.listen(
@@ -207,10 +217,12 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
             field.selection = TextSelection.fromPosition(
                 TextPosition(offset: field.text.length));
           });
+          // ★ v25: Detect language from recognized words
+          _detectLanguageFromText(result.recognizedWords);
         },
         localeId:     _voiceLocaleId,
         listenFor:    const Duration(minutes: 3),
-        pauseFor:     const Duration(seconds: 10),
+        pauseFor:     const Duration(seconds: 6), // ★ v25: 6-sec pause auto-stops
         partialResults: true,
         cancelOnError:  false,
         listenMode:   stt.ListenMode.dictation,
@@ -260,6 +272,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
     final baseText = targetField.text;
     _activeMicField = targetField;
+    _pauseTimedOut = false;
     debugPrint('Speech: Starting with locale=${_voiceLocaleId} (I18n.currentLang=${I18n.currentLang})');
     try {
       setState(() => _isListening = true);
@@ -274,10 +287,12 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
             targetField.selection = TextSelection.fromPosition(
                 TextPosition(offset: targetField.text.length));
           });
+          // ★ v25: Detect language from recognized words
+          _detectLanguageFromText(words);
         },
         localeId:       _voiceLocaleId,
         listenFor:      const Duration(minutes: 3),
-        pauseFor:       const Duration(seconds: 10),
+        pauseFor:       const Duration(seconds: 6), // ★ v25: 6-sec pause auto-stops mic
         partialResults: true,
         cancelOnError:  false,
         listenMode:     stt.ListenMode.dictation,
@@ -290,11 +305,49 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  ★ v24: AI NEAR MISS REFINEMENT
+  //  ★ v25: AUTO LANGUAGE DETECTION from speech input
+  //  Detects Hindi, Bengali, Odia, or English based on Unicode ranges
+  // ═══════════════════════════════════════════════════════════════
+  void _detectLanguageFromText(String text) {
+    if (text.trim().isEmpty) return;
+    int devanagari = 0, bengali = 0, odia = 0, latin = 0;
+    for (final c in text.runes) {
+      if (c >= 0x0900 && c <= 0x097F) devanagari++;      // Hindi/Devanagari
+      else if (c >= 0x0980 && c <= 0x09FF) bengali++;    // Bengali
+      else if (c >= 0x0B00 && c <= 0x0B7F) odia++;       // Odia
+      else if (c >= 0x0041 && c <= 0x007A) latin++;      // English (ASCII letters)
+    }
+    final max = [devanagari, bengali, odia, latin].reduce((a, b) => a > b ? a : b);
+    if (max == 0) return;
+    String detected;
+    if (max == devanagari) detected = 'hi';
+    else if (max == bengali) detected = 'bn';
+    else if (max == odia) detected = 'or';
+    else detected = 'en';
+    if (detected != _detectedLang) {
+      debugPrint('Language auto-detected: $detected (from: ${text.substring(0, text.length.clamp(0, 30))})');
+      _detectedLang = detected;
+    }
+  }
+
+  /// Get language name for AI prompt
+  String get _detectedLangName {
+    switch (_detectedLang) {
+      case 'hi': return 'Hindi';
+      case 'bn': return 'Bengali';
+      case 'or': return 'Odia';
+      default: return 'English';
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ★ v24/v25: AI NEAR MISS REFINEMENT
   //  Validates whether input is a genuine near miss & refines language
   // ═══════════════════════════════════════════════════════════════
   void _onDescriptionChanged(String text) {
     _lastDescChange = DateTime.now();
+    // ★ v25: Detect language as user types
+    _detectLanguageFromText(text);
     // Clear previous suggestion if user is still editing
     if (_aiSuggestion != null) {
       setState(() => _aiSuggestion = null);
@@ -317,22 +370,33 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     setState(() => _aiRefining = true);
 
     try {
+      // ★ v25: Detect language from the raw text before sending to AI
+      _detectLanguageFromText(rawText);
+      final langInstruction = _detectedLang == 'en'
+          ? 'Respond with the "reason" and "refined" fields in English.'
+          : 'IMPORTANT: The worker spoke in $_detectedLangName. You MUST write the "reason" and "refined" fields in $_detectedLangName language (using native script). Do NOT translate to English.';
+
       final prompt = '''You are an expert Safety Officer at a steel plant (SAIL). A worker has described a potential near miss incident.
 
 WORKER'S INPUT: "$rawText"
+
+$langInstruction
 
 Analyze this and respond in STRICT JSON format:
 {
   "isNearMiss": true/false,
   "confidence": 0-100,
-  "reason": "brief explanation why this is or is not a near miss",
-  "refined": "rewritten professional near-miss description with proper safety terminology, clear grammar, and structured format",
-  "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation"
+  "reason": "brief explanation why this is or is not a near miss (in the same language as worker's input)",
+  "refined": "rewritten professional near-miss description with proper safety terminology, clear grammar, and structured format (in the same language as worker's input)",
+  "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation",
+  "detectedLanguage": "the language the worker spoke in (English/Hindi/Bengali/Odia)"
 }
 
 NEAR MISS DEFINITION: An unplanned event that DID NOT result in injury/illness/damage but HAD THE POTENTIAL to do so. It involves an unexpected hazardous exposure, a close call, or a condition that could lead to an accident.
 
 NOT A NEAR MISS: routine observations, planned maintenance, general complaints, requests, work orders, or situations with no potential for harm.
+
+If the input does NOT qualify as a near miss, set isNearMiss=false and clearly explain in "reason" (in the worker's language) why their description does not match the definition of a near miss.
 
 Respond ONLY with the JSON — no explanations outside JSON.''';
 
@@ -1031,7 +1095,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Listening...', style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.w700)),
-              Text('Speak clearly. Tap mic again to stop.',
+              Text('Speak in any language. Auto-stops after 6s pause → AI frames it.',
                 style: TextStyle(color: sl.text3, fontSize: 10)),
             ])),
           GestureDetector(
@@ -1335,7 +1399,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
-          _buildTextField('Type / use mic to record Near Miss', _description, Icons.description_outlined, sl, maxLines: 3,
+          _buildTextField('Tap mic → speak in any language → AI frames it', _description, Icons.description_outlined, sl, maxLines: 3,
             suffix: _micButton(_description), onChanged: _onDescriptionChanged),
           // ★ AI Suggestion Card
           if (_aiRefining)
@@ -1399,18 +1463,22 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     final confidence = (_aiSuggestion!['confidence'] ?? 0) as num;
     final reason = _aiSuggestion!['reason']?.toString() ?? '';
     final refined = _aiSuggestion!['refined']?.toString() ?? '';
+    final detectedLang = _aiSuggestion!['detectedLanguage']?.toString() ?? '';
 
     final cardColor = isNearMiss
         ? (sl.isDark ? const Color(0xFF1B3A2E) : const Color(0xFFE8F5E9))
-        : (sl.isDark ? const Color(0xFF3A1B1B) : const Color(0xFFFFF3E0));
+        : (sl.isDark ? const Color(0xFF3A1B1B) : const Color(0xFFFFEBEE));
     final borderColor = isNearMiss
         ? const Color(0xFF43A047)
-        : const Color(0xFFF57C00);
-    final iconData = isNearMiss ? Icons.check_circle_outline : Icons.warning_amber_rounded;
-    final iconColor = isNearMiss ? const Color(0xFF43A047) : const Color(0xFFF57C00);
-    final statusText = isNearMiss
-        ? 'Valid Near Miss (${confidence.toInt()}% confidence)'
-        : 'May NOT be a Near Miss';
+        : const Color(0xFFD32F2F);
+    final iconData = isNearMiss ? Icons.check_circle_outline : Icons.error_outline_rounded;
+    final iconColor = isNearMiss ? const Color(0xFF43A047) : const Color(0xFFD32F2F);
+
+    // ★ v25: Confidence color coding
+    Color confidenceColor;
+    if (confidence >= 80) confidenceColor = const Color(0xFF43A047);
+    else if (confidence >= 50) confidenceColor = const Color(0xFFF57C00);
+    else confidenceColor = const Color(0xFFD32F2F);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
@@ -1424,30 +1492,72 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Status header
+            // ★ v25: Status header with prominent confidence badge
             Row(
               children: [
-                Icon(iconData, size: 18, color: iconColor),
+                Icon(iconData, size: 20, color: iconColor),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(statusText,
+                  child: Text(
+                    isNearMiss ? 'Valid Near Miss' : 'Does NOT Qualify as Near Miss',
                     style: TextStyle(
                       color: iconColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700)),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800)),
                 ),
+                // ★ Confidence badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: confidenceColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: confidenceColor.withOpacity(0.5)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.psychology_rounded, size: 12, color: confidenceColor),
+                    const SizedBox(width: 4),
+                    Text('${confidence.toInt()}%',
+                      style: TextStyle(color: confidenceColor, fontSize: 12, fontWeight: FontWeight.w900)),
+                  ]),
+                ),
+                const SizedBox(width: 6),
                 GestureDetector(
                   onTap: _dismissAiSuggestion,
                   child: Icon(Icons.close, size: 16, color: sl.text4),
                 ),
               ],
             ),
-            if (reason.isNotEmpty) ...[
-              const SizedBox(height: 6),
+            // ★ v25: Confidence level explanation
+            const SizedBox(height: 6),
+            Text(
+              'AI Confidence: ${confidence.toInt()}% — ${confidence >= 80 ? "High confidence" : confidence >= 50 ? "Moderate confidence" : "Low confidence"}${detectedLang.isNotEmpty ? ' • Language: $detectedLang' : ''}',
+              style: TextStyle(color: sl.text4, fontSize: 10, fontWeight: FontWeight.w500)),
+            // ★ v25: Prominent rejection message for non-near-miss
+            if (!isNearMiss) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD32F2F).withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFD32F2F).withOpacity(0.3)),
+                ),
+                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Icon(Icons.info_outline_rounded, size: 14, color: Color(0xFFD32F2F)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(
+                    reason.isNotEmpty ? reason : 'The description provided does not match the definition of a near miss. A near miss is an unplanned event that did NOT result in injury but had the potential to cause harm.',
+                    style: TextStyle(color: sl.isDark ? Colors.red.shade200 : Colors.red.shade800, fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w500))),
+                ]),
+              ),
+            ],
+            if (isNearMiss && reason.isNotEmpty) ...[
+              const SizedBox(height: 8),
               Text(reason,
                 style: TextStyle(color: sl.text2, fontSize: 11, height: 1.3)),
             ],
-            if (refined.isNotEmpty) ...[
+            if (refined.isNotEmpty && isNearMiss) ...[
               const SizedBox(height: 10),
               Container(
                 width: double.infinity,
@@ -1471,7 +1581,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
             const SizedBox(height: 10),
             Row(
               children: [
-                if (refined.isNotEmpty)
+                if (refined.isNotEmpty && isNearMiss)
                   Expanded(
                     child: GestureDetector(
                       onTap: _acceptAiRefinement,
@@ -1488,7 +1598,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
                       ),
                     ),
                   ),
-                if (refined.isNotEmpty) const SizedBox(width: 10),
+                if (refined.isNotEmpty && isNearMiss) const SizedBox(width: 10),
                 Expanded(
                   child: GestureDetector(
                     onTap: _dismissAiSuggestion,
@@ -1500,7 +1610,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
                         border: Border.all(color: sl.text4.withOpacity(0.5)),
                       ),
                       child: Center(
-                        child: Text(isNearMiss ? 'Keep My Text' : 'Submit Anyway',
+                        child: Text(isNearMiss ? 'Keep My Text' : 'Try Again',
                           style: TextStyle(color: sl.text2, fontSize: 11, fontWeight: FontWeight.w600)),
                       ),
                     ),
