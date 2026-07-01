@@ -17,6 +17,7 @@ import 'package:http/http.dart' as http;
 import '../main.dart';
 import '../services/local_ai.dart';
 import '../services/local_db.dart';
+import '../services/knowledge_service.dart';
 import '../widgets/universal_app_bar.dart';
 
 class ChatTab extends StatefulWidget {
@@ -232,18 +233,21 @@ class _ChatTabState extends State<ChatTab> {
     }
   }
 
-  // ── ONLINE AI CALL (Apps Script → Gemini with safety prompt) ─────
+  // ── ONLINE AI CALL (Apps Script → Gemini with safety prompt + KB) ─────
   Future<String?> _askOnlineAI(String question, List kbResults) async {
     try {
-      // Build context from KB docs if available
-      String kbContext = '';
+      // ★ v25: Get comprehensive KB context from KnowledgeService
+      final kbContext = await KnowledgeService.getKbDocsContext(question, maxDocs: 3);
+
+      // Also include any directly-searched results (legacy path)
+      String legacyKb = '';
       if (kbResults.isNotEmpty) {
         final cleanKb = kbResults.where((r) {
           final s = r['snippet']?.toString() ?? '';
           return _isReadableText(s) && s.length > 30;
         }).take(2).toList();
         if (cleanKb.isNotEmpty) {
-          kbContext = '\n\nRELEVANT KB DOCUMENTS:\n' +
+          legacyKb = '\n\nADDITIONAL KB MATCHES:\n' +
               cleanKb.map((r) =>
                   '- ${r['title']}: ${_sanitizeSnippet(r['snippet']?.toString() ?? '')}')
                   .join('\n');
@@ -251,7 +255,8 @@ class _ChatTabState extends State<ChatTab> {
       }
 
       final fullPrompt = '$_systemPrompt\n\n'
-          'QUESTION: $question$kbContext\n\n'
+          '$kbContext$legacyKb\n\n'
+          'QUESTION: $question\n\n'
           'Answer using the EXACT structured format above. '
           'Max 8 lines. No greetings, no fluff.';
 

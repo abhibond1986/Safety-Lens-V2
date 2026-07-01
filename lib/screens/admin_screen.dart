@@ -33,6 +33,8 @@ import '../services/admin_audit.dart';
 import '../services/admin_master_data.dart';
 import '../services/admin_alerts.dart';
 import '../services/kb_seed_data.dart';
+import '../services/knowledge_service.dart';
+import '../services/pdf_kb_extractor.dart';
 // Reuse the same web/mobile download shim that pdf_export.dart uses
 import '../services/pdf_export_stub.dart'
     if (dart.library.html) '../services/pdf_export_web.dart' as html; // ignore: avoid_web_libraries_in_flutter
@@ -87,6 +89,8 @@ class _AdminScreenState extends State<AdminScreen>
         Icons.backup_rounded,          Color(0xFF5E35B1), true),
     _AdminModule(12,'compliance', 'Compliance',         'FA 1948 scorecard',
         Icons.verified_rounded,        Color(0xFF2E7D32), true),
+    _AdminModule(13,'knowledge', 'Knowledge Base',     'Upload PDF/DOCX',
+        Icons.auto_stories_rounded,    Color(0xFF1565C0), true),
   ];
 
   // ── Login state ─────────────────────────────────────────────────
@@ -108,6 +112,12 @@ class _AdminScreenState extends State<AdminScreen>
   List<Map<String, dynamic>> _incidents = [];
   List<Map<String, dynamic>> _kbDocs    = [];
   List<Map<String, dynamic>> _auditLog  = [];
+
+  // ── Knowledge Base state ─────────────────────────────────────────
+  bool _kbUploading = false;
+  String _kbUploadStatus = '';
+  int _kbUploadProgress = 0;
+  int _kbUploadTotal = 0;
 
   // ── Bulk-ops state ──────────────────────────────────────────────
   final Set<String> _bulkSelected = {};
@@ -656,6 +666,7 @@ class _AdminScreenState extends State<AdminScreen>
       case 10: return _moduleAlerts(sl);
       case 11: return _moduleBackupRestore(sl);
       case 12: return _moduleCompliance(sl);
+      case 13: return _moduleKnowledgeBase(sl);
       default: return _modulePlaceholder(m, sl);
     }
   }
@@ -4739,6 +4750,438 @@ class _AdminScreenState extends State<AdminScreen>
               style: TextStyle(color: color, fontSize: 9,
                   fontWeight: FontWeight.w800))),
       ]));
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  MODULE 13: KNOWLEDGE BASE MANAGEMENT
+  //  Upload PDF/DOCX, view entries, seed defaults, manage AI knowledge
+  // ══════════════════════════════════════════════════════════════════
+
+  Widget _moduleKnowledgeBase(SL sl) {
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      // Stats card
+      FutureBuilder<Map<String, dynamic>>(
+        future: KnowledgeService.getKbStats(),
+        builder: (_, snap) {
+          final stats = snap.data ?? {};
+          return Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [
+                const Color(0xFF1565C0).withOpacity(0.1),
+                const Color(0xFF1565C0).withOpacity(0.03)]),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF1565C0).withOpacity(0.3))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.auto_stories_rounded, color: Color(0xFF1565C0), size: 20),
+                const SizedBox(width: 8),
+                Text('Knowledge Base Status', style: TextStyle(
+                  color: sl.text1, fontSize: 13, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 12),
+              Row(children: [
+                _kbStatChip('Total Docs', '${stats['totalDocs'] ?? _kbDocs.length}', sl),
+                const SizedBox(width: 10),
+                _kbStatChip('Uploaded', '${stats['uploadedDocs'] ?? 0}', sl),
+                const SizedBox(width: 10),
+                _kbStatChip('Pre-loaded', '${stats['seededDocs'] ?? 0}', sl),
+                const SizedBox(width: 10),
+                _kbStatChip('~Tokens', '${stats['estimatedTokens'] ?? 0}', sl),
+              ]),
+              const SizedBox(height: 8),
+              Text('Knowledge is shared across: AI Scan, Near Miss, Safety Chat',
+                style: TextStyle(color: sl.text4, fontSize: 10)),
+            ]),
+          );
+        },
+      ),
+
+      // Upload section
+      _sectionHeader('Upload Knowledge Documents', sl),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: sl.card, borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: sl.border)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Upload PDF or Word documents containing safety knowledge. '
+               'Text will be extracted and made available to AI across all sections.',
+            style: TextStyle(color: sl.text3, fontSize: 11, height: 1.4)),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: _kbUploadBtn(
+              'Upload PDF', Icons.picture_as_pdf_rounded,
+              const Color(0xFFD32F2F), () => _uploadKbDocument('pdf'), sl)),
+            const SizedBox(width: 10),
+            Expanded(child: _kbUploadBtn(
+              'Upload DOCX', Icons.description_rounded,
+              const Color(0xFF1565C0), () => _uploadKbDocument('docx'), sl)),
+          ]),
+          const SizedBox(height: 10),
+          _kbUploadBtn(
+            'Add Text Entry Manually', Icons.edit_note_rounded,
+            const Color(0xFF43A047), () => _addKbTextEntry(sl), sl),
+          if (_kbUploading) ...[
+            const SizedBox(height: 14),
+            LinearProgressIndicator(
+              value: _kbUploadTotal > 0 ? _kbUploadProgress / _kbUploadTotal : null,
+              backgroundColor: sl.border,
+              color: const Color(0xFF1565C0)),
+            const SizedBox(height: 6),
+            Text(_kbUploadStatus,
+              style: TextStyle(color: sl.text3, fontSize: 10, fontStyle: FontStyle.italic)),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 16),
+
+      // Seed defaults
+      _sectionHeader('Pre-loaded Knowledge', sl),
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: sl.card, borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: sl.border)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Seed the default safety knowledge base (Factories Act 1948, '
+               'State Rules, BIS standards). This creates ${KbSeedData.entries.length} entries.',
+            style: TextStyle(color: sl.text3, fontSize: 11, height: 1.4)),
+          const SizedBox(height: 10),
+          Row(children: [
+            Expanded(child: ElevatedButton.icon(
+              onPressed: _seedKbDefaults,
+              icon: const Icon(Icons.auto_fix_high_rounded, size: 15, color: Colors.white),
+              label: const Text('Seed Default KB',
+                style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF7E57C2),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            )),
+            const SizedBox(width: 10),
+            Expanded(child: OutlinedButton.icon(
+              onPressed: _clearAllKb,
+              icon: Icon(Icons.delete_sweep_rounded, size: 15, color: AppColors.red),
+              label: Text('Clear All KB',
+                style: TextStyle(color: AppColors.red, fontSize: 11, fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                side: BorderSide(color: AppColors.red.withOpacity(0.5)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            )),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 16),
+
+      // KB entries list
+      _sectionHeader('Knowledge Entries (${_kbDocs.length})', sl),
+      const SizedBox(height: 8),
+      if (_kbDocs.isEmpty)
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: sl.card, borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: sl.border)),
+          child: Center(child: Text('No knowledge entries yet. Upload a document or seed defaults.',
+            style: TextStyle(color: sl.text4, fontSize: 11))),
+        )
+      else
+        ...(_kbDocs.take(50).toList().asMap().entries.map((entry) {
+          final doc = entry.value;
+          final title = doc['title']?.toString() ?? 'Untitled';
+          final source = doc['source']?.toString() ?? '';
+          final content = doc['content']?.toString() ?? '';
+          final uploadedAt = doc['uploadedAt']?.toString() ?? '';
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: sl.card, borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: sl.border.withOpacity(0.5))),
+            child: Row(children: [
+              Icon(
+                source.contains('pdf') ? Icons.picture_as_pdf_rounded
+                  : source.contains('docx') ? Icons.description_rounded
+                  : Icons.article_rounded,
+                size: 16, color: const Color(0xFF1565C0).withOpacity(0.7)),
+              const SizedBox(width: 10),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: sl.text1, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text('${content.length} chars • $source${uploadedAt.isNotEmpty ? ' • ${uploadedAt.split('T').first}' : ''}',
+                    style: TextStyle(color: sl.text4, fontSize: 9.5)),
+                ])),
+              GestureDetector(
+                onTap: () => _deleteKbEntry(doc['id']?.toString() ?? ''),
+                child: Icon(Icons.delete_outline_rounded, size: 16, color: AppColors.red.withOpacity(0.6))),
+            ]),
+          );
+        })),
+      if (_kbDocs.length > 50)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text('+ ${_kbDocs.length - 50} more entries...',
+            style: TextStyle(color: sl.text4, fontSize: 10))),
+      const SizedBox(height: 20),
+    ]);
+  }
+
+  Widget _kbStatChip(String label, String value, SL sl) {
+    return Expanded(child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+      decoration: BoxDecoration(
+        color: sl.isDark ? Colors.white10 : Colors.black.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(8)),
+      child: Column(children: [
+        Text(value, style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w800)),
+        Text(label, style: TextStyle(color: sl.text4, fontSize: 9)),
+      ]),
+    ));
+  }
+
+  Widget _kbUploadBtn(String label, IconData icon, Color color, VoidCallback onTap, SL sl) {
+    return GestureDetector(
+      onTap: _kbUploading ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withOpacity(0.3))),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 16, color: color),
+          const SizedBox(width: 8),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _uploadKbDocument(String type) async {
+    try {
+      final allowedExt = type == 'pdf' ? ['pdf'] : ['docx', 'doc'];
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: allowedExt,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        _toast('Cannot read file', AppColors.red);
+        return;
+      }
+      final fileName = file.name;
+
+      setState(() {
+        _kbUploading = true;
+        _kbUploadStatus = 'Extracting text from $fileName...';
+        _kbUploadProgress = 0;
+        _kbUploadTotal = 1;
+      });
+
+      String extractedText = '';
+
+      if (type == 'pdf') {
+        // Extract text from PDF
+        try {
+          extractedText = await PdfKbExtractor.extractTextFromPdf(bytes);
+        } catch (e) {
+          setState(() { _kbUploading = false; });
+          _toast('PDF extraction failed: $e', AppColors.red);
+          return;
+        }
+      } else {
+        // For DOCX — extract plain text (basic approach)
+        try {
+          // DOCX is a ZIP containing XML. Extract text from word/document.xml
+          extractedText = _extractTextFromDocxBytes(bytes);
+        } catch (e) {
+          setState(() { _kbUploading = false; });
+          _toast('DOCX extraction failed: $e', AppColors.red);
+          return;
+        }
+      }
+
+      if (extractedText.trim().isEmpty) {
+        setState(() { _kbUploading = false; });
+        _toast('No text found in document. It may be image-based.', AppColors.amber);
+        return;
+      }
+
+      setState(() => _kbUploadStatus = 'Processing ${extractedText.length} chars...');
+
+      // Split into manageable chunks and save as KB entries
+      final chunks = _chunkTextForKb(extractedText, fileName);
+      setState(() { _kbUploadTotal = chunks.length; });
+
+      for (int i = 0; i < chunks.length; i++) {
+        setState(() {
+          _kbUploadProgress = i + 1;
+          _kbUploadStatus = 'Saving section ${i + 1} of ${chunks.length}...';
+        });
+        await LocalDB.addKnowledgeDoc(
+          title: '$fileName — Section ${i + 1}',
+          content: chunks[i],
+          source: '${type}_upload',
+        );
+      }
+
+      // Refresh KB docs
+      final updatedDocs = await LocalDB.getKnowledgeDocs();
+      setState(() {
+        _kbDocs = updatedDocs;
+        _kbUploading = false;
+        _kbUploadStatus = '';
+      });
+      _toast('Uploaded: $fileName (${chunks.length} sections, ${extractedText.length} chars)', const Color(0xFF43A047));
+      AdminAudit.log(action: 'kb_upload', actor: _currentActor,
+          details: {'file': fileName, 'type': type, 'sections': chunks.length, 'chars': extractedText.length});
+    } catch (e) {
+      setState(() { _kbUploading = false; });
+      _toast('Upload failed: $e', AppColors.red);
+    }
+  }
+
+  /// Basic DOCX text extraction — reads paragraph text from the XML
+  String _extractTextFromDocxBytes(dynamic bytes) {
+    // DOCX is a ZIP. On web, we can use dart:convert and basic decompression.
+    // For a simpler approach: try to find readable text content in the raw bytes.
+    try {
+      final text = String.fromCharCodes(bytes as List<int>);
+      // Extract text between <w:t> tags (Word XML paragraphs)
+      final regex = RegExp(r'<w:t[^>]*>([^<]+)</w:t>');
+      final matches = regex.allMatches(text);
+      if (matches.isNotEmpty) {
+        return matches.map((m) => m.group(1) ?? '').join(' ');
+      }
+      // Fallback: extract any readable ASCII content
+      final buffer = StringBuffer();
+      for (final char in text.codeUnits) {
+        if (char >= 32 && char <= 126) buffer.writeCharCode(char);
+        else if (char == 10 || char == 13) buffer.write(' ');
+      }
+      return buffer.toString().replaceAll(RegExp(r'\s{3,}'), '\n');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  List<String> _chunkTextForKb(String text, String fileName) {
+    const chunkSize = 2500; // ~625 tokens per chunk — manageable for context
+    final chunks = <String>[];
+    final cleanText = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    int start = 0;
+    while (start < cleanText.length) {
+      int end = (start + chunkSize).clamp(0, cleanText.length);
+      // Try to break at sentence boundary
+      if (end < cleanText.length) {
+        final sentEnd = cleanText.lastIndexOf('.', end);
+        if (sentEnd > start + 500) end = sentEnd + 1;
+      }
+      final chunk = cleanText.substring(start, end).trim();
+      if (chunk.length > 50) chunks.add(chunk); // Skip tiny fragments
+      start = end;
+    }
+    return chunks.isEmpty ? [cleanText] : chunks;
+  }
+
+  Future<void> _addKbTextEntry(SL sl) async {
+    final titleCtrl = TextEditingController();
+    final contentCtrl = TextEditingController();
+    final result = await showDialog<bool>(context: context, builder: (_) =>
+      AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Add Knowledge Entry', style: TextStyle(color: sl.text1, fontSize: 14, fontWeight: FontWeight.w700)),
+        content: SizedBox(width: 400, child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: titleCtrl,
+            style: TextStyle(color: sl.text1, fontSize: 12),
+            decoration: InputDecoration(
+              labelText: 'Title (e.g. "Height Safety SOP")',
+              labelStyle: TextStyle(color: sl.text3, fontSize: 11),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: contentCtrl,
+            maxLines: 8,
+            style: TextStyle(color: sl.text1, fontSize: 12),
+            decoration: InputDecoration(
+              labelText: 'Content (paste safety knowledge text)',
+              labelStyle: TextStyle(color: sl.text3, fontSize: 11),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8))),
+          ),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1565C0)),
+            child: const Text('Add', style: TextStyle(color: Colors.white))),
+        ],
+      ));
+    if (result == true && titleCtrl.text.trim().isNotEmpty && contentCtrl.text.trim().isNotEmpty) {
+      await LocalDB.addKnowledgeDoc(
+        title: titleCtrl.text.trim(),
+        content: contentCtrl.text.trim(),
+        source: 'manual_entry',
+      );
+      final updatedDocs = await LocalDB.getKnowledgeDocs();
+      setState(() => _kbDocs = updatedDocs);
+      _toast('Knowledge entry added', const Color(0xFF43A047));
+      AdminAudit.log(action: 'kb_add_manual', actor: _currentActor,
+          details: {'title': titleCtrl.text.trim()});
+    }
+  }
+
+  Future<void> _seedKbDefaults() async {
+    final count = await LocalDB.seedKnowledgeBase(replace: false);
+    final updatedDocs = await LocalDB.getKnowledgeDocs();
+    setState(() => _kbDocs = updatedDocs);
+    _toast('Seeded $count default entries', const Color(0xFF7E57C2));
+    AdminAudit.log(action: 'kb_seed_defaults', actor: _currentActor,
+        details: {'count': count});
+  }
+
+  Future<void> _clearAllKb() async {
+    final ok = await showDialog<bool>(context: context, builder: (_) =>
+      AlertDialog(
+        title: const Text('Clear Knowledge Base?',
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        content: const Text('This will delete ALL knowledge entries (uploaded + seeded). Cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            child: const Text('Clear All', style: TextStyle(color: Colors.white))),
+        ],
+      ));
+    if (ok == true) {
+      await LocalDB.replaceAllKnowledgeDocs([]);
+      setState(() => _kbDocs = []);
+      _toast('Knowledge base cleared', AppColors.red);
+      AdminAudit.log(action: 'kb_clear_all', actor: _currentActor);
+    }
+  }
+
+  Future<void> _deleteKbEntry(String id) async {
+    if (id.isEmpty) return;
+    await LocalDB.deleteKnowledgeDoc(id);
+    final updatedDocs = await LocalDB.getKnowledgeDocs();
+    setState(() => _kbDocs = updatedDocs);
+    _toast('Entry removed', AppColors.amber);
   }
 }
 

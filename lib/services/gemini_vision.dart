@@ -18,6 +18,7 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'network_checker.dart';
+import 'knowledge_service.dart';
 // admin_master_data import removed — no longer needed after offline library removal
 
 class GeminiVision {
@@ -145,9 +146,16 @@ class GeminiVision {
     final timeoutSec = payloadKB > 500 ? 75 : 60;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
+    // ★ v25: Include expert safety knowledge context for better analysis
+    String safetyContext = '';
+    try {
+      safetyContext = KnowledgeService.getExpertPrompt();
+    } catch (_) {}
+
     final requestBody = {
       'action': 'gemini',
       'imageBase64': base64Encode(bytes),
+      if (safetyContext.isNotEmpty) 'safetyContext': safetyContext,
     };
 
     http.Response response;

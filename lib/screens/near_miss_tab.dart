@@ -25,6 +25,7 @@ import '../services/pdf_export.dart';
 import '../services/sync_service.dart';
 import '../services/admin_master_data.dart';
 import '../services/geo_service.dart';
+import '../services/knowledge_service.dart';
 import '../widgets/universal_app_bar.dart';
 import '../services/i18n.dart';
 
@@ -378,7 +379,12 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           ? 'Respond with the "reason" and "refined" fields in English.'
           : 'IMPORTANT: The worker spoke in $_detectedLangName. You MUST write the "reason" and "refined" fields in $_detectedLangName language (using native script). Do NOT translate to English.';
 
-      final prompt = '''You are an expert Safety Officer at a steel plant (SAIL). A worker has described a potential near miss incident.
+      // ★ v25: Get KB context from knowledge service
+      final kbContext = await KnowledgeService.getContextForPrompt(rawText, maxKbDocs: 2);
+
+      final prompt = '''$kbContext
+
+You are analyzing a potential near miss incident reported by a worker.
 
 WORKER'S INPUT: "$rawText"
 
