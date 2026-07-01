@@ -5044,7 +5044,7 @@ class _AdminScreenState extends State<AdminScreen>
       });
       _toast('Uploaded: $fileName (${chunks.length} sections, ${extractedText.length} chars)', const Color(0xFF43A047));
       AdminAudit.log(action: 'kb_upload', actor: _currentActor,
-          details: {'file': fileName, 'type': type, 'sections': chunks.length, 'chars': extractedText.length});
+          meta: {'file': fileName, 'type': type, 'sections': chunks.length, 'chars': extractedText.length});
     } catch (e) {
       setState(() { _kbUploading = false; });
       _toast('Upload failed: $e', AppColors.red);
@@ -5141,7 +5141,7 @@ class _AdminScreenState extends State<AdminScreen>
       setState(() => _kbDocs = updatedDocs);
       _toast('Knowledge entry added', const Color(0xFF43A047));
       AdminAudit.log(action: 'kb_add_manual', actor: _currentActor,
-          details: {'title': titleCtrl.text.trim()});
+          meta: {'title': titleCtrl.text.trim()});
     }
   }
 
@@ -5151,7 +5151,7 @@ class _AdminScreenState extends State<AdminScreen>
     setState(() => _kbDocs = updatedDocs);
     _toast('Seeded $count default entries', const Color(0xFF7E57C2));
     AdminAudit.log(action: 'kb_seed_defaults', actor: _currentActor,
-        details: {'count': count});
+        meta: {'count': count});
   }
 
   Future<void> _clearAllKb() async {
