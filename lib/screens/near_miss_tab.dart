@@ -7,6 +7,7 @@
 //   ✅ UI/UX: Polished cards, improved visual hierarchy
 //   ✅ All v16 features preserved (network check, form, duplicate detection)
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
@@ -75,9 +76,10 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   // ★ v24: AI Description Refinement
   bool _aiRefining = false;
   Map<String, dynamic>? _aiSuggestion; // {refined, isNearMiss, reason, confidence}
-  DateTime? _lastDescChange;
-  DateTime? _lastLocationChange;
-  DateTime? _lastActionChange;
+  // ★ v29: Proper Timer-based debounce (replaces pile-up Future.delayed)
+  Timer? _descDebounce;
+  Timer? _locationDebounce;
+  Timer? _actionDebounce;
   static const _aiRefineDelay = Duration(seconds: 2);
 
   // GPS geo-tagging
@@ -87,6 +89,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   bool                    _speechAvailable = false;
   bool                    _isListening     = false;
   bool                    _pauseTimedOut   = false; // ★ v25: track pause-timeout vs error
+  bool                    _voiceSessionEnded = false; // ★ v29: prevent double AI trigger
+  int                     _voiceSessionId = 0; // ★ v29: stale timeout protection
   TextEditingController? _activeMicField;
   String                  _detectedLang    = 'en'; // ★ v25: auto-detected input language
 
@@ -183,12 +187,15 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         },
         onStatus: (s) {
           debugPrint('Speech status: $s');
-          // ★ v25: When speech ends after 6-7s pause, STOP (don't restart)
-          // and auto-trigger AI refinement
-          if (s == 'done' && _isListening && _activeMicField != null) {
+          // ★ v29: Unified handler for BOTH 'done' and 'notListening'
+          // On web, pause-timeout fires 'notListening' not 'done'
+          // _voiceSessionEnded guard prevents double AI trigger
+          if ((s == 'done' || s == 'notListening') && _isListening && _activeMicField != null) {
+            if (_voiceSessionEnded) return; // already handled
+            _voiceSessionEnded = true;
             final field = _activeMicField;
             setState(() { _isListening = false; _activeMicField = null; });
-            // ★ v28: Auto-trigger AI for ALL fields after voice input stops
+            // ★ v29: Auto-trigger AI for ALL fields after voice input stops
             if (field == _description && _description.text.trim().length >= 10) {
               _refineWithAI(_description.text.trim());
             } else if (field == _location && _location.text.trim().length >= 5) {
@@ -196,23 +203,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
             } else if (field == _immediateAction && _immediateAction.text.trim().length >= 5) {
               _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
             }
-          } else if (s == 'notListening') {
-            // ★ v28 FIX: On web, pause-timeout often fires 'notListening' instead of 'done'
-            // Must also trigger AI refinement here
-            if (mounted && _isListening && _activeMicField != null) {
-              final field = _activeMicField;
-              setState(() { _isListening = false; _activeMicField = null; });
-              // Auto-trigger AI correction after pause-timeout
-              if (field == _description && _description.text.trim().length >= 10) {
-                _refineWithAI(_description.text.trim());
-              } else if (field == _location && _location.text.trim().length >= 5) {
-                _refineFieldWithAI(_location, 'Exact Location of Incident');
-              } else if (field == _immediateAction && _immediateAction.text.trim().length >= 5) {
-                _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
-              }
-            } else if (mounted) {
-              setState(() => _isListening = false);
-            }
+          } else if (s == 'notListening' && mounted) {
+            setState(() => _isListening = false);
           }
         },
       );
@@ -263,6 +255,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
     // If already listening on the same field, stop
     if (_isListening && _activeMicField == targetField) {
+      _voiceSessionEnded = true; // prevent double AI from onStatus
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
       // ★ v28: AI correction for all fields on voice stop
@@ -278,10 +271,15 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
     // If listening on a different field, stop first
     if (_isListening) {
+      _voiceSessionEnded = true;
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
       await Future.delayed(const Duration(milliseconds: 300));
     }
+
+    // ★ v29: Reset session guard for new voice session
+    _voiceSessionEnded = false;
+    _voiceSessionId++;
 
     // Check availability — re-init if needed
     if (!_speechAvailable) {
@@ -392,20 +390,18 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   //  Validates whether input is a genuine near miss & refines language
   // ═══════════════════════════════════════════════════════════════
   void _onDescriptionChanged(String text) {
-    _lastDescChange = DateTime.now();
-    // ★ v25: Detect language as user types
+    // ★ v29: Detect language as user types
     _detectLanguageFromText(text);
     // Clear previous suggestion if user is still editing
     if (_aiSuggestion != null) {
       setState(() => _aiSuggestion = null);
     }
-    // Debounce: trigger AI refinement after user stops typing
+    // ★ v29: Proper Timer debounce — cancels previous, only fires once
+    _descDebounce?.cancel();
     if (text.trim().length >= 10) {
-      Future.delayed(_aiRefineDelay, () {
+      _descDebounce = Timer(_aiRefineDelay, () {
         if (!mounted) return;
-        if (_lastDescChange != null &&
-            DateTime.now().difference(_lastDescChange!) >= _aiRefineDelay &&
-            _description.text.trim() == text.trim()) {
+        if (_description.text.trim() == text.trim()) {
           _refineWithAI(text.trim());
         }
       });
@@ -413,14 +409,12 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   }
 
   void _onLocationChanged(String text) {
-    _lastLocationChange = DateTime.now();
     _detectLanguageFromText(text);
+    _locationDebounce?.cancel();
     if (text.trim().length >= 5) {
-      Future.delayed(_aiRefineDelay, () {
+      _locationDebounce = Timer(_aiRefineDelay, () {
         if (!mounted) return;
-        if (_lastLocationChange != null &&
-            DateTime.now().difference(_lastLocationChange!) >= _aiRefineDelay &&
-            _location.text.trim() == text.trim()) {
+        if (_location.text.trim() == text.trim()) {
           _refineFieldWithAI(_location, 'Exact Location of Incident');
         }
       });
@@ -428,25 +422,25 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   }
 
   void _onActionChanged(String text) {
-    _lastActionChange = DateTime.now();
     _detectLanguageFromText(text);
+    _actionDebounce?.cancel();
     if (text.trim().length >= 5) {
-      Future.delayed(_aiRefineDelay, () {
+      _actionDebounce = Timer(_aiRefineDelay, () {
         if (!mounted) return;
-        if (_lastActionChange != null &&
-            DateTime.now().difference(_lastActionChange!) >= _aiRefineDelay &&
-            _immediateAction.text.trim() == text.trim()) {
+        if (_immediateAction.text.trim() == text.trim()) {
           _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
         }
       });
     }
   }
 
-  /// ★ v28: AI correction for any text field (location, immediate action)
+  /// ★ v28/v29: AI correction for any text field (location, immediate action)
   /// Uses Groq (primary) → Apps Script (fallback) for reliability
+  bool _fieldRefining = false; // ★ v29: mutex for field refinement
   Future<void> _refineFieldWithAI(TextEditingController field, String fieldLabel) async {
     final rawText = field.text.trim();
-    if (rawText.length < 5 || _aiRefining) return;
+    if (rawText.length < 5 || _aiRefining || _fieldRefining) return;
+    _fieldRefining = true;
 
     _detectLanguageFromText(rawText);
 
@@ -456,7 +450,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         text: rawText,
         fieldLabel: fieldLabel,
         language: _detectedLangName,
-      );
+      ).timeout(const Duration(seconds: 12), onTimeout: () => null);
 
       if (groqResult != null && groqResult.isNotEmpty && groqResult != rawText) {
         if (mounted) {
@@ -467,6 +461,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         }
         return;
       }
+
+      if (!mounted) return;
 
       // ★ FALLBACK: Apps Script (Gemini) if Groq fails
       final langInstruction = _detectedLang == 'en'
@@ -511,6 +507,9 @@ If the text is already fine, return it unchanged.''';
         }
       }
     } catch (_) {}
+    finally {
+      _fieldRefining = false; // ★ v29: always release mutex
+    }
   }
 
   Future<void> _refineWithAI(String rawText) async {
@@ -518,18 +517,24 @@ If the text is already fine, return it unchanged.''';
     setState(() => _aiRefining = true);
 
     try {
-      // ★ v25: Detect language from the raw text before sending to AI
+      // ★ v29: Detect language from the raw text before sending to AI
       _detectLanguageFromText(rawText);
 
-      // ★ v28: Get KB context from knowledge service
-      final kbContext = await KnowledgeService.getContextForPrompt(rawText, maxKbDocs: 2);
+      // ★ v29: Get KB context with timeout to prevent hanging
+      String kbContext = '';
+      try {
+        kbContext = await KnowledgeService.getContextForPrompt(rawText, maxKbDocs: 2)
+            .timeout(const Duration(seconds: 3), onTimeout: () => '');
+      } catch (_) {}
 
-      // ★ v28 PRIMARY: Try Groq first (fast, free, reliable)
+      if (!mounted) return;
+
+      // ★ v29 PRIMARY: Try Groq first with timeout (fast, free, reliable)
       final groqResult = await GroqService.classifyNearMiss(
         text: rawText,
         language: _detectedLangName,
         kbContext: kbContext,
-      );
+      ).timeout(const Duration(seconds: 15), onTimeout: () => null);
 
       if (groqResult != null && mounted) {
         setState(() {
@@ -538,6 +543,8 @@ If the text is already fine, return it unchanged.''';
         });
         return;
       }
+
+      if (!mounted) return;
 
       // ★ FALLBACK: Apps Script (Gemini) if Groq fails
       final langInstruction = _detectedLang == 'en'
@@ -604,8 +611,10 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         }
       }
     } catch (_) {}
-
-    if (mounted) setState(() => _aiRefining = false);
+    // ★ v29: ALWAYS reset _aiRefining — prevents stuck state
+    finally {
+      if (mounted && _aiRefining) setState(() => _aiRefining = false);
+    }
   }
 
   /// ★ v25: Fallback AI text call using GeminiVision's backend directly
@@ -678,6 +687,9 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
 
   @override
   void dispose() {
+    _descDebounce?.cancel();
+    _locationDebounce?.cancel();
+    _actionDebounce?.cancel();
     _micPulseCtrl.dispose();
     _speech.cancel();
     _brief.dispose(); _deptOther.dispose(); _location.dispose();
@@ -733,9 +745,12 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
       if (!mounted) return;
       if (location != null && location.isValid) {
         _capturedLocation = location;
-        final address = GeoService.getDisplayAddress(location);
-        if (address.isNotEmpty) {
-          setState(() => _location.text = address);
+        // ★ v29 FIX: Only fill location if user hasn't typed anything
+        if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
+          final address = GeoService.getDisplayAddress(location);
+          if (address.isNotEmpty) {
+            setState(() => _location.text = address);
+          }
         }
       }
     } catch (_) {
@@ -975,12 +990,10 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     _submit(exportAfter: false);
   }
 
-  /// ★ v25: Share Report — saves first, then triggers share sheet
+  /// ★ v25/v29: Share Report — captures data BEFORE submit clears form
   void _handleShareReport() async {
-    final success = await _submit(exportAfter: false);
-    if (success && mounted) {
-      // Build share text from current form data
-      final shareText = '''🚨 NEAR MISS REPORT — ${_plant}
+    // ★ v29 FIX: Build share text BEFORE _submit clears the form fields
+    final shareText = '''🚨 NEAR MISS REPORT — ${_plant}
 ━━━━━━━━━━━━━━━━━━━━
 📍 Location: ${_location.text.trim()}
 🏭 Department: $_effectiveDept
@@ -996,6 +1009,9 @@ ${_immediateAction.text.trim()}
 
 📅 Date: ${DateTime.now().toString().split('.').first}
 👷 Reported via Safety Lens App''';
+
+    final success = await _submit(exportAfter: false);
+    if (success && mounted) {
       try {
         await Share.share(shareText, subject: 'Near Miss Report — $_plant');
       } catch (_) {}

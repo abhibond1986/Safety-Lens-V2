@@ -10,6 +10,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
@@ -46,6 +47,16 @@ class PdfExport {
     final dateStr = DateFormat('dd MMM yyyy, HH:mm').format(
       DateTime.parse(incident['date'] ?? DateTime.now().toIso8601String()));
 
+    // ★ v28: Load SAIL Safety Lens logo for PDF header
+    pw.MemoryImage? logoImage;
+    try {
+      final logoData = await rootBundle.load('assets/images/app_icon.png');
+      logoImage = pw.MemoryImage(logoData.buffer.asUint8List());
+      _cachedLogo = logoImage; // Cache for page headers (pages 2+)
+    } catch (_) {
+      // Logo load failed — will use text fallback
+    }
+
     Uint8List? imgBytes = imageBytes;
     if (imgBytes == null && incident['imageBase64'] != null) {
       try { imgBytes = base64Decode(incident['imageBase64'].toString()); } catch (_) {}
@@ -66,7 +77,7 @@ class PdfExport {
       footer: (ctx) => _pageFooter(ctx.pageNumber, ctx.pagesCount, reporterName, dateStr),
       build: (context) {
         final w = <pw.Widget>[];
-        w.add(_banner(incident, severity, isAiScan, riskScore, confidence));
+        w.add(_banner(incident, severity, isAiScan, riskScore, confidence, logoImage));
         w.add(pw.SizedBox(height: 16));
         w.add(_sectionTitle('INCIDENT DETAILS'));
         w.add(pw.SizedBox(height: 6));
@@ -110,6 +121,8 @@ class PdfExport {
   }
 
   // ─── PAGE CHROME ─────────────────────────────────────────────────────────
+  static pw.MemoryImage? _cachedLogo; // ★ v28: cache for page headers
+
   static pw.Widget _pageHeader(bool show) {
     if (!show) return pw.SizedBox();
     return pw.Container(
@@ -120,11 +133,15 @@ class PdfExport {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Row(children: [
-            pw.Container(width: 18, height: 18, color: _sailBlue,
-              alignment: pw.Alignment.center,
-              child: pw.Text('SAIL', style: pw.TextStyle(
-                color: PdfColors.white, fontSize: 5,
-                fontWeight: pw.FontWeight.bold))),
+            if (_cachedLogo != null)
+              pw.Container(width: 20, height: 20,
+                child: pw.Image(_cachedLogo!, fit: pw.BoxFit.contain))
+            else
+              pw.Container(width: 18, height: 18, color: _sailBlue,
+                alignment: pw.Alignment.center,
+                child: pw.Text('SAIL', style: pw.TextStyle(
+                  color: PdfColors.white, fontSize: 5,
+                  fontWeight: pw.FontWeight.bold))),
             pw.SizedBox(width: 5),
             pw.Text('SAFETY LENS', style: pw.TextStyle(
               color: _sailBlue, fontSize: 8, fontWeight: pw.FontWeight.bold)),
@@ -158,7 +175,7 @@ class PdfExport {
 
   // ─── BANNER ──────────────────────────────────────────────────────────────
   static pw.Widget _banner(Map<String, dynamic> inc, String sev, bool isAi,
-      dynamic score, dynamic conf) {
+      dynamic score, dynamic conf, pw.MemoryImage? logoImage) {
     final sc = _getSevCol(sev);
     final sb = _getSevBg(sev);
     return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
@@ -166,15 +183,20 @@ class PdfExport {
         padding: const pw.EdgeInsets.fromLTRB(12, 9, 12, 9),
         color: _sailBlue,
         child: pw.Row(children: [
-          pw.Container(width: 42, height: 42, color: PdfColors.white,
-            alignment: pw.Alignment.center,
-            child: pw.Column(mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                pw.Text('SAIL', style: pw.TextStyle(color: _sailBlue, fontSize: 10,
-                  fontWeight: pw.FontWeight.bold)),
-                pw.Text('सेल', style: pw.TextStyle(
-                  color: PdfColor.fromHex('#1565C0'), fontSize: 5)),
-              ])),
+          // ★ v28: Use actual SAIL Safety Lens badge logo
+          logoImage != null
+            ? pw.Container(
+                width: 46, height: 46,
+                child: pw.Image(logoImage, fit: pw.BoxFit.contain))
+            : pw.Container(width: 42, height: 42, color: PdfColors.white,
+                alignment: pw.Alignment.center,
+                child: pw.Column(mainAxisAlignment: pw.MainAxisAlignment.center,
+                  children: [
+                    pw.Text('SAIL', style: pw.TextStyle(color: _sailBlue, fontSize: 10,
+                      fontWeight: pw.FontWeight.bold)),
+                    pw.Text('सेल', style: pw.TextStyle(
+                      color: PdfColor.fromHex('#1565C0'), fontSize: 5)),
+                  ])),
           pw.SizedBox(width: 10),
           pw.Expanded(child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
