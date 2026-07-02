@@ -55,83 +55,56 @@ class PdfKbExtractor {
 
   static Future<String> extractTextFromPdf(Uint8List pdfBytes) async {
     await _ensurePdfJs();
-    // ★ v25 FIX: Use a helper JS function to avoid dart2js Uint8Array constructor issues.
-    // Inject a tiny helper once, then call it with the byte list.
+
+    // ★ v26 FIX: Do ALL pdf.js work inside a single JS function to avoid
+    // dart:js ↔ dart:js_util interop mismatches (JsObject vs raw JS object).
+    // We pass the byte array in, JS does the extraction, returns plain text.
     js.context.callMethod('eval', ['''
-      if (!window.__safetyLensMakeU8) {
-        window.__safetyLensMakeU8 = function(arr) { return new Uint8Array(arr); };
+      if (!window.__safetyLensExtractPdf) {
+        window.__safetyLensExtractPdf = async function(byteArray) {
+          try {
+            var uint8 = new Uint8Array(byteArray);
+            var loadingTask = pdfjsLib.getDocument({data: uint8});
+            var pdfDoc = await loadingTask.promise;
+            var numPages = pdfDoc.numPages;
+            var textParts = [];
+            for (var i = 1; i <= numPages; i++) {
+              try {
+                var page = await pdfDoc.getPage(i);
+                var content = await page.getTextContent();
+                var pageText = content.items.map(function(item) { return item.str || ''; }).join(' ');
+                textParts.push(pageText);
+              } catch(e) {
+                textParts.push('[Page ' + i + ': extraction error]');
+              }
+            }
+            return textParts.join('\\n');
+          } catch(e) {
+            throw new Error('PDF parse error: ' + e.message);
+          }
+        };
       }
     ''']);
+
+    // Convert Dart bytes to a JS array and call the extraction function
     final jsArray = js.JsObject.jsify(pdfBytes.toList());
-    final jsUint8Array = js.context.callMethod('__safetyLensMakeU8', [jsArray]);
 
-    final pdfjsLib = js.context['pdfjsLib'];
-    if (pdfjsLib == null) {
-      throw Exception('pdf.js library not available. Please check your internet connection and reload.');
-    }
+    // Call the JS function — it returns a Promise, access it via dart:js
+    final resultPromise = js.context.callMethod('__safetyLensExtractPdf', [jsArray]);
 
-    final loadingTask = pdfjsLib.callMethod('getDocument', [
-      js.JsObject.jsify({'data': jsUint8Array})
-    ]);
-    if (loadingTask == null) {
-      throw Exception('Failed to start PDF loading — file may be corrupted.');
-    }
-
-    dynamic pdfDoc;
+    // Convert the JS Promise to a Dart Future
+    final String result;
     try {
-      final promise = js_util.getProperty(loadingTask as Object, 'promise');
-      if (promise == null) {
-        throw Exception('PDF document loading returned null promise.');
-      }
-      pdfDoc = await js_util.promiseToFuture<dynamic>(promise);
+      result = await js_util.promiseToFuture<String>(resultPromise);
     } catch (e) {
-      throw Exception('Failed to load PDF document: $e');
+      throw Exception('$e');
     }
 
-    if (pdfDoc == null) {
-      throw Exception('PDF document is null — file may be empty or corrupted.');
+    if (result.trim().isEmpty) {
+      throw Exception('No text found in PDF — it may be image-based (scanned).');
     }
 
-    final numPagesRaw = js_util.getProperty(pdfDoc, 'numPages');
-    if (numPagesRaw == null) {
-      throw Exception('Could not determine number of pages in PDF.');
-    }
-    final int numPages = (numPagesRaw is int) ? numPagesRaw : int.tryParse(numPagesRaw.toString()) ?? 0;
-
-    if (numPages == 0) {
-      throw Exception('PDF has zero pages.');
-    }
-
-    final buffer = StringBuffer();
-    for (int pageNum = 1; pageNum <= numPages; pageNum++) {
-      try {
-        final page = await js_util.promiseToFuture<dynamic>(
-            js_util.callMethod(pdfDoc, 'getPage', [pageNum]));
-        if (page == null) continue;
-
-        final textContent = await js_util.promiseToFuture<dynamic>(
-            js_util.callMethod(page, 'getTextContent', []));
-        if (textContent == null) continue;
-
-        final items = js_util.getProperty(textContent, 'items');
-        if (items == null) continue;
-
-        final lenRaw = js_util.getProperty(items, 'length');
-        final int len = (lenRaw is int) ? lenRaw : int.tryParse(lenRaw?.toString() ?? '0') ?? 0;
-
-        for (int i = 0; i < len; i++) {
-          final item = js_util.getProperty(items, i);
-          if (item == null) continue;
-          final str = js_util.getProperty(item, 'str')?.toString() ?? '';
-          buffer.write('$str ');
-        }
-        buffer.write('\n');
-      } catch (e) {
-        // Skip problematic pages but continue extraction
-        buffer.write('[Page $pageNum: extraction error]\n');
-      }
-    }
-    return buffer.toString().trim();
+    return result.trim();
   }
 
   static List<String> _chunkText(String text) {
