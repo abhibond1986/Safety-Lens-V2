@@ -28,6 +28,7 @@ import '../services/geo_service.dart';
 import '../services/knowledge_service.dart';
 import '../widgets/universal_app_bar.dart';
 import '../services/i18n.dart';
+import '../services/groq_service.dart';
 
 class NearMissTab extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -196,7 +197,22 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
               _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
             }
           } else if (s == 'notListening') {
-            if (mounted) setState(() => _isListening = false);
+            // ★ v28 FIX: On web, pause-timeout often fires 'notListening' instead of 'done'
+            // Must also trigger AI refinement here
+            if (mounted && _isListening && _activeMicField != null) {
+              final field = _activeMicField;
+              setState(() { _isListening = false; _activeMicField = null; });
+              // Auto-trigger AI correction after pause-timeout
+              if (field == _description && _description.text.trim().length >= 10) {
+                _refineWithAI(_description.text.trim());
+              } else if (field == _location && _location.text.trim().length >= 5) {
+                _refineFieldWithAI(_location, 'Exact Location of Incident');
+              } else if (field == _immediateAction && _immediateAction.text.trim().length >= 5) {
+                _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
+              }
+            } else if (mounted) {
+              setState(() => _isListening = false);
+            }
           }
         },
       );
@@ -427,17 +443,37 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   }
 
   /// ★ v28: AI correction for any text field (location, immediate action)
-  /// Lighter than full near-miss refinement — just fixes grammar/clarity
+  /// Uses Groq (primary) → Apps Script (fallback) for reliability
   Future<void> _refineFieldWithAI(TextEditingController field, String fieldLabel) async {
     final rawText = field.text.trim();
     if (rawText.length < 5 || _aiRefining) return;
 
     _detectLanguageFromText(rawText);
-    final langInstruction = _detectedLang == 'en'
-        ? 'Respond in English.'
-        : 'IMPORTANT: Respond in $_detectedLangName language using native script. Do NOT translate to English.';
 
-    final prompt = '''You are a safety report text corrector for SAIL (Steel Authority of India Limited).
+    try {
+      // ★ PRIMARY: Try Groq first (fast, free, reliable)
+      final groqResult = await GroqService.correctText(
+        text: rawText,
+        fieldLabel: fieldLabel,
+        language: _detectedLangName,
+      );
+
+      if (groqResult != null && groqResult.isNotEmpty && groqResult != rawText) {
+        if (mounted) {
+          setState(() {
+            field.text = groqResult;
+            field.selection = TextSelection.fromPosition(TextPosition(offset: groqResult.length));
+          });
+        }
+        return;
+      }
+
+      // ★ FALLBACK: Apps Script (Gemini) if Groq fails
+      final langInstruction = _detectedLang == 'en'
+          ? 'Respond in English.'
+          : 'IMPORTANT: Respond in $_detectedLangName language using native script. Do NOT translate to English.';
+
+      final prompt = '''You are a safety report text corrector for SAIL (Steel Authority of India Limited).
 
 FIELD: $fieldLabel
 WORKER'S INPUT: "$rawText"
@@ -453,7 +489,6 @@ Correct this text for:
 Respond with ONLY the corrected text — no quotes, no explanation, no JSON. Just the improved text.
 If the text is already fine, return it unchanged.''';
 
-    try {
       Map<String, dynamic>? body = await SyncService.callAiText(prompt);
       if (body == null) body = await _callAiTextFallback(prompt);
       if (!mounted || body == null) return;
@@ -463,7 +498,6 @@ If the text is already fine, return it unchanged.''';
       else if (body['result'] != null) aiText = body['result'].toString();
 
       if (aiText != null && aiText.trim().isNotEmpty) {
-        // Clean up — remove markdown fences if present
         String cleaned = aiText.trim();
         if (cleaned.startsWith('```')) cleaned = cleaned.replaceAll(RegExp(r'^```\w*\n?'), '').replaceAll('```', '');
         if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.substring(1, cleaned.length - 1);
@@ -486,12 +520,29 @@ If the text is already fine, return it unchanged.''';
     try {
       // ★ v25: Detect language from the raw text before sending to AI
       _detectLanguageFromText(rawText);
+
+      // ★ v28: Get KB context from knowledge service
+      final kbContext = await KnowledgeService.getContextForPrompt(rawText, maxKbDocs: 2);
+
+      // ★ v28 PRIMARY: Try Groq first (fast, free, reliable)
+      final groqResult = await GroqService.classifyNearMiss(
+        text: rawText,
+        language: _detectedLangName,
+        kbContext: kbContext,
+      );
+
+      if (groqResult != null && mounted) {
+        setState(() {
+          _aiSuggestion = groqResult;
+          _aiRefining = false;
+        });
+        return;
+      }
+
+      // ★ FALLBACK: Apps Script (Gemini) if Groq fails
       final langInstruction = _detectedLang == 'en'
           ? 'Respond with the "reason" and "refined" fields in English.'
           : 'IMPORTANT: The worker spoke in $_detectedLangName. You MUST write the "reason" and "refined" fields in $_detectedLangName language (using native script). Do NOT translate to English.';
-
-      // ★ v25: Get KB context from knowledge service
-      final kbContext = await KnowledgeService.getContextForPrompt(rawText, maxKbDocs: 2);
 
       final prompt = '''$kbContext
 
@@ -519,16 +570,13 @@ If the input does NOT qualify as a near miss, set isNearMiss=false and clearly e
 
 Respond ONLY with the JSON — no explanations outside JSON.''';
 
-      // ★ v25: Try SyncService first, then fallback to GeminiVision backend
       Map<String, dynamic>? body = await SyncService.callAiText(prompt);
-      // Fallback: call GeminiVision's backend directly for text prompt
       if (body == null) {
         body = await _callAiTextFallback(prompt);
       }
       if (!mounted) return;
 
       if (body != null) {
-        // Extract text from Apps Script response
         String? aiText;
         if (body['text'] != null) {
           aiText = body['text'].toString();
@@ -539,7 +587,6 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         }
 
         if (aiText != null) {
-          // Extract JSON from response (might have markdown fences)
           String jsonStr = aiText;
           final jsonMatch = RegExp(r'\{[\s\S]*\}').firstMatch(jsonStr);
           if (jsonMatch != null) jsonStr = jsonMatch.group(0)!;

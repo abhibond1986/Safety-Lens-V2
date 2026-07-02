@@ -34,6 +34,7 @@ import '../services/admin_master_data.dart';
 import '../services/admin_alerts.dart';
 import '../services/kb_seed_data.dart';
 import '../services/knowledge_service.dart';
+import '../services/groq_service.dart';
 import '../services/pdf_kb_extractor.dart';
 // Reuse the same web/mobile download shim that pdf_export.dart uses
 import '../services/pdf_export_stub.dart'
@@ -1886,6 +1887,11 @@ class _AdminScreenState extends State<AdminScreen>
       _integrityCard(sl),
 
       const SizedBox(height: 16),
+      _sectionHeader('Groq AI (Text Correction)', sl),
+      const SizedBox(height: 8),
+      _groqConfigCard(sl),
+
+      const SizedBox(height: 16),
       _sectionHeader('Integrations', sl),
       const SizedBox(height: 8),
       Container(
@@ -1903,10 +1909,118 @@ class _AdminScreenState extends State<AdminScreen>
           _intRow('OpenRouter (Gemini Vision)', 'set via Apps Script secret',
               AppColors.amber, Icons.auto_awesome_rounded, sl),
           const SizedBox(height: 8),
+          _intRow('Groq AI (Near Miss correction)', _groqConfigured ? 'active' : 'not configured',
+              _groqConfigured ? AppColors.green : AppColors.red, Icons.auto_fix_high_rounded, sl),
+          const SizedBox(height: 8),
           _intRow('Google Drive (PDF storage)', 'SAIL Safety Lens Reports/',
               AppColors.green, Icons.folder_rounded, sl),
         ])),
     ]);
+  }
+
+  bool _groqConfigured = false;
+  final _groqKeyCtrl = TextEditingController();
+  String _groqSelectedModel = GroqService.defaultModel;
+
+  Future<void> _loadGroqConfig() async {
+    final key = await GroqService.getApiKey();
+    final model = await GroqService.getModel();
+    if (mounted) {
+      setState(() {
+        _groqConfigured = key.isNotEmpty && key.startsWith('gsk_');
+        _groqKeyCtrl.text = key;
+        _groqSelectedModel = model;
+      });
+    }
+  }
+
+  Widget _groqConfigCard(SL sl) {
+    // Load config on first build
+    if (_groqKeyCtrl.text.isEmpty && !_groqConfigured) {
+      _loadGroqConfig();
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card, borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _groqConfigured ? AppColors.green.withOpacity(0.5) : sl.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(_groqConfigured ? Icons.check_circle : Icons.warning_amber_rounded,
+            color: _groqConfigured ? AppColors.green : AppColors.amber, size: 16),
+          const SizedBox(width: 8),
+          Text(_groqConfigured ? 'Groq AI Connected' : 'Groq API Key Required',
+            style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 4),
+        Text('Free AI for near-miss text correction. Get key at console.groq.com',
+          style: TextStyle(color: sl.text4, fontSize: 10)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _groqKeyCtrl,
+          obscureText: true,
+          style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
+          decoration: InputDecoration(
+            labelText: 'Groq API Key (starts with gsk_)',
+            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+            hintText: 'gsk_...',
+            hintStyle: TextStyle(color: sl.text4, fontSize: 10),
+            filled: true,
+            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        // Model selector
+        DropdownButtonFormField<String>(
+          value: _groqSelectedModel,
+          items: GroqService.availableModels.map((m) => DropdownMenuItem(
+            value: m['id'], child: Text(m['name']!, style: TextStyle(fontSize: 11, color: sl.text1)),
+          )).toList(),
+          onChanged: (v) { if (v != null) setState(() => _groqSelectedModel = v); },
+          dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
+          style: TextStyle(color: sl.text1, fontSize: 11),
+          decoration: InputDecoration(
+            labelText: 'Model',
+            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+            filled: true,
+            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              final key = _groqKeyCtrl.text.trim();
+              if (key.isEmpty || !key.startsWith('gsk_')) {
+                _toast('Invalid key — must start with gsk_', AppColors.red);
+                return;
+              }
+              await GroqService.setApiKey(key);
+              await GroqService.setModel(_groqSelectedModel);
+              setState(() => _groqConfigured = true);
+              _toast('Groq AI configured! Text correction is now active.', AppColors.green);
+            },
+            icon: const Icon(Icons.save_rounded, size: 14),
+            label: const Text('Save Groq Config'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+          ),
+        ),
+      ]),
+    );
   }
 
   Widget _healthRow(String label, String value, Color color, SL sl) =>
