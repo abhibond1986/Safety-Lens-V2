@@ -837,7 +837,9 @@ function getSailPrompt(promptMode) {
     + 'no permit, etc).\n'
     + '  • If NO gas cylinders, chemicals, or flammables are visible → you may '
     + 'NOT report storage/segregation hazards.\n\n'
-    + 'Better to report 2 real hazards than 7 hazards where 5 are inventions.\n\n'
+    + 'However, when items ARE clearly visible (cylinders, drums, extinguishers, '
+    + 'wires, workers, etc.), you MUST report ALL associated hazards for each item. '
+    + 'A thorough report of 8-12 hazards is expected for complex scenes.\n\n'
 
     + '═════════════════════════════════════════════════════════\n'
     + 'STEP 3 — IMAGE QUALITY ESCAPE HATCH\n'
@@ -888,11 +890,14 @@ function getSailPrompt(promptMode) {
     + 'determined\n'
     + '  • Calibration tags missing or expired on gauges/instruments\n\n'
 
-    + '── HOUSEKEEPING ──\n'
-    + '  • Debris, scale, or deposits on equipment, floors, walkways\n'
-    + '  • Oil/water/chemical spills creating slip risk\n'
-    + '  • Tools, materials, or stored items obstructing access routes\n'
-    + '  • Cables, hoses, or wires snaking across walkways (trip risk)\n\n'
+    + '── HOUSEKEEPING & ACCESS ROUTES ──\n'
+    + '  • Debris, scale, or deposits on equipment, floors, walkways (FA 1948 S32(b))\n'
+    + '  • Oil/water/chemical spills creating slip risk (FA 1948 S32(b))\n'
+    + '  • Tools, materials, or stored items obstructing access routes (FA 1948 S32(a))\n'
+    + '  • Cables, hoses, or wires snaking across walkways — trip risk (FA 1948 S32(b))\n'
+    + '  • Congested storage area delaying emergency response (FA 1948 S38)\n'
+    + '  • Fire extinguishers placed among equipment/drums — access blocked '
+    + '(FA 1948 S38 + IS 2190:2010)\n\n'
 
     + '── WORKER-RELATED (only if workers ACTUALLY visible) ──\n'
     + '  • Worker at height without fall arrest — FA 1948 S32(c) + IS 3521:1999\n'
@@ -901,12 +906,20 @@ function getSailPrompt(promptMode) {
     + '  • Worker in danger zone or unsafe body position\n'
     + '  • Improper manual handling (men >55kg, women >30kg — FA 1948 S34)\n\n'
 
-    + '── STORAGE / CHEMICAL (only if visible) ──\n'
-    + '  • Gas cylinders unchained, valve caps missing, mis-stored, '
-    + 'mis-colour-coded (SMPV Rules 2016)\n'
-    + '  • O₂ + flammable gas within 6 m of each other (SMPV Rule 14)\n'
+    + '── STORAGE / CHEMICAL / GAS CYLINDERS (only if visible) ──\n'
+    + '  • Gas cylinders not chained/secured against falling (SMPV Rules 2016 Rule 14)\n'
+    + '  • Full and empty cylinders not segregated (SMPV Rules 2016 Rule 14)\n'
+    + '  • O₂ + flammable gas within 6 m without firewall (SMPV Rule 14 Table-3)\n'
+    + '  • Valve protection caps missing on idle cylinders (SMPV Rules 2016 Rule 10)\n'
+    + '  • Cylinder contents not clearly identified/labelled (IS 4379:1981)\n'
+    + '  • No dedicated ventilated storage area for cylinders (SMPV Rules 2016 Rule 14)\n'
+    + '  • Combustible materials/drums stored near cylinders (FA 1948 S37)\n'
+    + '  • No "No Smoking / No Open Flame" signage near gas/flammables (FA 1948 S37)\n'
     + '  • Flammable materials near ignition sources (FA 1948 S37)\n'
-    + '  • Chemicals stored without containment, segregation, or labelling\n\n'
+    + '  • Chemicals stored without containment, segregation, or labelling '
+    + '(MSIHC Rules 1989)\n'
+    + '  • Fire extinguishers obstructed or inaccessible (FA 1948 S38 + IS 2190:2010)\n'
+    + '  • Congested storage blocking emergency access routes (FA 1948 S32(a))\n\n'
 
     // ★ NEW v14: PIPE vs WIRE differentiation
     + '═════════════════════════════════════════════════════════\n'
@@ -1009,8 +1022,11 @@ function getSailPrompt(promptMode) {
 
     + 'REMEMBER:\n'
     + '  • An empty hazards list is acceptable if the image truly shows no hazards.\n'
-    + '  • A SHORT list of REAL hazards is far better than a LONG list with inventions.\n'
-    + '  • Your reputation depends on accuracy, not on finding the most hazards.';
+    + '  • Be EXHAUSTIVE — when items are visible, report ALL associated hazards.\n'
+    + '  • For complex scenes (cylinders, drums, extinguishers together), expect 8-12 hazards.\n'
+    + '  • Check: securing, segregation, signage, access, housekeeping, ventilation, labelling.\n'
+    + '  • Your reputation depends on THOROUGHNESS — missing a real hazard is worse than a long report.\n'
+    + '  • Only OMIT hazards that are genuinely NOT visible — never omit for brevity.';
 }
 
 
