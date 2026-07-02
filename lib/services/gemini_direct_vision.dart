@@ -20,7 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class GeminiDirectVision {
   static const String _kApiKey = 'gemini_vision_api_key';
   static const String _kModel = 'gemini_vision_model';
-  static const String defaultModel = 'gemini-2.0-flash';
+  static const String defaultModel = 'gemini-2.5-flash';
 
   static SharedPreferences? _prefs;
 
@@ -59,15 +59,19 @@ class GeminiDirectVision {
     await _prefs!.setString(_kModel, model);
   }
 
-  /// Available models
+  /// Available models — ordered by accuracy (best first)
   static const List<Map<String, String>> availableModels = [
-    {'id': 'gemini-2.0-flash', 'name': 'Gemini 2.0 Flash (Free, fast)'},
-    {'id': 'gemini-2.0-flash-lite', 'name': 'Gemini 2.0 Flash Lite (Fastest, free)'},
-    {'id': 'gemini-1.5-flash', 'name': 'Gemini 1.5 Flash (Stable)'},
+    {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash (Best free, accurate)'},
+    {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro (Most accurate, free limited)'},
+    {'id': 'gemini-2.0-flash', 'name': 'Gemini 2.0 Flash (Fast, less accurate)'},
   ];
+
+  /// Fallback model when primary returns low confidence
+  static const String _fallbackModel = 'gemini-2.5-pro';
 
   /// Analyze image for safety hazards
   /// Returns structured hazard data or null on failure
+  /// ★ v30: Uses 2.5 Flash primary, auto-retries with 2.5 Pro if low confidence or few hazards
   static Future<Map<String, dynamic>?> analyzeImage(Uint8List imageBytes) async {
     if (!await isConfigured) return null;
 
@@ -75,6 +79,39 @@ class GeminiDirectVision {
     final model = await getModel();
     final base64Image = base64Encode(imageBytes);
 
+    // ── PRIMARY: Try with configured model (default: gemini-2.5-flash) ──
+    print('GeminiDirectVision: ▶ Primary model: $model');
+    final result = await _callModel(model, apiKey, base64Image);
+
+    if (result == null) return null;
+
+    // ── SMART FALLBACK: If confidence < 60 or < 3 hazards found, retry with Pro ──
+    final confidence = (result['confidence'] as num?) ?? 0;
+    final hazardCount = (result['hazards'] as List?)?.length ?? 0;
+    final usedModel = model;
+
+    if (confidence < 60 || hazardCount < 3) {
+      if (usedModel != _fallbackModel) {
+        print('GeminiDirectVision: ⚠ Low confidence ($confidence) or few hazards ($hazardCount) — retrying with $_fallbackModel');
+        final proResult = await _callModel(_fallbackModel, apiKey, base64Image);
+        if (proResult != null) {
+          final proHazards = (proResult['hazards'] as List?)?.length ?? 0;
+          final proConfidence = (proResult['confidence'] as num?) ?? 0;
+          // Use Pro result if it found more hazards or has higher confidence
+          if (proHazards > hazardCount || proConfidence > confidence) {
+            print('GeminiDirectVision: ✓ Pro found $proHazards hazards (vs $hazardCount) — using Pro result');
+            proResult['_source'] = 'gemini_direct_pro';
+            return proResult;
+          }
+        }
+      }
+    }
+
+    return result;
+  }
+
+  /// Call a specific Gemini model for image analysis
+  static Future<Map<String, dynamic>?> _callModel(String model, String apiKey, String base64Image) async {
     final url = 'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey';
 
     final requestBody = {
@@ -104,7 +141,7 @@ class GeminiDirectVision {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 45));
+      ).timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 200) {
         // ★ v29 FIX: Force UTF-8 decode for non-English text support
@@ -119,20 +156,20 @@ class GeminiDirectVision {
             return _parseHazardResponse(text);
           }
         }
-        print('GeminiDirectVision: No candidates in response');
+        print('GeminiDirectVision: [$model] No candidates in response');
         return null;
       } else if (response.statusCode == 429) {
-        print('GeminiDirectVision: Rate limited (429) — fallback to Apps Script');
+        print('GeminiDirectVision: [$model] Rate limited (429)');
         return null;
       } else if (response.statusCode == 403) {
-        print('GeminiDirectVision: API key invalid or quota exceeded (403)');
+        print('GeminiDirectVision: [$model] API key invalid or quota exceeded (403)');
         return null;
       } else {
-        print('GeminiDirectVision: Error ${response.statusCode}: ${response.body.substring(0, response.body.length.clamp(0, 200))}');
+        print('GeminiDirectVision: [$model] Error ${response.statusCode}: ${response.body.substring(0, response.body.length.clamp(0, 200))}');
         return null;
       }
     } catch (e) {
-      print('GeminiDirectVision: Exception: $e');
+      print('GeminiDirectVision: [$model] Exception: $e');
       return null;
     }
   }
