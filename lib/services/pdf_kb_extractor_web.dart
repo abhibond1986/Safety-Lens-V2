@@ -12,7 +12,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:js' as js;
-import 'dart:js_util' as js_util;
+// dart:js_util removed — using only dart:js for consistent interop
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
@@ -27,7 +27,7 @@ class PdfKbExtractor {
     if (_pdfJsLoaded) return;
     final completer = Completer<void>();
     try {
-      final existing = js_util.getProperty(js.context, 'pdfjsLib');
+      final existing = js.context['pdfjsLib'];
       if (existing != null) { _pdfJsLoaded = true; completer.complete(); }
     } catch (_) {}
     if (_pdfJsLoaded) return;
@@ -56,49 +56,61 @@ class PdfKbExtractor {
   static Future<String> extractTextFromPdf(Uint8List pdfBytes) async {
     await _ensurePdfJs();
 
-    // ★ v26 FIX: Do ALL pdf.js work inside a single JS function to avoid
-    // dart:js ↔ dart:js_util interop mismatches (JsObject vs raw JS object).
-    // We pass the byte array in, JS does the extraction, returns plain text.
+    // ★ v27 FIX: Use a callback approach to avoid dart:js JsObject ↔ dart:js_util
+    // Promise interop issues. The JS function calls onSuccess/onError callbacks
+    // which resolve a Dart Completer — no promiseToFuture needed.
     js.context.callMethod('eval', ['''
       if (!window.__safetyLensExtractPdf) {
-        window.__safetyLensExtractPdf = async function(byteArray) {
+        window.__safetyLensExtractPdf = function(byteArray, onSuccess, onError) {
           try {
             var uint8 = new Uint8Array(byteArray);
             var loadingTask = pdfjsLib.getDocument({data: uint8});
-            var pdfDoc = await loadingTask.promise;
-            var numPages = pdfDoc.numPages;
-            var textParts = [];
-            for (var i = 1; i <= numPages; i++) {
-              try {
-                var page = await pdfDoc.getPage(i);
-                var content = await page.getTextContent();
-                var pageText = content.items.map(function(item) { return item.str || ''; }).join(' ');
-                textParts.push(pageText);
-              } catch(e) {
-                textParts.push('[Page ' + i + ': extraction error]');
+            loadingTask.promise.then(function(pdfDoc) {
+              var numPages = pdfDoc.numPages;
+              var textParts = [];
+              var processed = 0;
+              if (numPages === 0) { onSuccess(''); return; }
+              for (var i = 1; i <= numPages; i++) {
+                (function(pageNum) {
+                  pdfDoc.getPage(pageNum).then(function(page) {
+                    return page.getTextContent();
+                  }).then(function(content) {
+                    textParts[pageNum - 1] = content.items.map(function(item) { return item.str || ''; }).join(' ');
+                  }).catch(function(e) {
+                    textParts[pageNum - 1] = '[Page ' + pageNum + ': error]';
+                  }).finally(function() {
+                    processed++;
+                    if (processed === numPages) {
+                      onSuccess(textParts.join('\\n'));
+                    }
+                  });
+                })(i);
               }
-            }
-            return textParts.join('\\n');
+            }).catch(function(e) {
+              onError('PDF load error: ' + (e.message || e));
+            });
           } catch(e) {
-            throw new Error('PDF parse error: ' + e.message);
+            onError('PDF parse error: ' + (e.message || e));
           }
         };
       }
     ''']);
 
-    // Convert Dart bytes to a JS array and call the extraction function
+    final completer = Completer<String>();
+
+    // Create JS callback functions that resolve our Dart Completer
+    final onSuccess = js.JsFunction.withThis((thisArg, String text) {
+      if (!completer.isCompleted) completer.complete(text);
+    });
+    final onError = js.JsFunction.withThis((thisArg, String error) {
+      if (!completer.isCompleted) completer.completeError(Exception(error));
+    });
+
+    // Convert Dart bytes to JS array and call extraction with callbacks
     final jsArray = js.JsObject.jsify(pdfBytes.toList());
+    js.context.callMethod('__safetyLensExtractPdf', [jsArray, onSuccess, onError]);
 
-    // Call the JS function — it returns a Promise, access it via dart:js
-    final resultPromise = js.context.callMethod('__safetyLensExtractPdf', [jsArray]);
-
-    // Convert the JS Promise to a Dart Future
-    final String result;
-    try {
-      result = await js_util.promiseToFuture<String>(resultPromise);
-    } catch (e) {
-      throw Exception('$e');
-    }
+    final result = await completer.future;
 
     if (result.trim().isEmpty) {
       throw Exception('No text found in PDF — it may be image-based (scanned).');
