@@ -1945,7 +1945,7 @@ class _AdminScreenState extends State<AdminScreen>
         _groqConfigured = key.isNotEmpty && key.startsWith('gsk_');
         _groqKeyCtrl.text = key;
         _groqSelectedModel = model;
-        _geminiVisionConfigured = gemKey.isNotEmpty && gemKey.startsWith('AIza');
+        _geminiVisionConfigured = gemKey.isNotEmpty && gemKey.length > 20;
         _geminiVisionKeyCtrl.text = gemKey;
         _geminiVisionSelectedModel = gemModel;
       });
@@ -2067,9 +2067,9 @@ class _AdminScreenState extends State<AdminScreen>
           obscureText: true,
           style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
           decoration: InputDecoration(
-            labelText: 'Gemini API Key (starts with AIza)',
+            labelText: 'Gemini API Key (from AI Studio)',
             labelStyle: TextStyle(color: sl.text3, fontSize: 10),
-            hintText: 'AIza...',
+            hintText: 'Paste your API key here...',
             hintStyle: TextStyle(color: sl.text4, fontSize: 10),
             filled: true,
             fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
@@ -2106,8 +2106,8 @@ class _AdminScreenState extends State<AdminScreen>
           child: ElevatedButton.icon(
             onPressed: () async {
               final key = _geminiVisionKeyCtrl.text.trim();
-              if (key.isEmpty || !key.startsWith('AIza')) {
-                _toast('Invalid key — must start with AIza', AppColors.red);
+              if (key.isEmpty || key.length < 20) {
+                _toast('Invalid key — please paste a valid API key from AI Studio', AppColors.red);
                 return;
               }
               await GeminiDirectVision.setApiKey(key);

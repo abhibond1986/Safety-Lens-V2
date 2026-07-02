@@ -32,7 +32,7 @@ class GeminiDirectVision {
   static Future<bool> get isConfigured async {
     await _ensurePrefs();
     final key = _prefs!.getString(_kApiKey) ?? '';
-    return key.isNotEmpty && key.startsWith('AIza');
+    return key.isNotEmpty && key.length > 20;
   }
 
   /// Get stored API key
