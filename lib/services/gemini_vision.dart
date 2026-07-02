@@ -210,7 +210,8 @@ class GeminiVision {
       return null;
     }
 
-    final bodyTrimmed = response.body.trim();
+    // ★ v29 FIX: Force UTF-8 decode for non-English text support
+    final bodyTrimmed = utf8.decode(response.bodyBytes).trim();
     if (bodyTrimmed.isEmpty || bodyTrimmed.startsWith('<!') || bodyTrimmed.startsWith('<html')) {
       print('GeminiVision: Apps Script returned HTML, not JSON');
       return null;

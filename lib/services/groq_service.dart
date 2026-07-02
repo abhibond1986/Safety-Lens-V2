@@ -97,7 +97,10 @@ class GroqService {
       ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        // ★ v29 FIX: Force UTF-8 decode — response.body defaults to Latin-1
+        // which corrupts Hindi/Bengali/Odia text
+        final responseText = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseText) as Map<String, dynamic>;
         final choices = data['choices'] as List?;
         if (choices != null && choices.isNotEmpty) {
           final message = choices[0]['message'] as Map<String, dynamic>?;
@@ -108,7 +111,8 @@ class GroqService {
         print('Groq: Rate limited (429). Falling back.');
         return null;
       } else {
-        print('Groq: Error ${response.statusCode}: ${response.body.substring(0, (response.body.length).clamp(0, 200))}');
+        final errorText = utf8.decode(response.bodyBytes);
+        print('Groq: Error ${response.statusCode}: ${errorText.substring(0, errorText.length.clamp(0, 200))}');
         return null;
       }
     } catch (e) {

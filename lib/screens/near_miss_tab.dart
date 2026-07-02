@@ -628,7 +628,8 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         headers: {'Content-Type': 'text/plain;charset=utf-8'},
       ).timeout(const Duration(seconds: 30));
       if (resp.statusCode == 200) {
-        final decoded = jsonDecode(resp.body);
+        // ★ v29 FIX: Force UTF-8 decode for non-English text
+        final decoded = jsonDecode(utf8.decode(resp.bodyBytes));
         if (decoded is Map<String, dynamic>) return decoded;
       }
       // Handle redirect (mobile)
@@ -637,7 +638,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         if (redirectUrl != null) {
           final getResp = await http.get(Uri.parse(redirectUrl)).timeout(const Duration(seconds: 15));
           if (getResp.statusCode == 200) {
-            final decoded = jsonDecode(getResp.body);
+            final decoded = jsonDecode(utf8.decode(getResp.bodyBytes));
             if (decoded is Map<String, dynamic>) return decoded;
           }
         }

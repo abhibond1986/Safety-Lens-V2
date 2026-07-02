@@ -145,7 +145,9 @@ Respond ONLY with JSON — no markdown fences, no explanation outside JSON.'''
       ).timeout(const Duration(seconds: 45));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        // ★ v29 FIX: Force UTF-8 decode for non-English text support
+        final responseText = utf8.decode(response.bodyBytes);
+        final data = jsonDecode(responseText) as Map<String, dynamic>;
         final candidates = data['candidates'] as List?;
         if (candidates != null && candidates.isNotEmpty) {
           final content = candidates[0]['content'] as Map<String, dynamic>?;
