@@ -75,6 +75,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   bool _aiRefining = false;
   Map<String, dynamic>? _aiSuggestion; // {refined, isNearMiss, reason, confidence}
   DateTime? _lastDescChange;
+  DateTime? _lastLocationChange;
+  DateTime? _lastActionChange;
   static const _aiRefineDelay = Duration(seconds: 2);
 
   // GPS geo-tagging
@@ -185,9 +187,13 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           if (s == 'done' && _isListening && _activeMicField != null) {
             final field = _activeMicField;
             setState(() { _isListening = false; _activeMicField = null; });
-            // Auto-trigger AI if this was the description field
+            // ★ v28: Auto-trigger AI for ALL fields after voice input stops
             if (field == _description && _description.text.trim().length >= 10) {
               _refineWithAI(_description.text.trim());
+            } else if (field == _location && _location.text.trim().length >= 5) {
+              _refineFieldWithAI(_location, 'Exact Location of Incident');
+            } else if (field == _immediateAction && _immediateAction.text.trim().length >= 5) {
+              _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
             }
           } else if (s == 'notListening') {
             if (mounted) setState(() => _isListening = false);
@@ -243,9 +249,13 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
     if (_isListening && _activeMicField == targetField) {
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
-      // ★ v24: Trigger AI refinement when user stops voice input on description
+      // ★ v28: AI correction for all fields on voice stop
       if (targetField == _description && _description.text.trim().length >= 10) {
         _refineWithAI(_description.text.trim());
+      } else if (targetField == _location && _location.text.trim().length >= 5) {
+        _refineFieldWithAI(_location, 'Exact Location of Incident');
+      } else if (targetField == _immediateAction && _immediateAction.text.trim().length >= 5) {
+        _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
       }
       return;
     }
@@ -300,6 +310,24 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         cancelOnError:  false,
         listenMode:     stt.ListenMode.dictation,
       );
+      // ★ v28: Voice timeout — if no result in 5s, locale may be unsupported
+      Future.delayed(const Duration(seconds: 5), () {
+        if (!mounted || !_isListening || _activeMicField != targetField) return;
+        // Check if text changed (i.e., result was received)
+        if (targetField.text == baseText) {
+          // No result received — locale may not be supported
+          _speech.stop();
+          setState(() { _isListening = false; _activeMicField = null; });
+          final langName = _selectedVoiceLang == 'bn' ? 'Bengali'
+              : _selectedVoiceLang == 'or' ? 'Odia'
+              : _selectedVoiceLang == 'hi' ? 'Hindi' : 'English';
+          _snack('$langName voice not available in this browser. Switching to Hindi.', AppColors.amber);
+          // ★ Auto-fallback: switch to Hindi for Odia, or hi-IN for unsupported locales
+          if (_selectedVoiceLang == 'or' || _selectedVoiceLang == 'bn') {
+            setState(() => _selectedVoiceLang = 'hi');
+          }
+        }
+      });
     } catch (e) {
       debugPrint('Speech listen error: $e');
       if (mounted) setState(() { _isListening = false; _activeMicField = null; });
@@ -366,6 +394,89 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         }
       });
     }
+  }
+
+  void _onLocationChanged(String text) {
+    _lastLocationChange = DateTime.now();
+    _detectLanguageFromText(text);
+    if (text.trim().length >= 5) {
+      Future.delayed(_aiRefineDelay, () {
+        if (!mounted) return;
+        if (_lastLocationChange != null &&
+            DateTime.now().difference(_lastLocationChange!) >= _aiRefineDelay &&
+            _location.text.trim() == text.trim()) {
+          _refineFieldWithAI(_location, 'Exact Location of Incident');
+        }
+      });
+    }
+  }
+
+  void _onActionChanged(String text) {
+    _lastActionChange = DateTime.now();
+    _detectLanguageFromText(text);
+    if (text.trim().length >= 5) {
+      Future.delayed(_aiRefineDelay, () {
+        if (!mounted) return;
+        if (_lastActionChange != null &&
+            DateTime.now().difference(_lastActionChange!) >= _aiRefineDelay &&
+            _immediateAction.text.trim() == text.trim()) {
+          _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
+        }
+      });
+    }
+  }
+
+  /// ★ v28: AI correction for any text field (location, immediate action)
+  /// Lighter than full near-miss refinement — just fixes grammar/clarity
+  Future<void> _refineFieldWithAI(TextEditingController field, String fieldLabel) async {
+    final rawText = field.text.trim();
+    if (rawText.length < 5 || _aiRefining) return;
+
+    _detectLanguageFromText(rawText);
+    final langInstruction = _detectedLang == 'en'
+        ? 'Respond in English.'
+        : 'IMPORTANT: Respond in $_detectedLangName language using native script. Do NOT translate to English.';
+
+    final prompt = '''You are a safety report text corrector for SAIL (Steel Authority of India Limited).
+
+FIELD: $fieldLabel
+WORKER'S INPUT: "$rawText"
+
+$langInstruction
+
+Correct this text for:
+- Grammar and spelling
+- Safety terminology (use proper industrial safety terms)
+- Clarity and conciseness
+- Professional tone appropriate for an official near-miss report
+
+Respond with ONLY the corrected text — no quotes, no explanation, no JSON. Just the improved text.
+If the text is already fine, return it unchanged.''';
+
+    try {
+      Map<String, dynamic>? body = await SyncService.callAiText(prompt);
+      if (body == null) body = await _callAiTextFallback(prompt);
+      if (!mounted || body == null) return;
+
+      String? aiText;
+      if (body['text'] != null) aiText = body['text'].toString();
+      else if (body['result'] != null) aiText = body['result'].toString();
+
+      if (aiText != null && aiText.trim().isNotEmpty) {
+        // Clean up — remove markdown fences if present
+        String cleaned = aiText.trim();
+        if (cleaned.startsWith('```')) cleaned = cleaned.replaceAll(RegExp(r'^```\w*\n?'), '').replaceAll('```', '');
+        if (cleaned.startsWith('"') && cleaned.endsWith('"')) cleaned = cleaned.substring(1, cleaned.length - 1);
+        cleaned = cleaned.trim();
+
+        if (cleaned.isNotEmpty && cleaned != rawText) {
+          setState(() {
+            field.text = cleaned;
+            field.selection = TextSelection.fromPosition(TextPosition(offset: cleaned.length));
+          });
+        }
+      }
+    } catch (_) {}
   }
 
   Future<void> _refineWithAI(String rawText) async {
@@ -1466,7 +1577,7 @@ ${_immediateAction.text.trim()}
           if (_showOtherDept)
             _buildTextField('Enter Department Name', _deptOther, Icons.edit_outlined, sl),
           _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl,
-            suffix: _micButton(_location)),
+            suffix: _micButton(_location), onChanged: _onLocationChanged),
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
@@ -1480,7 +1591,7 @@ ${_immediateAction.text.trim()}
           if (_aiSuggestion != null)
             _buildAiSuggestionCard(sl),
           _buildTextField('Immediate Corrective Action', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
-            suffix: _micButton(_immediateAction)),
+            suffix: _micButton(_immediateAction), onChanged: _onActionChanged),
         ],
       ),
     );
