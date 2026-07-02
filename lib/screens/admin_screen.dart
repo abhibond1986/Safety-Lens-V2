@@ -35,6 +35,7 @@ import '../services/admin_alerts.dart';
 import '../services/kb_seed_data.dart';
 import '../services/knowledge_service.dart';
 import '../services/groq_service.dart';
+import '../services/gemini_direct_vision.dart';
 import '../services/pdf_kb_extractor.dart';
 // Reuse the same web/mobile download shim that pdf_export.dart uses
 import '../services/pdf_export_stub.dart'
@@ -1892,6 +1893,11 @@ class _AdminScreenState extends State<AdminScreen>
       _groqConfigCard(sl),
 
       const SizedBox(height: 16),
+      _sectionHeader('Gemini Vision (Hazard Analysis)', sl),
+      const SizedBox(height: 8),
+      _geminiVisionConfigCard(sl),
+
+      const SizedBox(height: 16),
       _sectionHeader('Integrations', sl),
       const SizedBox(height: 8),
       Container(
@@ -1906,11 +1912,14 @@ class _AdminScreenState extends State<AdminScreen>
           _intRow('Cloudinary image CDN', 'dzt1vxsdg',
               AppColors.green, Icons.image_rounded, sl),
           const SizedBox(height: 8),
-          _intRow('OpenRouter (Gemini Vision)', 'set via Apps Script secret',
-              AppColors.amber, Icons.auto_awesome_rounded, sl),
+          _intRow('Gemini Vision (Hazard AI)', _geminiVisionConfigured ? 'active (direct API)' : 'not configured',
+              _geminiVisionConfigured ? AppColors.green : AppColors.amber, Icons.remove_red_eye_rounded, sl),
           const SizedBox(height: 8),
           _intRow('Groq AI (Near Miss correction)', _groqConfigured ? 'active' : 'not configured',
               _groqConfigured ? AppColors.green : AppColors.red, Icons.auto_fix_high_rounded, sl),
+          const SizedBox(height: 8),
+          _intRow('Apps Script (Fallback AI)', 'connected',
+              AppColors.green, Icons.cloud_done_rounded, sl),
           const SizedBox(height: 8),
           _intRow('Google Drive (PDF storage)', 'SAIL Safety Lens Reports/',
               AppColors.green, Icons.folder_rounded, sl),
@@ -1922,14 +1931,23 @@ class _AdminScreenState extends State<AdminScreen>
   final _groqKeyCtrl = TextEditingController();
   String _groqSelectedModel = GroqService.defaultModel;
 
+  bool _geminiVisionConfigured = false;
+  final _geminiVisionKeyCtrl = TextEditingController();
+  String _geminiVisionSelectedModel = GeminiDirectVision.defaultModel;
+
   Future<void> _loadGroqConfig() async {
     final key = await GroqService.getApiKey();
     final model = await GroqService.getModel();
+    final gemKey = await GeminiDirectVision.getApiKey();
+    final gemModel = await GeminiDirectVision.getModel();
     if (mounted) {
       setState(() {
         _groqConfigured = key.isNotEmpty && key.startsWith('gsk_');
         _groqKeyCtrl.text = key;
         _groqSelectedModel = model;
+        _geminiVisionConfigured = gemKey.isNotEmpty && gemKey.startsWith('AIza');
+        _geminiVisionKeyCtrl.text = gemKey;
+        _geminiVisionSelectedModel = gemModel;
       });
     }
   }
@@ -2014,6 +2032,93 @@ class _AdminScreenState extends State<AdminScreen>
             label: const Text('Save Groq Config'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _geminiVisionConfigCard(SL sl) {
+    if (_geminiVisionKeyCtrl.text.isEmpty && !_geminiVisionConfigured) {
+      _loadGroqConfig(); // loads both Groq and Gemini config
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sl.card, borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _geminiVisionConfigured ? AppColors.green.withOpacity(0.5) : sl.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(_geminiVisionConfigured ? Icons.check_circle : Icons.warning_amber_rounded,
+            color: _geminiVisionConfigured ? AppColors.green : AppColors.amber, size: 16),
+          const SizedBox(width: 8),
+          Text(_geminiVisionConfigured ? 'Gemini Vision Connected' : 'Gemini API Key Required',
+            style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 4),
+        Text('Free AI for image hazard detection. Get key at aistudio.google.com/apikey',
+          style: TextStyle(color: sl.text4, fontSize: 10)),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _geminiVisionKeyCtrl,
+          obscureText: true,
+          style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
+          decoration: InputDecoration(
+            labelText: 'Gemini API Key (starts with AIza)',
+            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+            hintText: 'AIza...',
+            hintStyle: TextStyle(color: sl.text4, fontSize: 10),
+            filled: true,
+            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+          ),
+        ),
+        const SizedBox(height: 10),
+        DropdownButtonFormField<String>(
+          value: _geminiVisionSelectedModel,
+          items: GeminiDirectVision.availableModels.map((m) => DropdownMenuItem(
+            value: m['id'], child: Text(m['name']!, style: TextStyle(fontSize: 11, color: sl.text1)),
+          )).toList(),
+          onChanged: (v) { if (v != null) setState(() => _geminiVisionSelectedModel = v); },
+          dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
+          style: TextStyle(color: sl.text1, fontSize: 11),
+          decoration: InputDecoration(
+            labelText: 'Vision Model',
+            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+            filled: true,
+            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () async {
+              final key = _geminiVisionKeyCtrl.text.trim();
+              if (key.isEmpty || !key.startsWith('AIza')) {
+                _toast('Invalid key — must start with AIza', AppColors.red);
+                return;
+              }
+              await GeminiDirectVision.setApiKey(key);
+              await GeminiDirectVision.setModel(_geminiVisionSelectedModel);
+              setState(() => _geminiVisionConfigured = true);
+              _toast('Gemini Vision configured! Image hazard analysis is now active.', AppColors.green);
+            },
+            icon: const Icon(Icons.save_rounded, size: 14),
+            label: const Text('Save Gemini Vision Config'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF1A73E8),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),

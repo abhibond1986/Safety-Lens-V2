@@ -18,6 +18,7 @@ import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'network_checker.dart';
+import 'gemini_direct_vision.dart';
 // admin_master_data import removed — no longer needed after offline library removal
 
 class GeminiVision {
@@ -96,7 +97,28 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // APPS SCRIPT: Server-side AI (keys safe in Script Properties)
+      // ★ v28 PRIMARY: Gemini Direct Vision API (free, fast, reliable)
+      // ══════════════════════════════════════════════════════════════════════
+      if (await GeminiDirectVision.isConfigured) {
+        print('GeminiVision: ▶ Trying Gemini Direct Vision API...');
+        try {
+          final directResult = await GeminiDirectVision.analyzeImage(bytes);
+          if (directResult != null &&
+              directResult['hazards'] != null &&
+              directResult['error'] == null) {
+            print('GeminiVision: ✓ Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return directResult;
+          }
+          print('GeminiVision: ✗ Gemini Direct failed — trying Apps Script fallback');
+        } catch (e) {
+          print('GeminiVision: ✗ Gemini Direct exception: $e — trying Apps Script');
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // FALLBACK: Apps Script (server-side AI)
       // ══════════════════════════════════════════════════════════════════════
       print('GeminiVision: ▶ Sending to Apps Script (server-side AI)...');
       try {
@@ -105,7 +127,7 @@ class GeminiVision {
             appsResult['hazards'] != null &&
             (appsResult['hazards'] as List).isNotEmpty &&
             appsResult['error'] == null) {
-          print('GeminiVision: ✓ SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+          print('GeminiVision: ✓ Apps Script SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
           _lastCallTime = DateTime.now();
           _isAnalyzing = false;
           return appsResult;
