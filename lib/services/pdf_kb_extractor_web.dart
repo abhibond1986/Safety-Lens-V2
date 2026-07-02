@@ -66,26 +66,70 @@ class PdfKbExtractor {
     final jsUint8Array = js.context.callMethod('__safetyLensMakeU8', [jsArray]);
 
     final pdfjsLib = js.context['pdfjsLib'];
+    if (pdfjsLib == null) {
+      throw Exception('pdf.js library not available. Please check your internet connection and reload.');
+    }
+
     final loadingTask = pdfjsLib.callMethod('getDocument', [
       js.JsObject.jsify({'data': jsUint8Array})
     ]);
-    final pdfDoc = await js_util.promiseToFuture<dynamic>(
-        js_util.getProperty(loadingTask as Object, 'promise'));
-    final int numPages = js_util.getProperty(pdfDoc, 'numPages') as int;
+    if (loadingTask == null) {
+      throw Exception('Failed to start PDF loading — file may be corrupted.');
+    }
+
+    dynamic pdfDoc;
+    try {
+      final promise = js_util.getProperty(loadingTask as Object, 'promise');
+      if (promise == null) {
+        throw Exception('PDF document loading returned null promise.');
+      }
+      pdfDoc = await js_util.promiseToFuture<dynamic>(promise);
+    } catch (e) {
+      throw Exception('Failed to load PDF document: $e');
+    }
+
+    if (pdfDoc == null) {
+      throw Exception('PDF document is null — file may be empty or corrupted.');
+    }
+
+    final numPagesRaw = js_util.getProperty(pdfDoc, 'numPages');
+    if (numPagesRaw == null) {
+      throw Exception('Could not determine number of pages in PDF.');
+    }
+    final int numPages = (numPagesRaw is int) ? numPagesRaw : int.tryParse(numPagesRaw.toString()) ?? 0;
+
+    if (numPages == 0) {
+      throw Exception('PDF has zero pages.');
+    }
+
     final buffer = StringBuffer();
     for (int pageNum = 1; pageNum <= numPages; pageNum++) {
-      final page = await js_util.promiseToFuture<dynamic>(
-          js_util.callMethod(pdfDoc, 'getPage', [pageNum]));
-      final textContent = await js_util.promiseToFuture<dynamic>(
-          js_util.callMethod(page, 'getTextContent', []));
-      final items = js_util.getProperty(textContent, 'items');
-      final int len = js_util.getProperty(items, 'length') as int;
-      for (int i = 0; i < len; i++) {
-        final item = js_util.getProperty(items, i);
-        final str = js_util.getProperty(item, 'str')?.toString() ?? '';
-        buffer.write('$str ');
+      try {
+        final page = await js_util.promiseToFuture<dynamic>(
+            js_util.callMethod(pdfDoc, 'getPage', [pageNum]));
+        if (page == null) continue;
+
+        final textContent = await js_util.promiseToFuture<dynamic>(
+            js_util.callMethod(page, 'getTextContent', []));
+        if (textContent == null) continue;
+
+        final items = js_util.getProperty(textContent, 'items');
+        if (items == null) continue;
+
+        final lenRaw = js_util.getProperty(items, 'length');
+        final int len = (lenRaw is int) ? lenRaw : int.tryParse(lenRaw?.toString() ?? '0') ?? 0;
+
+        for (int i = 0; i < len; i++) {
+          final item = js_util.getProperty(items, i);
+          if (item == null) continue;
+          final str = js_util.getProperty(item, 'str')?.toString() ?? '';
+          buffer.write('$str ');
+        }
+        buffer.write('\n');
+      } catch (e) {
+        // Skip problematic pages but continue extraction
+        buffer.write('[Page $pageNum: extraction error]\n');
       }
-      buffer.write('\n');
     }
     return buffer.toString().trim();
   }
