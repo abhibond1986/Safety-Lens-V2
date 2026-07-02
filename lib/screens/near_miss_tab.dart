@@ -72,6 +72,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
   String? _lastSubmissionKey;
   bool _submitting = false;
+  String? _submittingAction; // tracks which button: 'save', 'share', 'pdf'
 
   // ★ v24: AI Description Refinement
   bool _aiRefining = false;
@@ -988,11 +989,13 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
 
   /// Save Report only — shows success dialog with share options (no PDF)
   void _handleSaveOnly() {
+    _submittingAction = 'save';
     _submit(exportAfter: false);
   }
 
   /// ★ v25/v29: Share Report — captures data BEFORE submit clears form
   void _handleShareReport() async {
+    _submittingAction = 'share';
     // ★ v29 FIX: Build share text BEFORE _submit clears the form fields
     final shareText = '''🚨 NEAR MISS REPORT — ${_plant}
 ━━━━━━━━━━━━━━━━━━━━
@@ -1021,6 +1024,7 @@ ${_immediateAction.text.trim()}
 
   /// Save + PDF — standalone, exports PDF after saving
   void _handleSavePdf() {
+    _submittingAction = 'pdf';
     _submit(exportAfter: true);
   }
 
@@ -1099,6 +1103,7 @@ ${_immediateAction.text.trim()}
       if (mounted) {
         setState(() {
           _submitting = false;
+          _submittingAction = null;
           _pickedFile = null; _imageBytes = null; _aiBrief = null;
           _brief.clear(); _deptOther.clear(); _selectedDept = ''; _showOtherDept = false; _location.clear();
           _description.clear(); _immediateAction.clear();
@@ -1108,7 +1113,7 @@ ${_immediateAction.text.trim()}
       return true;
     } catch (e) {
       if (mounted) {
-        setState(() => _submitting = false);
+        setState(() { _submitting = false; _submittingAction = null; });
         _snack('Save failed: $e', AppColors.red);
       }
       return false;
@@ -1371,11 +1376,12 @@ ${_immediateAction.text.trim()}
     Text(txt, style: TextStyle(color: sl.text1, fontSize: 13, fontWeight: FontWeight.w700))
   ]);
 
-  Widget _submitBtn({required String label, required IconData icon, required List<Color> colors, required VoidCallback onTap}) {
+  Widget _submitBtn({required String label, required String actionId, required IconData icon, required List<Color> colors, required VoidCallback onTap}) {
+    final isThisLoading = _submitting && _submittingAction == actionId;
     return AbsorbPointer(
       absorbing: _submitting,
       child: Opacity(
-        opacity: _submitting ? 0.6 : 1.0,
+        opacity: _submitting && !isThisLoading ? 0.5 : 1.0,
         child: Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(colors: colors),
@@ -1385,10 +1391,10 @@ ${_immediateAction.text.trim()}
             ]),
           child: ElevatedButton.icon(
             onPressed: onTap,
-            icon: _submitting
+            icon: isThisLoading
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : Icon(icon, size: 16, color: Colors.white),
-            label: Text(_submitting ? 'Saving...' : label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+            label: Text(isThisLoading ? 'Saving...' : label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
@@ -2116,6 +2122,7 @@ ${_immediateAction.text.trim()}
                 Row(children: [
                   Expanded(child: _submitBtn(
                     label: 'Save',
+                    actionId: 'save',
                     icon:  Icons.save_rounded,
                     colors: const [Color(0xFF16A34A), Color(0xFF059669)],
                     onTap: _handleSaveOnly,
@@ -2123,6 +2130,7 @@ ${_immediateAction.text.trim()}
                   const SizedBox(width: 8),
                   Expanded(child: _submitBtn(
                     label: 'Share',
+                    actionId: 'share',
                     icon:  Icons.share_rounded,
                     colors: const [Color(0xFFF59E0B), Color(0xFFF97316)],
                     onTap: _handleShareReport,
@@ -2130,6 +2138,7 @@ ${_immediateAction.text.trim()}
                   const SizedBox(width: 8),
                   Expanded(child: _submitBtn(
                     label: 'PDF',
+                    actionId: 'pdf',
                     icon:  Icons.picture_as_pdf_rounded,
                     colors: const [Color(0xFF7B5BFF), Color(0xFF06B6D4)],
                     onTap: _handleSavePdf,

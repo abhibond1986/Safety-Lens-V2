@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# ★ Prevent concurrent deployments — cancel older runs if a new push arrives
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -42,13 +47,6 @@ jobs:
 
       - name: Add SPA fallback for routing
         run: cp build/web/index.html build/web/404.html
-
-      - name: Upload web build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: safety-lens-web
-          path: build/web/
-          retention-days: 90
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
