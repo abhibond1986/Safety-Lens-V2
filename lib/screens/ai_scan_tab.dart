@@ -113,8 +113,8 @@ class _AIScanTabState extends State<AIScanTab> {
     // ✅ Step 1: Open camera/gallery IMMEDIATELY — no GPS blocking
     final picker = ImagePicker();
     final picked = await picker.pickImage(
-        source: source, imageQuality: 65,
-        maxWidth: 800, maxHeight: 800);
+        source: source, imageQuality: 55,
+        maxWidth: 640, maxHeight: 640);
     if (picked == null) return;
 
     // Step 2: Read image bytes

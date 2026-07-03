@@ -195,14 +195,12 @@ class AdminAlerts {
               return plant.isEmpty || i['plant']?.toString() == plant;
             })
             .take(10)
-            .map((i) => {
-              return {
-                'date': i['date'] ?? '',
-                'title': i['title'] ?? i['desc'] ?? '',
-                'severity': i['severity'] ?? '',
-                'plant': i['plant'] ?? '',
-                'status': i['status'] ?? '',
-              };
+            .map((i) => <String, dynamic>{
+              'date': i['date'] ?? '',
+              'title': i['title'] ?? i['desc'] ?? '',
+              'severity': i['severity'] ?? '',
+              'plant': i['plant'] ?? '',
+              'status': i['status'] ?? '',
             })
             .toList();
 

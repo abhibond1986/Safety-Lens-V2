@@ -27,7 +27,7 @@ class GeminiVision {
 
   // ✅ FIX: Cooldown to prevent hammering exhausted server
   static DateTime? _lastExhaustionTime;
-  static const Duration _exhaustionCooldown = Duration(seconds: 60);
+  static const Duration _exhaustionCooldown = Duration(seconds: 20);
 
   // ✅ FIX: Track last successful call to apply rate-limiting between analyses
   static DateTime? _lastCallTime;
@@ -105,6 +105,7 @@ class GeminiVision {
           final directResult = await GeminiDirectVision.analyzeImage(bytes);
           if (directResult != null &&
               directResult['hazards'] != null &&
+              (directResult['hazards'] as List).isNotEmpty &&
               directResult['error'] == null) {
             print('GeminiVision: ✓ Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             _lastCallTime = DateTime.now();
@@ -118,7 +119,7 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // FALLBACK: Apps Script (server-side AI)
+      // FALLBACK 1: Apps Script (server-side AI) — attempt 1
       // ══════════════════════════════════════════════════════════════════════
       print('GeminiVision: ▶ Sending to Apps Script (server-side AI)...');
       try {
@@ -142,10 +143,55 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // NO CLIENT-SIDE RETRY — server already has model fallbacks internally
-      // (retrying just doubles wait time from 90s to 180s)
+      // ★ v31: RETRY — wait 5s then try Apps Script again (server may recover)
       // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ▶ Offline fallback (server unavailable)');
+      if (stopwatch.elapsedMilliseconds < 50000) {
+        print('GeminiVision: ▶ RETRY — waiting 5s then trying Apps Script again...');
+        await Future.delayed(const Duration(seconds: 5));
+        try {
+          final retryResult = await _callAppsScript(bytes);
+          if (retryResult != null &&
+              retryResult['hazards'] != null &&
+              (retryResult['hazards'] as List).isNotEmpty &&
+              retryResult['error'] == null) {
+            print('GeminiVision: ✓ Apps Script RETRY SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return retryResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ Apps Script retry exception: $e');
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // ★ v31: LAST RESORT — Try Gemini Direct with fallback models
+      // Even if not "configured" via admin, try fetching key from Apps Script
+      // ══════════════════════════════════════════════════════════════════════
+      if (await GeminiDirectVision.isConfigured) {
+        print('GeminiVision: ▶ LAST RESORT — Gemini Direct with alternate model...');
+        try {
+          // Force try with 2.0-flash (lighter, higher quota)
+          final savedModel = await GeminiDirectVision.getModel();
+          await GeminiDirectVision.setModel('gemini-2.0-flash');
+          final lastResult = await GeminiDirectVision.analyzeImage(bytes);
+          await GeminiDirectVision.setModel(savedModel); // restore
+          if (lastResult != null &&
+              lastResult['hazards'] != null &&
+              (lastResult['hazards'] as List).isNotEmpty &&
+              lastResult['error'] == null) {
+            print('GeminiVision: ✓ LAST RESORT Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return lastResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ Last resort exception: $e');
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      print('GeminiVision: ▶ Offline fallback (all attempts exhausted)');
       print('GeminiVision: Total time elapsed: ${stopwatch.elapsedMilliseconds}ms');
       _lastCallTime = DateTime.now();
       _isAnalyzing = false;
@@ -162,9 +208,9 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    // Scale timeout: Server-side parallel AI has 45s budget, so 60s client is plenty
+    // ★ v31: Reduced timeout — 30s per attempt (allows retry within total 75s budget)
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 75 : 60;
+    final timeoutSec = payloadKB > 500 ? 45 : 30;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {

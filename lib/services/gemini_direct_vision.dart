@@ -69,9 +69,16 @@ class GeminiDirectVision {
   /// Fallback model when primary returns low confidence
   static const String _fallbackModel = 'gemini-2.5-pro';
 
+  /// ★ v31: Model fallback chain for resilience against quota limits
+  static const List<String> _modelFallbackChain = [
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+  ];
+
   /// Analyze image for safety hazards
   /// Returns structured hazard data or null on failure
-  /// ★ v30: Uses 2.5 Flash primary, auto-retries with 2.5 Pro if low confidence or few hazards
+  /// ★ v31: Tries configured model, then falls through entire chain on 429/failure
   static Future<Map<String, dynamic>?> analyzeImage(Uint8List imageBytes) async {
     if (!await isConfigured) return null;
 
@@ -79,35 +86,48 @@ class GeminiDirectVision {
     final model = await getModel();
     final base64Image = base64Encode(imageBytes);
 
-    // ── PRIMARY: Try with configured model (default: gemini-2.5-flash) ──
+    // ── PRIMARY: Try with configured model ──
     print('GeminiDirectVision: ▶ Primary model: $model');
     final result = await _callModel(model, apiKey, base64Image);
 
-    if (result == null) return null;
-
-    // ── SMART FALLBACK: If confidence < 60 or < 3 hazards found, retry with Pro ──
-    final confidence = (result['confidence'] as num?) ?? 0;
-    final hazardCount = (result['hazards'] as List?)?.length ?? 0;
-    final usedModel = model;
-
-    if (confidence < 60 || hazardCount < 3) {
-      if (usedModel != _fallbackModel) {
-        print('GeminiDirectVision: ⚠ Low confidence ($confidence) or few hazards ($hazardCount) — retrying with $_fallbackModel');
+    if (result != null &&
+        result['hazards'] != null &&
+        (result['hazards'] as List).isNotEmpty) {
+      // ── SMART FALLBACK: If confidence < 60 or < 3 hazards, try Pro ──
+      final confidence = (result['confidence'] as num?) ?? 0;
+      final hazardCount = (result['hazards'] as List).length;
+      if ((confidence < 60 || hazardCount < 3) && model != _fallbackModel) {
+        print('GeminiDirectVision: ⚠ Low confidence ($confidence) or few hazards ($hazardCount) — trying $_fallbackModel');
         final proResult = await _callModel(_fallbackModel, apiKey, base64Image);
         if (proResult != null) {
           final proHazards = (proResult['hazards'] as List?)?.length ?? 0;
           final proConfidence = (proResult['confidence'] as num?) ?? 0;
-          // Use Pro result if it found more hazards or has higher confidence
           if (proHazards > hazardCount || proConfidence > confidence) {
-            print('GeminiDirectVision: ✓ Pro found $proHazards hazards (vs $hazardCount) — using Pro result');
             proResult['_source'] = 'gemini_direct_pro';
             return proResult;
           }
         }
       }
+      return result;
     }
 
-    return result;
+    // ── PRIMARY FAILED: Try fallback models in chain ──
+    print('GeminiDirectVision: ✗ Primary failed — trying fallback chain');
+    for (final fallbackModel in _modelFallbackChain) {
+      if (fallbackModel == model) continue; // already tried
+      print('GeminiDirectVision: ▶ Trying fallback: $fallbackModel');
+      final fbResult = await _callModel(fallbackModel, apiKey, base64Image);
+      if (fbResult != null &&
+          fbResult['hazards'] != null &&
+          (fbResult['hazards'] as List).isNotEmpty) {
+        print('GeminiDirectVision: ✓ Fallback $fallbackModel succeeded');
+        fbResult['_source'] = 'gemini_direct_$fallbackModel';
+        return fbResult;
+      }
+    }
+
+    print('GeminiDirectVision: ✗ All models in chain failed');
+    return null;
   }
 
   /// Call a specific Gemini model for image analysis
@@ -141,7 +161,7 @@ class GeminiDirectVision {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 60));
+      ).timeout(const Duration(seconds: 25));
 
       if (response.statusCode == 200) {
         // ★ v29 FIX: Force UTF-8 decode for non-English text support

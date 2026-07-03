@@ -1066,10 +1066,10 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
     var model = GOOGLE_MODELS[mi];
     Logger.log('[AI] Model=' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ') starting...');
 
-    // ✅ v23: Reduced budget — 45s max (no point making client wait 90s)
+    // ★ v31: Reduced budget — 25s max (client retries if this fails)
     var elapsed = new Date().getTime() - globalStart;
-    if (elapsed > 45000) {
-      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (45s budget)');
+    if (elapsed > 25000) {
+      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (25s budget)');
       break;
     }
 
