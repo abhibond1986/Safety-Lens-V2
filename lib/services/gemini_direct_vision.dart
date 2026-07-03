@@ -69,11 +69,12 @@ class GeminiDirectVision {
   /// Fallback model when primary returns low confidence
   static const String _fallbackModel = 'gemini-2.5-pro';
 
-  /// ★ v32: Model fallback chain — reliability order (fastest/highest-quota first)
+  /// ★ v33: Model fallback chain — smartest models first (2.5-flash proved best results)
+  /// Each model has separate quota, so trying all gives us 3x the free-tier capacity
   static const List<String> _modelFallbackChain = [
-    'gemini-2.0-flash',
-    'gemini-2.5-flash',
-    'gemini-2.0-flash-lite',
+    'gemini-2.5-flash',    // Best quality — actually produces CRITICAL/HIGH responses
+    'gemini-2.0-flash',    // Fast, high quota
+    'gemini-2.0-flash-lite', // Last resort — lowest quality but rarely rate-limited
   ];
 
   /// Analyze image for safety hazards
@@ -115,6 +116,8 @@ class GeminiDirectVision {
     print('GeminiDirectVision: ✗ Primary failed — trying fallback chain');
     for (final fallbackModel in _modelFallbackChain) {
       if (fallbackModel == model) continue; // already tried
+      // ★ v33: Small delay between attempts to avoid cascading 429s
+      await Future.delayed(const Duration(milliseconds: 500));
       print('GeminiDirectVision: ▶ Trying fallback: $fallbackModel');
       final fbResult = await _callModel(fallbackModel, apiKey, base64Image);
       if (fbResult != null &&
@@ -152,7 +155,7 @@ class GeminiDirectVision {
       ],
       'generationConfig': {
         'temperature': 0.3,
-        'maxOutputTokens': 4096,
+        'maxOutputTokens': 8192,
         'responseMimeType': 'application/json',
       }
     };
@@ -351,6 +354,7 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
   }
 
   /// Parse the AI text response into structured hazard data
+  /// ★ v33: Added JSON repair for truncated responses
   static Map<String, dynamic>? _parseHazardResponse(String text) {
     try {
       String jsonStr = text.trim();
@@ -363,23 +367,160 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
       if (jsonMatch != null) jsonStr = jsonMatch.group(0)!;
 
       final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
-
-      // Validate required fields
-      if (parsed['hazards'] == null) parsed['hazards'] = [];
-      if (parsed['overallRisk'] == null) parsed['overallRisk'] = 'UNKNOWN';
-      if (parsed['riskScore'] == null) parsed['riskScore'] = 0;
-      if (parsed['confidence'] == null) parsed['confidence'] = 0;
-      if (parsed['people'] == null) parsed['people'] = 0;
-      if (parsed['summary'] == null) parsed['summary'] = 'Analysis complete.';
-
-      // Add metadata
-      parsed['_source'] = 'gemini_direct';
-      parsed['_isOnline'] = true;
-
-      return parsed;
+      return _validateAndReturn(parsed);
     } catch (e) {
       print('GeminiDirectVision: JSON parse error: $e');
       print('GeminiDirectVision: Raw text: ${text.substring(0, text.length.clamp(0, 300))}');
+
+      // ★ v33: Attempt to repair truncated JSON responses
+      final repaired = _repairTruncatedJson(text);
+      if (repaired != null) {
+        print('GeminiDirectVision: ✓ Repaired truncated JSON — salvaged ${(repaired['hazards'] as List?)?.length ?? 0} hazards');
+        return repaired;
+      }
+      return null;
+    }
+  }
+
+  /// Validate and add metadata to parsed response
+  static Map<String, dynamic> _validateAndReturn(Map<String, dynamic> parsed) {
+    if (parsed['hazards'] == null) parsed['hazards'] = [];
+    if (parsed['overallRisk'] == null) parsed['overallRisk'] = 'UNKNOWN';
+    if (parsed['riskScore'] == null) parsed['riskScore'] = 0;
+    if (parsed['confidence'] == null) parsed['confidence'] = 0;
+    if (parsed['people'] == null) parsed['people'] = 0;
+    if (parsed['summary'] == null) parsed['summary'] = 'Analysis complete.';
+
+    // Add metadata
+    parsed['_source'] = 'gemini_direct';
+    parsed['_isOnline'] = true;
+
+    return parsed;
+  }
+
+  /// ★ v33: Repair truncated JSON — salvage partial responses
+  /// When maxOutputTokens cuts off mid-response, we still have valuable data
+  static Map<String, dynamic>? _repairTruncatedJson(String text) {
+    try {
+      String jsonStr = text.trim();
+      // Remove markdown fences
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replaceAll(RegExp(r'^```\w*\n?'), '').replaceAll(RegExp(r'\n?```$'), '');
+      }
+      // Must start with {
+      final startIdx = jsonStr.indexOf('{');
+      if (startIdx < 0) return null;
+      jsonStr = jsonStr.substring(startIdx);
+
+      // Strategy 1: Try to close open arrays and objects progressively
+      // Find the "hazards" array and try to close it
+      final hazardsStart = jsonStr.indexOf('"hazards"');
+      if (hazardsStart < 0) {
+        // No hazards array found — try to just close the root object
+        // Extract top-level fields we can find
+        return _extractTopLevelFields(jsonStr);
+      }
+
+      // Try closing arrays/objects from the end
+      String attempt = jsonStr;
+      // Count unclosed brackets
+      int braces = 0, brackets = 0;
+      bool inString = false;
+      bool escaped = false;
+      for (int i = 0; i < attempt.length; i++) {
+        final c = attempt[i];
+        if (escaped) { escaped = false; continue; }
+        if (c == '\\') { escaped = true; continue; }
+        if (c == '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (c == '{') braces++;
+        if (c == '}') braces--;
+        if (c == '[') brackets++;
+        if (c == ']') brackets--;
+      }
+
+      // Trim back to last complete object in the hazards array
+      // Find the last complete "}" that's part of a hazard object
+      int lastCompleteHazard = attempt.lastIndexOf('},');
+      if (lastCompleteHazard < 0) lastCompleteHazard = attempt.lastIndexOf('}]');
+      if (lastCompleteHazard < 0) {
+        // Try to find any complete hazard object
+        lastCompleteHazard = attempt.lastIndexOf('}');
+      }
+
+      if (lastCompleteHazard > hazardsStart) {
+        // Cut after the last complete hazard object and close everything
+        attempt = attempt.substring(0, lastCompleteHazard + 1);
+        // Close: ], then any remaining }
+        attempt += ']';
+        // Close remaining braces
+        int remainingBraces = 0;
+        bool inStr = false;
+        bool esc = false;
+        for (int i = 0; i < attempt.length; i++) {
+          final c = attempt[i];
+          if (esc) { esc = false; continue; }
+          if (c == '\\') { esc = true; continue; }
+          if (c == '"') { inStr = !inStr; continue; }
+          if (inStr) continue;
+          if (c == '{') remainingBraces++;
+          if (c == '}') remainingBraces--;
+        }
+        for (int i = 0; i < remainingBraces; i++) {
+          attempt += '}';
+        }
+
+        try {
+          final parsed = jsonDecode(attempt) as Map<String, dynamic>;
+          if (parsed['hazards'] != null && (parsed['hazards'] as List).isNotEmpty) {
+            return _validateAndReturn(parsed);
+          }
+        } catch (_) {}
+      }
+
+      // Strategy 2: Extract fields with regex
+      return _extractTopLevelFields(jsonStr);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Last-resort field extraction from partial JSON
+  static Map<String, dynamic>? _extractTopLevelFields(String json) {
+    try {
+      final riskMatch = RegExp(r'"overallRisk"\s*:\s*"(\w+)"').firstMatch(json);
+      final scoreMatch = RegExp(r'"riskScore"\s*:\s*(\d+)').firstMatch(json);
+      final confMatch = RegExp(r'"confidence"\s*:\s*(\d+)').firstMatch(json);
+      final peopleMatch = RegExp(r'"people"\s*:\s*(\d+)').firstMatch(json);
+      final summaryMatch = RegExp(r'"summary"\s*:\s*"([^"]+)"').firstMatch(json);
+
+      if (riskMatch == null && scoreMatch == null) return null;
+
+      // Try to extract complete hazard objects
+      final hazardObjects = <Map<String, dynamic>>[];
+      final hazardRegex = RegExp(r'\{\s*"name"\s*:\s*"[^"]+?"[^}]*?"correctiveAction"\s*:\s*"[^"]+?"[^}]*?\}', dotAll: true);
+      for (final m in hazardRegex.allMatches(json)) {
+        try {
+          final h = jsonDecode(m.group(0)!) as Map<String, dynamic>;
+          hazardObjects.add(h);
+        } catch (_) {}
+      }
+
+      if (hazardObjects.isEmpty && riskMatch == null) return null;
+
+      final result = <String, dynamic>{
+        'overallRisk': riskMatch?.group(1) ?? 'UNKNOWN',
+        'riskScore': int.tryParse(scoreMatch?.group(1) ?? '0') ?? 0,
+        'confidence': int.tryParse(confMatch?.group(1) ?? '0') ?? 0,
+        'people': int.tryParse(peopleMatch?.group(1) ?? '0') ?? 0,
+        'summary': summaryMatch?.group(1) ?? 'Analysis complete (partial response recovered).',
+        'hazards': hazardObjects,
+        '_source': 'gemini_direct_repaired',
+        '_isOnline': true,
+      };
+
+      return result;
+    } catch (_) {
       return null;
     }
   }
