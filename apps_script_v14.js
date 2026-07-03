@@ -100,7 +100,7 @@ function handle(e) {
       'addIncident', 'updateIncident', 'updateIncidentStatus', 'listIncidents',
       'addFeedback', 'listFeedback', 'uploadPdfToDrive',
       'addKnowledge', 'listKnowledge', 'formatSheet', 'formatIncidentsSheet',
-      'upsertUser'];
+      'upsertUser', 'fireAlert', 'registerDevice', 'unregisterDevice', 'syncAlertRules'];
     if (publicActions.indexOf(action) < 0) {
       var authResult = validateAuthToken(params._authToken, params._authUser);
       if (!authResult.valid) {
@@ -288,6 +288,13 @@ function handle(e) {
       case 'updateRole':    result = updateUserField(params.username, 'isAdmin', params.isAdmin); break;
       case 'updateStatus':  result = updateUserField(params.username, 'status', params.status); break;
       case 'deleteUser':    result = deleteUser(params.username); break;
+
+      // ★ v25: ALERTS & NOTIFICATIONS — free Email (MailApp) + FCM Push
+      case 'fireAlert':         result = fireAlert(params); break;
+      case 'registerDevice':    result = registerFcmDevice(params); break;
+      case 'unregisterDevice':  result = unregisterFcmDevice(params); break;
+      case 'listDevices':       result = listFcmDevices(); break;
+      case 'syncAlertRules':    result = syncAlertRules(params); break;
 
       default:
         result = { error: 'Unknown action: ' + action };
@@ -2447,4 +2454,425 @@ function testPromptVersion() {
 function testFormatSheet() {
   const result = formatIncidentsSheet();
   Logger.log('formatIncidentsSheet result: ' + JSON.stringify(result));
+}
+
+
+// ============================================================
+//  ★ v25: ALERTS & NOTIFICATIONS MODULE (FREE)
+//  - Email: MailApp (built-in, 100/day free Gmail, 1500/day Workspace)
+//  - Push: Firebase Cloud Messaging (FCM) HTTP v1 API (free, unlimited)
+//
+//  REQUIRED SCRIPT PROPERTIES for FCM:
+//    FCM_PROJECT_ID      = your-firebase-project-id
+//    FCM_SERVICE_ACCOUNT = full JSON of service account key
+//
+//  EMAIL: No config needed — uses the Google account running this script.
+// ============================================================
+
+const SHEET_FCM_DEVICES = 'fcm_devices';
+const FCM_DEVICE_COLS   = ['token', 'username', 'plant', 'registeredAt', 'platform'];
+
+// ── FIRE ALERT — called by mobile app when a rule fires ────────
+function fireAlert(params) {
+  const rule      = params.rule;       // full rule object
+  const reason    = params.reason || '';
+  const incidents = params.incidents || []; // matching incidents (summary)
+
+  if (!rule || !rule.name) {
+    return { ok: false, error: 'Missing rule data' };
+  }
+
+  const channel    = rule.channel || 'both';
+  const recipients = rule.recipients || [];
+  const results    = { email: null, push: null };
+
+  // ── EMAIL ──────────────────────────────────────────────────
+  if (channel === 'email' || channel === 'both') {
+    const emails = recipients.filter(function(r) { return r.includes('@'); });
+    if (emails.length > 0) {
+      try {
+        const subject = '[SAIL Safety Alert] ' + rule.name;
+        const body    = buildAlertEmailHtml(rule, reason, incidents);
+        MailApp.sendEmail({
+          to      : emails.join(','),
+          subject : subject,
+          htmlBody: body,
+          name    : 'SAIL Safety Lens'
+        });
+        results.email = { ok: true, sent: emails.length };
+        Logger.log('[ALERT-EMAIL] Sent to ' + emails.join(', '));
+      } catch (e) {
+        results.email = { ok: false, error: e.toString() };
+        Logger.log('[ALERT-EMAIL] ERROR: ' + e.toString());
+      }
+    }
+  }
+
+  // ── FCM PUSH NOTIFICATION ──────────────────────────────────
+  if (channel === 'sms' || channel === 'both') {
+    // "sms" channel now sends FCM push instead (free alternative)
+    try {
+      const pushResult = sendFcmPushToAll(rule, reason, incidents);
+      results.push = pushResult;
+    } catch (e) {
+      results.push = { ok: false, error: e.toString() };
+      Logger.log('[ALERT-FCM] ERROR: ' + e.toString());
+    }
+  }
+
+  return { ok: true, rule: rule.name, reason: reason, delivery: results };
+}
+
+// ── BUILD EMAIL HTML ─────────────────────────────────────────
+function buildAlertEmailHtml(rule, reason, incidents) {
+  const incidentRows = incidents.slice(0, 10).map(function(inc) {
+    return '<tr>'
+      + '<td style="padding:8px;border:1px solid #ddd;">' + (inc.date || '-') + '</td>'
+      + '<td style="padding:8px;border:1px solid #ddd;">' + (inc.title || inc.desc || '-') + '</td>'
+      + '<td style="padding:8px;border:1px solid #ddd;">' + (inc.severity || '-') + '</td>'
+      + '<td style="padding:8px;border:1px solid #ddd;">' + (inc.plant || '-') + '</td>'
+      + '<td style="padding:8px;border:1px solid #ddd;">' + (inc.status || '-') + '</td>'
+      + '</tr>';
+  }).join('');
+
+  return '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;padding:20px;">'
+    + '<div style="background:#d32f2f;color:white;padding:16px;border-radius:8px;">'
+    + '<h2 style="margin:0;">⚠️ SAIL Safety Alert</h2>'
+    + '</div>'
+    + '<div style="padding:16px;">'
+    + '<h3>' + rule.name + '</h3>'
+    + '<p><strong>Trigger:</strong> ' + (rule.trigger || '') + '</p>'
+    + '<p><strong>Reason:</strong> ' + reason + '</p>'
+    + (rule.plant ? '<p><strong>Plant:</strong> ' + rule.plant + '</p>' : '')
+    + '<p><strong>Time:</strong> ' + new Date().toLocaleString('en-IN', {timeZone:'Asia/Kolkata'}) + '</p>'
+    + (incidentRows ? '<h4>Related Incidents:</h4>'
+      + '<table style="border-collapse:collapse;width:100%;">'
+      + '<tr style="background:#f5f5f5;">'
+      + '<th style="padding:8px;border:1px solid #ddd;">Date</th>'
+      + '<th style="padding:8px;border:1px solid #ddd;">Title</th>'
+      + '<th style="padding:8px;border:1px solid #ddd;">Severity</th>'
+      + '<th style="padding:8px;border:1px solid #ddd;">Plant</th>'
+      + '<th style="padding:8px;border:1px solid #ddd;">Status</th>'
+      + '</tr>' + incidentRows + '</table>' : '')
+    + '</div>'
+    + '<div style="margin-top:20px;padding:12px;background:#f5f5f5;border-radius:4px;font-size:12px;color:#666;">'
+    + 'This is an automated alert from SAIL Safety Lens. Do not reply to this email.'
+    + '</div>'
+    + '</body></html>';
+}
+
+// ── FCM PUSH — send to all registered devices ────────────────
+function sendFcmPushToAll(rule, reason, incidents) {
+  const projectId = PropertiesService.getScriptProperties().getProperty('FCM_PROJECT_ID');
+  const saJson    = PropertiesService.getScriptProperties().getProperty('FCM_SERVICE_ACCOUNT');
+
+  if (!projectId || !saJson) {
+    Logger.log('[ALERT-FCM] FCM not configured — skipping push. Set FCM_PROJECT_ID and FCM_SERVICE_ACCOUNT in Script Properties.');
+    return { ok: false, error: 'FCM not configured. Set FCM_PROJECT_ID and FCM_SERVICE_ACCOUNT in Script Properties.' };
+  }
+
+  // Get access token using service account
+  const accessToken = getFcmAccessToken_(saJson);
+  if (!accessToken) {
+    return { ok: false, error: 'Failed to get FCM access token' };
+  }
+
+  // Get all registered device tokens
+  const devices = getRegisteredDevices_();
+  if (devices.length === 0) {
+    return { ok: false, error: 'No devices registered for push notifications' };
+  }
+
+  // Filter by plant if rule has plant filter
+  const targetDevices = rule.plant
+    ? devices.filter(function(d) { return !d.plant || d.plant === rule.plant; })
+    : devices;
+
+  const url = 'https://fcm.googleapis.com/v1/projects/' + projectId + '/messages:send';
+  let sent = 0;
+  let failed = 0;
+
+  targetDevices.forEach(function(device) {
+    try {
+      const payload = {
+        message: {
+          token: device.token,
+          notification: {
+            title: '⚠️ ' + rule.name,
+            body: reason + (incidents.length > 0 ? ' — ' + incidents[0].title : '')
+          },
+          data: {
+            ruleId   : rule.id || '',
+            ruleName : rule.name || '',
+            trigger  : rule.trigger || '',
+            reason   : reason,
+            plant    : rule.plant || '',
+            click_action: 'FLUTTER_NOTIFICATION_CLICK'
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channel_id: 'safety_alerts',
+              sound: 'default'
+            }
+          }
+        }
+      };
+
+      const resp = UrlFetchApp.fetch(url, {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'Authorization': 'Bearer ' + accessToken },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      });
+
+      if (resp.getResponseCode() === 200) {
+        sent++;
+      } else {
+        failed++;
+        Logger.log('[ALERT-FCM] Failed for token ' + device.token.substring(0, 10) + '...: ' + resp.getContentText());
+        // Remove stale tokens
+        if (resp.getResponseCode() === 404 || resp.getContentText().includes('NOT_FOUND')) {
+          unregisterFcmDevice({ token: device.token });
+        }
+      }
+    } catch (e) {
+      failed++;
+      Logger.log('[ALERT-FCM] Exception: ' + e.toString());
+    }
+  });
+
+  Logger.log('[ALERT-FCM] Sent: ' + sent + ', Failed: ' + failed);
+  return { ok: true, sent: sent, failed: failed, total: targetDevices.length };
+}
+
+// ── FCM ACCESS TOKEN via Service Account JWT ─────────────────
+function getFcmAccessToken_(saJsonStr) {
+  try {
+    const sa = JSON.parse(saJsonStr);
+    const now = Math.floor(Date.now() / 1000);
+
+    // Create JWT
+    const header = { alg: 'RS256', typ: 'JWT' };
+    const claim  = {
+      iss  : sa.client_email,
+      scope: 'https://www.googleapis.com/auth/firebase.messaging',
+      aud  : 'https://oauth2.googleapis.com/token',
+      iat  : now,
+      exp  : now + 3600
+    };
+
+    const b64Header = Utilities.base64EncodeWebSafe(JSON.stringify(header));
+    const b64Claim  = Utilities.base64EncodeWebSafe(JSON.stringify(claim));
+    const signInput = b64Header + '.' + b64Claim;
+
+    // Sign with RSA private key
+    const key = sa.private_key;
+    const signature = Utilities.base64EncodeWebSafe(
+      Utilities.computeRsaSha256Signature(signInput, key)
+    );
+
+    const jwt = signInput + '.' + signature;
+
+    // Exchange JWT for access token
+    const resp = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
+      method: 'post',
+      payload: {
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion : jwt
+      },
+      muteHttpExceptions: true
+    });
+
+    if (resp.getResponseCode() === 200) {
+      return JSON.parse(resp.getContentText()).access_token;
+    } else {
+      Logger.log('[FCM-AUTH] Token exchange failed: ' + resp.getContentText());
+      return null;
+    }
+  } catch (e) {
+    Logger.log('[FCM-AUTH] Exception: ' + e.toString());
+    return null;
+  }
+}
+
+// ── DEVICE REGISTRATION ──────────────────────────────────────
+function registerFcmDevice(params) {
+  const token    = params.token;
+  const username = params.username || 'unknown';
+  const plant    = params.plant || '';
+  const platform = params.platform || 'android';
+
+  if (!token) return { ok: false, error: 'Missing FCM token' };
+
+  const ss    = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_FCM_DEVICES);
+
+  // Create sheet if not exists
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_FCM_DEVICES);
+    sheet.getRange(1, 1, 1, FCM_DEVICE_COLS.length).setValues([FCM_DEVICE_COLS]);
+    sheet.getRange(1, 1, 1, FCM_DEVICE_COLS.length).setFontWeight('bold');
+  }
+
+  // Check if token already registered (update if so)
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === token) {
+      // Update existing
+      sheet.getRange(i + 1, 2).setValue(username);
+      sheet.getRange(i + 1, 3).setValue(plant);
+      sheet.getRange(i + 1, 5).setValue(platform);
+      return { ok: true, action: 'updated' };
+    }
+  }
+
+  // Add new
+  sheet.appendRow([token, username, plant, new Date().toISOString(), platform]);
+  Logger.log('[FCM-REG] Registered device for ' + username);
+  return { ok: true, action: 'registered' };
+}
+
+function unregisterFcmDevice(params) {
+  const token = params.token;
+  if (!token) return { ok: false, error: 'Missing token' };
+
+  const ss    = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_FCM_DEVICES);
+  if (!sheet) return { ok: true, action: 'no_sheet' };
+
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === token) {
+      sheet.deleteRow(i + 1);
+      return { ok: true, action: 'removed' };
+    }
+  }
+  return { ok: true, action: 'not_found' };
+}
+
+function listFcmDevices() {
+  const devices = getRegisteredDevices_();
+  return { ok: true, count: devices.length, devices: devices.map(function(d) {
+    return { username: d.username, plant: d.plant, platform: d.platform, registeredAt: d.registeredAt };
+  })};
+}
+
+function getRegisteredDevices_() {
+  const ss    = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_FCM_DEVICES);
+  if (!sheet) return [];
+
+  const data = sheet.getDataRange().getValues();
+  const devices = [];
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0]) {
+      devices.push({
+        token       : data[i][0],
+        username    : data[i][1] || '',
+        plant       : data[i][2] || '',
+        registeredAt: data[i][3] || '',
+        platform    : data[i][4] || ''
+      });
+    }
+  }
+  return devices;
+}
+
+// ── DAILY DIGEST TRIGGER — set up via Apps Script Triggers UI ─
+// Go to: Apps Script Editor → Triggers → Add Trigger →
+//   Function: dailyAlertDigest
+//   Event source: Time-driven
+//   Type: Day timer → 8am to 9am
+function dailyAlertDigest() {
+  Logger.log('[DAILY-DIGEST] Running daily alert evaluation...');
+
+  // Fetch all incidents
+  const incidents = listIncidents().incidents || [];
+
+  // Evaluate digest-type rules (stored in a "rules" sheet or hardcoded)
+  const rules = getDailyDigestRules_();
+  const today = new Date();
+  const todayKey = Utilities.formatDate(today, 'Asia/Kolkata', 'yyyy-MM-dd');
+
+  rules.forEach(function(rule) {
+    if (!rule.enabled) return;
+
+    let shouldFire = false;
+    let reason = '';
+    let matchingIncidents = [];
+
+    switch (rule.trigger) {
+      case 'daily_digest':
+        // Always fire for daily digest
+        const todayIncs = incidents.filter(function(i) {
+          return (i.date || '').startsWith(todayKey) || (i.syncedAt || '').startsWith(todayKey);
+        });
+        shouldFire = true;
+        reason = todayIncs.length + ' incidents reported today';
+        matchingIncidents = todayIncs.slice(0, 10);
+        break;
+
+      case 'high_open_7d':
+        const cutoff = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const stale = incidents.filter(function(i) {
+          const sev = (i.severity || '').toUpperCase();
+          const st  = (i.status || '').toUpperCase();
+          if (sev !== 'CRITICAL' && sev !== 'HIGH') return false;
+          if (st === 'CLOSED') return false;
+          if (rule.plant && i.plant !== rule.plant) return false;
+          const d = new Date(i.date);
+          return !isNaN(d.getTime()) && d < cutoff;
+        });
+        if (stale.length > 0) {
+          shouldFire = true;
+          reason = stale.length + ' HIGH/CRITICAL incidents open >7 days';
+          matchingIncidents = stale.slice(0, 10);
+        }
+        break;
+
+      case 'threshold_daily':
+        const threshold = rule.threshold || 3;
+        const todayCount = incidents.filter(function(i) {
+          if (rule.plant && i.plant !== rule.plant) return false;
+          return (i.date || '').startsWith(todayKey);
+        }).length;
+        if (todayCount >= threshold) {
+          shouldFire = true;
+          reason = todayCount + ' incidents today (threshold: ' + threshold + ')';
+          matchingIncidents = incidents.filter(function(i) {
+            return (i.date || '').startsWith(todayKey);
+          }).slice(0, 10);
+        }
+        break;
+    }
+
+    if (shouldFire) {
+      Logger.log('[DAILY-DIGEST] Firing rule: ' + rule.name + ' — ' + reason);
+      fireAlert({ rule: rule, reason: reason, incidents: matchingIncidents });
+    }
+  });
+
+  Logger.log('[DAILY-DIGEST] Complete.');
+}
+
+// ── GET DIGEST RULES from sheet (or create default) ──────────
+function getDailyDigestRules_() {
+  // Store digest rules in a simple sheet or Script Properties
+  const stored = PropertiesService.getScriptProperties().getProperty('ALERT_RULES');
+  if (stored) {
+    try { return JSON.parse(stored); } catch(e) {}
+  }
+  // Default rules (can be updated via syncAlertRules action)
+  return [];
+}
+
+// ── SYNC RULES from mobile to backend (for daily digest) ─────
+// Called by mobile app to push rules to backend for time-triggered evaluation
+function syncAlertRules(params) {
+  const rules = params.rules || [];
+  PropertiesService.getScriptProperties().setProperty('ALERT_RULES', JSON.stringify(rules));
+  Logger.log('[ALERT-RULES] Synced ' + rules.length + ' rules to backend');
+  return { ok: true, synced: rules.length };
 }

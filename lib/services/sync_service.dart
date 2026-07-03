@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
 import 'auth_token_service.dart';
 import 'app_logger.dart';
+import 'admin_alerts.dart';
 
 /// SAIL Safety Lens — Google Sheets Sync Service
 ///
@@ -414,6 +415,8 @@ class SyncService {
           if (data['ok'] == true) {
             await _markSyncTime();
             print('SyncService: pushIncident SUCCESS — id=${incident['id']}, type=${incident['type']}');
+            // ★ v25: Auto-fire alerts for CRITICAL incidents
+            _checkAndFireAlerts(incident);
             return true;
           }
           // Apps Script returned a structured error
@@ -1016,6 +1019,34 @@ class SyncService {
       return false;
     } catch (_) {
       return false;
+    }
+  }
+
+  // ★ v25: Auto-fire alerts when a CRITICAL incident is synced
+  static Future<void> _checkAndFireAlerts(Map<String, dynamic> incident) async {
+    try {
+      final severity = (incident['severity']?.toString() ?? '').toUpperCase();
+      if (severity != 'CRITICAL') return; // Only auto-fire for CRITICAL
+
+      final rules = await AdminAlerts.getRules();
+      // Find enabled critical_incident rules that match this incident's plant
+      final matchingRules = rules.where((r) {
+        if (r['enabled'] != true) return false;
+        if (r['trigger'] != AdminAlerts.trigCriticalIncident) return false;
+        final plant = r['plant']?.toString() ?? '';
+        return plant.isEmpty || plant == incident['plant']?.toString();
+      }).toList();
+
+      if (matchingRules.isEmpty) return;
+
+      // Fire each matching rule
+      for (final rule in matchingRules) {
+        final firingRule = {...rule, 'reason': 'CRITICAL incident: ${incident['title'] ?? incident['desc'] ?? incident['id']}'};
+        await AdminAlerts.deliver([firingRule], [incident]);
+      }
+      print('[SyncService] Auto-fired ${matchingRules.length} alert(s) for CRITICAL incident');
+    } catch (e) {
+      print('[SyncService] Alert fire error (non-fatal): $e');
     }
   }
 

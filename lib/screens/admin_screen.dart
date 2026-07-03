@@ -161,6 +161,7 @@ class _AdminScreenState extends State<AdminScreen>
   // ── Alerts state ────────────────────────────────────────────────
   List<Map<String, dynamic>> _alertRules = [];
   bool _alertsLoaded = false;
+  bool _isSendingAlerts = false;
 
   // ── Compliance state ────────────────────────────────────────────
   String _compliancePlantFilter = 'ALL';
@@ -4089,17 +4090,16 @@ class _AdminScreenState extends State<AdminScreen>
       Container(
         padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
-          color: AppColors.amber.withOpacity(0.08),
+          color: AppColors.green.withOpacity(0.08),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.amber.withOpacity(0.3))),
+          border: Border.all(color: AppColors.green.withOpacity(0.3))),
         child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.info_outline_rounded,
-              color: AppColors.amber, size: 16),
+          const Icon(Icons.notifications_active_rounded,
+              color: AppColors.green, size: 16),
           const SizedBox(width: 8),
           Expanded(child: Text(
-            'Rules are stored locally. Actual email/SMS delivery requires '
-            'SMTP wired in Apps Script (v11+). This screen tracks WHO would '
-            'be notified and shows live "would fire now" evaluation.',
+            'Alerts active — Email (free via MailApp) + Push Notifications (FCM). '
+            'Firing rules will send real notifications to recipients.',
             style: TextStyle(color: sl.text3, fontSize: 10.5, height: 1.4))),
         ])),
 
@@ -4143,6 +4143,27 @@ class _AdminScreenState extends State<AdminScreen>
                     style: TextStyle(color: sl.text3, fontSize: 10.5)),
               ])),
           ]))),
+
+      // ★ v25: Send alerts NOW button
+      if (firing.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: ElevatedButton.icon(
+            onPressed: _isSendingAlerts ? null : () => _fireAlertsNow(firing),
+            icon: _isSendingAlerts
+                ? const SizedBox(width: 14, height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send_rounded, size: 16),
+            label: Text(_isSendingAlerts ? 'Sending...' : 'Send Alerts Now',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFE53935),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          ),
+        ),
 
       const SizedBox(height: 18),
 
@@ -4250,6 +4271,32 @@ class _AdminScreenState extends State<AdminScreen>
 
   Future<void> _addAlertRule()    => _alertRuleDialog(null);
   Future<void> _editAlertRule(Map<String, dynamic> r) => _alertRuleDialog(r);
+
+  // ★ v25: Actually fire alerts via backend
+  Future<void> _fireAlertsNow(List<Map<String, dynamic>> firingRules) async {
+    setState(() => _isSendingAlerts = true);
+    try {
+      final results = await AdminAlerts.deliver(firingRules, _incidents);
+      final successCount = results.where((r) => r['ok'] == true).length;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('✅ Sent $successCount/${results.length} alert(s) — '
+              'Email + Push notifications delivered'),
+          backgroundColor: const Color(0xFF43A047),
+          duration: const Duration(seconds: 4),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('❌ Alert delivery failed: $e'),
+          backgroundColor: const Color(0xFFE53935),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isSendingAlerts = false);
+    }
+  }
 
   Future<void> _alertRuleDialog(Map<String, dynamic>? existing) async {
     final sl = SL.of(context);

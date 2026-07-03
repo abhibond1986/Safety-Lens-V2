@@ -1,5 +1,5 @@
 // lib/services/admin_alerts.dart
-// SAIL Safety Lens — Alert rules storage
+// SAIL Safety Lens — Alert rules storage & delivery (v25)
 //
 // Stores notification rules locally. Rules describe WHEN to notify
 // (trigger condition) and WHO to notify (subscribers).
@@ -18,11 +18,12 @@
 //     createdBy : username,
 //   }
 //
-// Note: this service only STORES the rules. Actual delivery
-// requires an SMTP / SMS gateway wired in Apps Script — that comes
-// later. For now, the UI surfaces "what would have fired".
+// v25: Now actually delivers alerts via Apps Script backend:
+//   - Email via MailApp (free, built-in)
+//   - Push notifications via FCM (free, unlimited)
 
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AdminAlerts {
@@ -168,5 +169,96 @@ class AdminAlerts {
       }
     }
     return firing;
+  }
+
+  // ── DELIVER — actually send alerts via Apps Script backend ────
+  // Call this after evaluate() returns firing rules.
+  // Returns a list of delivery results.
+  static Future<List<Map<String, dynamic>>> deliver(
+    List<Map<String, dynamic>> firingRules,
+    List<Map<String, dynamic>> incidents,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = prefs.getString('apps_script_url') ?? '';
+    if (baseUrl.isEmpty) {
+      return [{'ok': false, 'error': 'Apps Script URL not configured'}];
+    }
+
+    final results = <Map<String, dynamic>>[];
+
+    for (final rule in firingRules) {
+      try {
+        // Build incident summary (send only key fields, not full data)
+        final matchingIncidents = incidents
+            .where((i) {
+              final plant = rule['plant']?.toString() ?? '';
+              return plant.isEmpty || i['plant']?.toString() == plant;
+            })
+            .take(10)
+            .map((i) => {
+              return {
+                'date': i['date'] ?? '',
+                'title': i['title'] ?? i['desc'] ?? '',
+                'severity': i['severity'] ?? '',
+                'plant': i['plant'] ?? '',
+                'status': i['status'] ?? '',
+              };
+            })
+            .toList();
+
+        final response = await http.post(
+          Uri.parse(baseUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'action': 'fireAlert',
+            'rule': rule,
+            'reason': rule['reason'] ?? '',
+            'incidents': matchingIncidents,
+          }),
+        ).timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          results.add(data is Map<String, dynamic> ? data : {'ok': true});
+        } else {
+          results.add({'ok': false, 'error': 'HTTP ${response.statusCode}'});
+        }
+      } catch (e) {
+        results.add({'ok': false, 'error': e.toString()});
+      }
+    }
+
+    return results;
+  }
+
+  // ── SYNC RULES to backend (for daily digest triggers) ────────
+  // Pushes rules to Apps Script so time-based triggers can evaluate them
+  static Future<bool> syncToBackend() async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = prefs.getString('apps_script_url') ?? '';
+    if (baseUrl.isEmpty) return false;
+
+    final rules = await getRules();
+    // Only sync digest/scheduled rules (not instant ones which fire from app)
+    final scheduledRules = rules.where((r) =>
+        r['trigger'] == trigDailyDigest ||
+        r['trigger'] == trigHighOpen7d ||
+        r['trigger'] == trigThresholdDaily).toList();
+
+    try {
+      final response = await http.post(
+        Uri.parse(baseUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'action': 'syncAlertRules',
+          'rules': scheduledRules,
+        }),
+      ).timeout(const Duration(seconds: 15));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('[AdminAlerts] Sync failed: $e');
+      return false;
+    }
   }
 }
