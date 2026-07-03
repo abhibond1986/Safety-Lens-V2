@@ -209,6 +209,23 @@ class AdminMasterData {
         updated = true;
       }
 
+      // ★ v25: Sync API keys from backend — ensures all devices have keys
+      if (remote['geminiApiKey'] is String && (remote['geminiApiKey'] as String).length > 10) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('gemini_vision_api_key', remote['geminiApiKey'] as String);
+        updated = true;
+      }
+      if (remote['groqApiKey'] is String && (remote['groqApiKey'] as String).length > 10) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('groq_api_key', remote['groqApiKey'] as String);
+        updated = true;
+      }
+      if (remote['geminiModel'] is String && (remote['geminiModel'] as String).isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('gemini_vision_model', remote['geminiModel'] as String);
+        updated = true;
+      }
+
       return updated;
     } catch (_) {
       return false;

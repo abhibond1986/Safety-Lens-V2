@@ -121,9 +121,11 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // ★ v31: RETRY — wait 5s then try Apps Script again (server may recover)
+      // ★ v33: RETRY — only if NOT exhaustion (exhaustion won't recover in 3s)
       // ══════════════════════════════════════════════════════════════════════
-      if (stopwatch.elapsedMilliseconds < 50000) {
+      final isExhausted = _lastExhaustionTime != null &&
+          DateTime.now().difference(_lastExhaustionTime!).inSeconds < 5;
+      if (!isExhausted && stopwatch.elapsedMilliseconds < 50000) {
         print('GeminiVision: ▶ RETRY — waiting 3s then trying Apps Script again...');
         await Future.delayed(const Duration(seconds: 3));
         try {
@@ -140,20 +142,18 @@ class GeminiVision {
         } catch (e) {
           print('GeminiVision: ✗ Apps Script retry exception: $e');
         }
+      } else if (isExhausted) {
+        print('GeminiVision: ⏭ Skipping retry — server exhausted, jumping to GeminiDirect');
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // ★ v31: LAST RESORT — Try Gemini Direct with fallback models
-      // Even if not "configured" via admin, try fetching key from Apps Script
+      // ★ v33: LAST RESORT — Try Gemini Direct (full model chain)
+      // Uses client-side API key (separate quota pool from server key)
       // ══════════════════════════════════════════════════════════════════════
       if (await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: ▶ LAST RESORT — Gemini Direct with lite model...');
+        print('GeminiVision: ▶ LAST RESORT — Gemini Direct (full chain)...');
         try {
-          // Force try with 2.0-flash-lite (ultra-fast, separate quota pool)
-          final savedModel = await GeminiDirectVision.getModel();
-          await GeminiDirectVision.setModel('gemini-2.0-flash-lite');
           final lastResult = await GeminiDirectVision.analyzeImage(bytes);
-          await GeminiDirectVision.setModel(savedModel); // restore
           if (lastResult != null &&
               lastResult['hazards'] != null &&
               (lastResult['hazards'] as List).isNotEmpty &&
@@ -166,6 +166,8 @@ class GeminiVision {
         } catch (e) {
           print('GeminiVision: ✗ Last resort exception: $e');
         }
+      } else {
+        print('GeminiVision: ⚠ GeminiDirect not configured — no client API key set');
       }
 
       // ══════════════════════════════════════════════════════════════════════

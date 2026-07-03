@@ -103,7 +103,7 @@ function handle(e) {
     // are semi-public (require reportedBy in payload but not session tokens)
     // to support offline-first sync where token may have expired.
     var publicActions = ['health', 'ping', 'login', 'register', 'getApiKeys', 'getMasterData',
-      'analyzeUrl', 'diagnose',
+      'gemini', 'analyzeUrl', 'diagnose',
       'addIncident', 'updateIncident', 'updateIncidentStatus', 'listIncidents',
       'addFeedback', 'listFeedback', 'uploadPdfToDrive',
       'addKnowledge', 'listKnowledge', 'formatSheet', 'formatIncidentsSheet',
@@ -1996,7 +1996,7 @@ function getSheet(name) {
 //  Stored in a 'masterdata' sheet as key-value JSON rows.
 // ════════════════════════════════════════════════════════════════════════
 const SHEET_MASTERDATA = 'masterdata';
-const MASTERDATA_KEYS = ['plants', 'departments', 'wsaCauses', 'severities', 'statuses', 'obsTypes'];
+const MASTERDATA_KEYS = ['plants', 'departments', 'wsaCauses', 'severities', 'statuses', 'obsTypes', 'geminiApiKey', 'groqApiKey', 'geminiModel'];
 
 function saveMasterData(params) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();

@@ -2026,8 +2026,10 @@ class _AdminScreenState extends State<AdminScreen>
               }
               await GroqService.setApiKey(key);
               await GroqService.setModel(_groqSelectedModel);
+              // ★ v25: Push Groq key to backend so all devices get it on sync
+              _pushGroqKeyToBackend(key);
               setState(() => _groqConfigured = true);
-              _toast('Groq AI configured! Text correction is now active.', AppColors.green);
+              _toast('Groq AI configured & synced to all devices!', AppColors.green);
             },
             icon: const Icon(Icons.save_rounded, size: 14),
             label: const Text('Save Groq Config'),
@@ -2113,8 +2115,14 @@ class _AdminScreenState extends State<AdminScreen>
               }
               await GeminiDirectVision.setApiKey(key);
               await GeminiDirectVision.setModel(_geminiVisionSelectedModel);
+              // ★ v25: Push API key to backend so all devices get it on sync
+              SyncService.pushMasterData(
+                updatedBy: _currentActor,
+              ).catchError((_) => false);
+              // Push key separately via raw masterdata call
+              _pushApiKeysToBackend(key, _geminiVisionSelectedModel);
               setState(() => _geminiVisionConfigured = true);
-              _toast('Gemini Vision configured! Image hazard analysis is now active.', AppColors.green);
+              _toast('Gemini Vision configured & synced to all devices!', AppColors.green);
             },
             icon: const Icon(Icons.save_rounded, size: 14),
             label: const Text('Save Gemini Vision Config'),
@@ -3727,6 +3735,38 @@ class _AdminScreenState extends State<AdminScreen>
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
             borderSide: BorderSide(color: sl.border))));
+
+  // ★ v25: Push API keys to backend for cross-device sync
+  Future<void> _pushApiKeysToBackend(String geminiKey, String model) async {
+    try {
+      final url = await SyncService.getBackendUrl();
+      final body = {
+        'action': 'saveMasterData',
+        'geminiApiKey': geminiKey,
+        'geminiModel': model,
+        'updatedBy': _currentActor,
+      };
+      await http.post(Uri.parse(url),
+        body: jsonEncode(body),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {}
+  }
+
+  Future<void> _pushGroqKeyToBackend(String groqKey) async {
+    try {
+      final url = await SyncService.getBackendUrl();
+      final body = {
+        'action': 'saveMasterData',
+        'groqApiKey': groqKey,
+        'updatedBy': _currentActor,
+      };
+      await http.post(Uri.parse(url),
+        body: jsonEncode(body),
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      ).timeout(const Duration(seconds: 15));
+    } catch (_) {}
+  }
 
   Future<void> _addDepartment() async {
     final d = await _stringDialog('Add department', '');
