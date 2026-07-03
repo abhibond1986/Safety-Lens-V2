@@ -1975,28 +1975,41 @@ class _AdminScreenState extends State<AdminScreen>
         Text('Free AI for near-miss text correction. Get key at console.groq.com',
           style: TextStyle(color: sl.text4, fontSize: 10)),
         const SizedBox(height: 12),
-        TextField(
-          controller: _groqKeyCtrl,
-          enableInteractiveSelection: true,
-          autocorrect: false,
-          enableSuggestions: false,
-          style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
-          decoration: InputDecoration(
-            labelText: 'Groq API Key (starts with gsk_)',
-            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
-            hintText: 'Paste your API key here...',
-            hintStyle: TextStyle(color: sl.text4, fontSize: 10),
-            filled: true,
-            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: sl.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: sl.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+        Row(children: [
+          Expanded(child: TextField(
+            controller: _groqKeyCtrl,
+            enableInteractiveSelection: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
+            decoration: InputDecoration(
+              labelText: 'Groq API Key (starts with gsk_)',
+              labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+              hintText: 'Paste your API key here...',
+              hintStyle: TextStyle(color: sl.text4, fontSize: 10),
+              filled: true,
+              fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: sl.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: sl.border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+            ),
+          )),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.content_paste_rounded, color: AppColors.accent, size: 20),
+            tooltip: 'Paste from clipboard',
+            onPressed: () async {
+              final data = await Clipboard.getData(Clipboard.kTextPlain);
+              if (data?.text != null && data!.text!.isNotEmpty) {
+                setState(() => _groqKeyCtrl.text = data.text!.trim());
+              }
+            },
           ),
-        ),
+        ]),
         const SizedBox(height: 10),
         // Model selector
         DropdownButtonFormField<String>(
@@ -2067,28 +2080,41 @@ class _AdminScreenState extends State<AdminScreen>
         Text('Free AI for image hazard detection. Get key at aistudio.google.com/apikey',
           style: TextStyle(color: sl.text4, fontSize: 10)),
         const SizedBox(height: 12),
-        TextField(
-          controller: _geminiVisionKeyCtrl,
-          enableInteractiveSelection: true,
-          autocorrect: false,
-          enableSuggestions: false,
-          style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
-          decoration: InputDecoration(
-            labelText: 'Gemini API Key (from AI Studio)',
-            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
-            hintText: 'Paste your API key here...',
-            hintStyle: TextStyle(color: sl.text4, fontSize: 10),
-            filled: true,
-            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: sl.border)),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: sl.border)),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+        Row(children: [
+          Expanded(child: TextField(
+            controller: _geminiVisionKeyCtrl,
+            enableInteractiveSelection: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
+            decoration: InputDecoration(
+              labelText: 'Gemini API Key (from AI Studio)',
+              labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+              hintText: 'Paste your API key here...',
+              hintStyle: TextStyle(color: sl.text4, fontSize: 10),
+              filled: true,
+              fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: sl.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide(color: sl.border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppColors.accent, width: 1.5)),
+            ),
+          )),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.content_paste_rounded, color: AppColors.accent, size: 20),
+            tooltip: 'Paste from clipboard',
+            onPressed: () async {
+              final data = await Clipboard.getData(Clipboard.kTextPlain);
+              if (data?.text != null && data!.text!.isNotEmpty) {
+                setState(() => _geminiVisionKeyCtrl.text = data.text!.trim());
+              }
+            },
           ),
-        ),
+        ]),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           value: _geminiVisionSelectedModel,
