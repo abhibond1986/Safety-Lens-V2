@@ -1998,30 +1998,22 @@ class _AdminScreenState extends State<AdminScreen>
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              final key = _groqKeyCtrl.text.trim();
-              if (key.isEmpty || !key.startsWith('gsk_')) {
-                _toast('Invalid key — must start with gsk_', AppColors.red);
-                return;
-              }
-              await GroqService.setApiKey(key);
-              await GroqService.setModel(_groqSelectedModel);
-              // ★ v25: Push Groq key to backend so all devices get it on sync
-              _pushGroqKeyToBackend(key);
-              setState(() => _groqConfigured = true);
-              _toast('Groq AI configured & synced to all devices!', AppColors.green);
-            },
-            icon: const Icon(Icons.save_rounded, size: 14),
-            label: const Text('Save Groq Config'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+        // ★ v26: Key is now auto-saved from the dialog. This button only updates model selection.
+        if (_groqConfigured)
+          SizedBox(width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await GroqService.setModel(_groqSelectedModel);
+                _toast('✓ Groq model updated to $_groqSelectedModel', AppColors.green);
+              },
+              icon: Icon(Icons.tune, size: 14, color: sl.text2),
+              label: Text('Update Model Selection', style: TextStyle(color: sl.text2, fontSize: 11)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: sl.border),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            ),
           ),
-        ),
       ]),
     );
   }
@@ -2047,7 +2039,7 @@ class _AdminScreenState extends State<AdminScreen>
         Text('Free AI for image hazard detection. Get key at aistudio.google.com/apikey',
           style: TextStyle(color: sl.text4, fontSize: 10)),
         const SizedBox(height: 12),
-        _apiKeyInputField(_geminiVisionKeyCtrl, 'Gemini API Key (from AI Studio)', sl),
+        _apiKeyInputField(_geminiVisionKeyCtrl, 'Gemini API Key (from AI Studio)', sl, isGemini: true),
         const SizedBox(height: 10),
         DropdownButtonFormField<String>(
           value: _geminiVisionSelectedModel,
@@ -2068,34 +2060,22 @@ class _AdminScreenState extends State<AdminScreen>
           ),
         ),
         const SizedBox(height: 12),
-        SizedBox(width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              final key = _geminiVisionKeyCtrl.text.trim();
-              if (key.isEmpty || key.length < 20) {
-                _toast('Invalid key — please paste a valid API key from AI Studio', AppColors.red);
-                return;
-              }
-              await GeminiDirectVision.setApiKey(key);
-              await GeminiDirectVision.setModel(_geminiVisionSelectedModel);
-              // ★ v25: Push API key to backend so all devices get it on sync
-              SyncService.pushMasterData(
-                updatedBy: _currentActor,
-              ).catchError((_) => false);
-              // Push key separately via raw masterdata call
-              _pushApiKeysToBackend(key, _geminiVisionSelectedModel);
-              setState(() => _geminiVisionConfigured = true);
-              _toast('Gemini Vision configured & synced to all devices!', AppColors.green);
-            },
-            icon: const Icon(Icons.save_rounded, size: 14),
-            label: const Text('Save Gemini Vision Config'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1A73E8),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+        // ★ v26: Key is now auto-saved from the dialog. This button only updates model selection.
+        if (_geminiVisionConfigured)
+          SizedBox(width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await GeminiDirectVision.setModel(_geminiVisionSelectedModel);
+                _toast('✓ Gemini model updated to $_geminiVisionSelectedModel', AppColors.green);
+              },
+              icon: Icon(Icons.tune, size: 14, color: sl.text2),
+              label: Text('Update Model Selection', style: TextStyle(color: sl.text2, fontSize: 11)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: sl.border),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            ),
           ),
-        ),
       ]),
     );
   }
@@ -3700,7 +3680,8 @@ class _AdminScreenState extends State<AdminScreen>
             borderSide: BorderSide(color: sl.border))));
 
   // ★ v25: API Key input field — uses dialog on web for reliable paste
-  Widget _apiKeyInputField(TextEditingController ctrl, String label, SL sl) {
+  // isGemini = true for Gemini key, false for Groq key
+  Widget _apiKeyInputField(TextEditingController ctrl, String label, SL sl, {bool isGemini = false}) {
     return GestureDetector(
       onTap: () async {
         final result = await showDialog<String>(
@@ -3711,7 +3692,7 @@ class _AdminScreenState extends State<AdminScreen>
               backgroundColor: sl.card,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               title: Text('Enter API Key', style: TextStyle(color: sl.text1, fontSize: 14, fontWeight: FontWeight.w700)),
-              content: Column(mainAxisSize: MainAxisSize.min, children: [
+              content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Paste or type your key below:', style: TextStyle(color: sl.text3, fontSize: 11)),
                 const SizedBox(height: 12),
                 TextField(
@@ -3731,44 +3712,76 @@ class _AdminScreenState extends State<AdminScreen>
                       borderSide: const BorderSide(color: AppColors.accent, width: 2)),
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text('Key will be saved & synced to all devices automatically.',
+                  style: TextStyle(color: AppColors.green, fontSize: 9, fontWeight: FontWeight.w600)),
               ]),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
                   child: Text('Cancel', style: TextStyle(color: sl.text3))),
-                ElevatedButton(
+                ElevatedButton.icon(
                   onPressed: () => Navigator.pop(ctx, dialogCtrl.text.trim()),
+                  icon: const Icon(Icons.save_rounded, size: 14),
+                  label: const Text('Save & Sync'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-                  child: const Text('Save Key', style: TextStyle(color: Colors.white))),
+                    backgroundColor: isGemini ? const Color(0xFF1A73E8) : AppColors.accent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)))),
               ],
             );
           },
         );
         if (result != null && result.isNotEmpty) {
           setState(() => ctrl.text = result);
+          // ★ Auto-save immediately after dialog — no extra button needed
+          if (isGemini) {
+            if (result.length < 20) {
+              _toast('Invalid key — too short', AppColors.red);
+              return;
+            }
+            await GeminiDirectVision.setApiKey(result);
+            await GeminiDirectVision.setModel(_geminiVisionSelectedModel);
+            _pushApiKeysToBackend(result, _geminiVisionSelectedModel);
+            setState(() => _geminiVisionConfigured = true);
+            _toast('✓ Gemini Vision key saved & synced to all devices!', AppColors.green);
+          } else {
+            if (!result.startsWith('gsk_')) {
+              _toast('Invalid key — must start with gsk_', AppColors.red);
+              return;
+            }
+            await GroqService.setApiKey(result);
+            await GroqService.setModel(_groqSelectedModel);
+            _pushGroqKeyToBackend(result);
+            setState(() => _groqConfigured = true);
+            _toast('✓ Groq AI key saved & synced to all devices!', AppColors.green);
+          }
         }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
           color: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: sl.border),
+          border: Border.all(color: ctrl.text.isNotEmpty ? AppColors.green.withOpacity(0.5) : sl.border),
         ),
         child: Row(children: [
+          Icon(ctrl.text.isNotEmpty ? Icons.key_rounded : Icons.add_circle_outline,
+            color: ctrl.text.isNotEmpty ? AppColors.green : AppColors.accent, size: 18),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
-              ctrl.text.isEmpty ? label : '${ctrl.text.substring(0, ctrl.text.length.clamp(0, 8))}...${ctrl.text.substring((ctrl.text.length - 4).clamp(0, ctrl.text.length))}',
+              ctrl.text.isEmpty
+                ? 'Tap to paste $label'
+                : '${ctrl.text.substring(0, ctrl.text.length.clamp(0, 10))}${'•' * 20}${ctrl.text.substring((ctrl.text.length - 4).clamp(0, ctrl.text.length))}',
               style: TextStyle(
-                color: ctrl.text.isEmpty ? sl.text4 : sl.text1,
+                color: ctrl.text.isEmpty ? sl.text3 : sl.text1,
                 fontSize: 11,
                 fontFamily: ctrl.text.isEmpty ? null : 'monospace',
               ),
             ),
           ),
-          Icon(Icons.edit_outlined, color: AppColors.accent, size: 18),
+          Icon(Icons.edit_outlined, color: sl.text3, size: 16),
         ]),
       ),
     );
