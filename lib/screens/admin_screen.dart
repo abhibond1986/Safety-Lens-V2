@@ -1977,12 +1977,14 @@ class _AdminScreenState extends State<AdminScreen>
         const SizedBox(height: 12),
         TextField(
           controller: _groqKeyCtrl,
-          obscureText: true,
+          enableInteractiveSelection: true,
+          autocorrect: false,
+          enableSuggestions: false,
           style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
           decoration: InputDecoration(
             labelText: 'Groq API Key (starts with gsk_)',
             labelStyle: TextStyle(color: sl.text3, fontSize: 10),
-            hintText: 'gsk_...',
+            hintText: 'Paste your API key here...',
             hintStyle: TextStyle(color: sl.text4, fontSize: 10),
             filled: true,
             fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
@@ -2067,7 +2069,9 @@ class _AdminScreenState extends State<AdminScreen>
         const SizedBox(height: 12),
         TextField(
           controller: _geminiVisionKeyCtrl,
-          obscureText: true,
+          enableInteractiveSelection: true,
+          autocorrect: false,
+          enableSuggestions: false,
           style: TextStyle(color: sl.text1, fontSize: 11, fontFamily: 'monospace'),
           decoration: InputDecoration(
             labelText: 'Gemini API Key (from AI Studio)',
