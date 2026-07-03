@@ -20,7 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class GeminiDirectVision {
   static const String _kApiKey = 'gemini_vision_api_key';
   static const String _kModel = 'gemini_vision_model';
-  static const String defaultModel = 'gemini-2.5-flash';
+  static const String defaultModel = 'gemini-2.0-flash';
 
   static SharedPreferences? _prefs;
 
@@ -59,20 +59,20 @@ class GeminiDirectVision {
     await _prefs!.setString(_kModel, model);
   }
 
-  /// Available models — ordered by accuracy (best first)
+  /// Available models — ordered by RELIABILITY (fastest + most stable first)
   static const List<Map<String, String>> availableModels = [
-    {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash (Best free, accurate)'},
-    {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro (Most accurate, free limited)'},
-    {'id': 'gemini-2.0-flash', 'name': 'Gemini 2.0 Flash (Fast, less accurate)'},
+    {'id': 'gemini-2.0-flash', 'name': 'Gemini 2.0 Flash (Most reliable, fast)'},
+    {'id': 'gemini-2.5-flash', 'name': 'Gemini 2.5 Flash (Smarter, slower)'},
+    {'id': 'gemini-2.5-pro', 'name': 'Gemini 2.5 Pro (Most accurate, limited quota)'},
   ];
 
   /// Fallback model when primary returns low confidence
   static const String _fallbackModel = 'gemini-2.5-pro';
 
-  /// ★ v31: Model fallback chain for resilience against quota limits
+  /// ★ v32: Model fallback chain — reliability order (fastest/highest-quota first)
   static const List<String> _modelFallbackChain = [
-    'gemini-2.5-flash',
     'gemini-2.0-flash',
+    'gemini-2.5-flash',
     'gemini-2.0-flash-lite',
   ];
 

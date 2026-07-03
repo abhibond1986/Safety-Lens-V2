@@ -169,11 +169,11 @@ class GeminiVision {
       // Even if not "configured" via admin, try fetching key from Apps Script
       // ══════════════════════════════════════════════════════════════════════
       if (await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: ▶ LAST RESORT — Gemini Direct with alternate model...');
+        print('GeminiVision: ▶ LAST RESORT — Gemini Direct with lite model...');
         try {
-          // Force try with 2.0-flash (lighter, higher quota)
+          // Force try with 2.0-flash-lite (ultra-fast, separate quota pool)
           final savedModel = await GeminiDirectVision.getModel();
-          await GeminiDirectVision.setModel('gemini-2.0-flash');
+          await GeminiDirectVision.setModel('gemini-2.0-flash-lite');
           final lastResult = await GeminiDirectVision.analyzeImage(bytes);
           await GeminiDirectVision.setModel(savedModel); // restore
           if (lastResult != null &&
@@ -208,9 +208,9 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    // ★ v31: Reduced timeout — 30s per attempt (allows retry within total 75s budget)
+    // ★ v32: Increased timeout — 45s per attempt (server budget is 18s, but network + cold-start adds overhead)
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 45 : 30;
+    final timeoutSec = payloadKB > 500 ? 60 : 45;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {
@@ -245,7 +245,7 @@ class GeminiVision {
             response = await client.get(
               Uri.parse(loc),
               headers: {'Accept': 'application/json'},
-            ).timeout(const Duration(seconds: 30));
+            ).timeout(const Duration(seconds: 45));
           }
         }
       } finally { client.close(); }

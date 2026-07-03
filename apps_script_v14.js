@@ -1,5 +1,10 @@
 // ============================================================
-// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v24
+// SAIL SAFETY LENS — COMPLETE APPS SCRIPT v25
+//
+// CHANGES FROM v24:
+//   ✅ Reliability-first model order: gemini-2.0-flash primary (fastest, highest quota)
+//   ✅ Reduced server budget: 18s max (was 25s — avoids client timeout)
+//   ✅ gemini-2.5-flash demoted to fallback (smarter but slower/less reliable)
 //
 // CHANGES FROM v23:
 //   ✅ Auto-repair headers: getSheet() detects missing/wrong column headers and fixes them
@@ -37,9 +42,12 @@ const SHEET_USERS     = 'users';
 const SHEET_FEEDBACK  = 'feedback';
 const SHEET_KNOWLEDGE = 'knowledge';
 
-// ★ v20: Model fallback chain — try all available free-tier models
-const GOOGLE_MODELS    = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'];
-const GOOGLE_MODEL     = 'gemini-2.5-flash';  // free tier — primary
+// ★ v25: Model fallback chain — ordered by RELIABILITY (fastest + highest quota first)
+// gemini-2.0-flash: fastest response (~3-8s), highest free quota, most stable
+// gemini-2.5-flash: smarter but slower (~8-15s), lower quota, newer = less stable
+// gemini-2.0-flash-lite: ultra-fast but less accurate
+const GOOGLE_MODELS    = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.0-flash-lite'];
+const GOOGLE_MODEL     = 'gemini-2.0-flash';  // free tier — most reliable primary
 // ★ v22: Use a DIFFERENT provider on OpenRouter so it's a true fallback
 // when Google Gemini quota is exhausted.
 // nvidia/nemotron-nano-12b-v2-vl:free — NVIDIA free vision model (NOT Google, avoids shared quota)
@@ -76,7 +84,7 @@ function doPost(e) { return handle(e); }
 function handle(e) {
   if (!e) {
     return ContentService
-      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v24', note: 'Run via web URL — not from editor' }))
+      .createTextOutput(JSON.stringify({ ok: true, time: new Date().toISOString(), version: 'v25', note: 'Run via web URL — not from editor' }))
       .setMimeType(ContentService.MimeType.JSON);
   }
   try {
@@ -116,7 +124,7 @@ function handle(e) {
         result = {
           ok: true,
           time: new Date().toISOString(),
-          version: 'v24',
+          version: 'v25',
           primaryProvider: getAiPrimary(),
           googleKeyPresent: !!getGoogleKey(),
           openrouterKeyPresent: !!getOpenRouterKey(),
@@ -1066,10 +1074,10 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
     var model = GOOGLE_MODELS[mi];
     Logger.log('[AI] Model=' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ') starting...');
 
-    // ★ v31: Reduced budget — 25s max (client retries if this fails)
+    // ★ v25: Reduced budget — 18s max (must return well within client's 30s timeout)
     var elapsed = new Date().getTime() - globalStart;
-    if (elapsed > 25000) {
-      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (25s budget)');
+    if (elapsed > 18000) {
+      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (18s budget)');
       break;
     }
 
