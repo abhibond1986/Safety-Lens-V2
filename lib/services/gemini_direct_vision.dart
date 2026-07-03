@@ -153,6 +153,7 @@ class GeminiDirectVision {
       'generationConfig': {
         'temperature': 0.3,
         'maxOutputTokens': 4096,
+        'responseMimeType': 'application/json',
       }
     };
 
@@ -346,7 +347,7 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
   "nearest_standard": "primary IS standard or \\"General safety principles\\""
 }
 
-IMPORTANT: Respond ONLY with valid JSON. No markdown fences. No text before or after the JSON.''';
+''';
   }
 
   /// Parse the AI text response into structured hazard data

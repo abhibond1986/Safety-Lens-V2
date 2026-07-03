@@ -723,7 +723,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
-    final picked = await picker.pickImage(source: source, imageQuality: 65, maxWidth: 800, maxHeight: 800);
+    final picked = await picker.pickImage(source: source, imageQuality: 80, maxWidth: 1024, maxHeight: 1024);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     setState(() {

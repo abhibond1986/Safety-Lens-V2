@@ -27,7 +27,7 @@ class GeminiVision {
 
   // ✅ FIX: Cooldown to prevent hammering exhausted server
   static DateTime? _lastExhaustionTime;
-  static const Duration _exhaustionCooldown = Duration(seconds: 20);
+  static const Duration _exhaustionCooldown = Duration(seconds: 60);
 
   // ✅ FIX: Track last successful call to apply rate-limiting between analyses
   static DateTime? _lastCallTime;
@@ -97,29 +97,7 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // ★ v28 PRIMARY: Gemini Direct Vision API (free, fast, reliable)
-      // ══════════════════════════════════════════════════════════════════════
-      if (await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: ▶ Trying Gemini Direct Vision API...');
-        try {
-          final directResult = await GeminiDirectVision.analyzeImage(bytes);
-          if (directResult != null &&
-              directResult['hazards'] != null &&
-              (directResult['hazards'] as List).isNotEmpty &&
-              directResult['error'] == null) {
-            print('GeminiVision: ✓ Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return directResult;
-          }
-          print('GeminiVision: ✗ Gemini Direct failed — trying Apps Script fallback');
-        } catch (e) {
-          print('GeminiVision: ✗ Gemini Direct exception: $e — trying Apps Script');
-        }
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // FALLBACK 1: Apps Script (server-side AI) — attempt 1
+      // ★ v33 PRIMARY: Apps Script (server-side AI, keys secured)
       // ══════════════════════════════════════════════════════════════════════
       print('GeminiVision: ▶ Sending to Apps Script (server-side AI)...');
       try {
@@ -146,8 +124,8 @@ class GeminiVision {
       // ★ v31: RETRY — wait 5s then try Apps Script again (server may recover)
       // ══════════════════════════════════════════════════════════════════════
       if (stopwatch.elapsedMilliseconds < 50000) {
-        print('GeminiVision: ▶ RETRY — waiting 5s then trying Apps Script again...');
-        await Future.delayed(const Duration(seconds: 5));
+        print('GeminiVision: ▶ RETRY — waiting 3s then trying Apps Script again...');
+        await Future.delayed(const Duration(seconds: 3));
         try {
           final retryResult = await _callAppsScript(bytes);
           if (retryResult != null &&
@@ -208,9 +186,9 @@ class GeminiVision {
   //  APPS SCRIPT CALL — all AI processing server-side, keys never exposed
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    // ★ v32: Increased timeout — 45s per attempt (server budget is 18s, but network + cold-start adds overhead)
+    // ★ v33: Unified 25s timeout (server budget is 22s + network overhead)
     final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 60 : 45;
+    const timeoutSec = 25;
     print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
 
     final requestBody = {
@@ -245,7 +223,7 @@ class GeminiVision {
             response = await client.get(
               Uri.parse(loc),
               headers: {'Accept': 'application/json'},
-            ).timeout(const Duration(seconds: 45));
+            ).timeout(const Duration(seconds: 25));
           }
         }
       } finally { client.close(); }

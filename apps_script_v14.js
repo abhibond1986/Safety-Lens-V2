@@ -3,7 +3,7 @@
 //
 // CHANGES FROM v24:
 //   ✅ Reliability-first model order: gemini-2.0-flash primary (fastest, highest quota)
-//   ✅ Reduced server budget: 18s max (was 25s — avoids client timeout)
+//   ✅ Server budget: 22s max (was 18s — gives models more time to respond)
 //   ✅ gemini-2.5-flash demoted to fallback (smarter but slower/less reliable)
 //
 // CHANGES FROM v23:
@@ -51,8 +51,7 @@ const GOOGLE_MODEL     = 'gemini-2.0-flash';  // free tier — most reliable pri
 // ★ v22: Use a DIFFERENT provider on OpenRouter so it's a true fallback
 // when Google Gemini quota is exhausted.
 // nvidia/nemotron-nano-12b-v2-vl:free — NVIDIA free vision model (NOT Google, avoids shared quota)
-const OPENROUTER_MODEL = 'nvidia/nemotron-nano-12b-v2-vl:free'; // NVIDIA free vision, fast 12B
-const OPENROUTER_MODEL_FREE2 = 'nvidia/llama-nemotron-embed-vl-1b-v2:free'; // NVIDIA free vision, lightweight 1B
+const OPENROUTER_MODEL = 'google/gemini-2.5-flash'; // best free-tier vision via OpenRouter
 const OPENROUTER_MODEL_PAID = 'anthropic/claude-sonnet-4'; // paid fallback if free fails
 
 const INCIDENT_COLS = [
@@ -104,7 +103,7 @@ function handle(e) {
     // are semi-public (require reportedBy in payload but not session tokens)
     // to support offline-first sync where token may have expired.
     var publicActions = ['health', 'ping', 'login', 'register', 'getApiKeys', 'getMasterData',
-      'gemini', 'analyzeUrl', 'diagnose',
+      'analyzeUrl', 'diagnose',
       'addIncident', 'updateIncident', 'updateIncidentStatus', 'listIncidents',
       'addFeedback', 'listFeedback', 'uploadPdfToDrive',
       'addKnowledge', 'listKnowledge', 'formatSheet', 'formatIncidentsSheet',
@@ -1074,10 +1073,10 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
     var model = GOOGLE_MODELS[mi];
     Logger.log('[AI] Model=' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ') starting...');
 
-    // ★ v25: Reduced budget — 18s max (must return well within client's 30s timeout)
+    // ★ v25: Server budget — 22s max (must return well within client's 30s timeout)
     var elapsed = new Date().getTime() - globalStart;
-    if (elapsed > 18000) {
-      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (18s budget)');
+    if (elapsed > 22000) {
+      Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (22s budget)');
       break;
     }
 
@@ -1345,7 +1344,7 @@ function callOpenRouterText(prompt) {
 
 function callOpenRouterImageUrl(imageUrl, prompt) {
   // Try free model first, then paid fallback
-  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_FREE2, OPENROUTER_MODEL_PAID];
+  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_PAID];
   for (var mi = 0; mi < models.length; mi++) {
     var modelName = models[mi];
     try {
@@ -1395,7 +1394,7 @@ function callOpenRouterImageUrl(imageUrl, prompt) {
 // ★ v22: OpenRouter with base64 data URL — tries free model then paid fallback
 function callOpenRouterImageBase64(base64, mimeType, prompt) {
   const dataUrl = 'data:' + (mimeType || 'image/jpeg') + ';base64,' + base64;
-  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_FREE2, OPENROUTER_MODEL_PAID];
+  var models = [OPENROUTER_MODEL, OPENROUTER_MODEL_PAID];
   for (var mi = 0; mi < models.length; mi++) {
     var modelName = models[mi];
     try {
@@ -1503,7 +1502,22 @@ function analyzeImage(prompt, imageBase64) {
 
   Logger.log('analyzeImage: cleaned base64 length=' + cleanB64.length);
 
-  return runProviderChain(prompt, cleanB64, 'image/jpeg', null);
+  if (cleanB64.length > 4 * 1024 * 1024) {
+    return { success: false, error: 'Image too large (max 3MB). Please reduce image quality.', hazards: [] };
+  }
+
+  // ★ v25: Response cache — avoid re-analyzing the same image
+  var cacheKey = 'img_' + Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, cleanB64.substring(0, Math.min(1000, cleanB64.length)) + cleanB64.length).map(function(b) { return (b < 0 ? b + 256 : b).toString(16); }).join('').substring(0, 16);
+  var cached = CacheService.getScriptCache().get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch(_) {}
+  }
+
+  var result = runProviderChain(prompt, cleanB64, 'image/jpeg', null);
+
+  try { CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 300); } catch(_) {} // 5 min cache
+
+  return result;
 }
 
 function analyzeImageUrl(imageUrl, prompt, fallbackBase64) {
@@ -1754,12 +1768,12 @@ function runTrueParallel(prompt, base64, mimeType, cloudUrl) {
         parsed = parseOpenRouterResponse(resp);
       }
 
-      if (parsed && parsed.hazards && parsed.hazards.length > 0) {
+      if (parsed && parsed.hazards) {
         parsed._parallelElapsed = elapsed;
         results.push(parsed);
-        Logger.log('[PARALLEL] ✓ ' + label.provider + ' returned ' + parsed.hazards.length + ' hazards');
+        Logger.log('[PARALLEL] ✓ ' + label.provider + ' returned ' + parsed.hazards.length + ' hazards, confidence=' + (parsed.confidence || 0));
       } else {
-        Logger.log('[PARALLEL] ' + label.provider + ' returned no hazards or parse failed');
+        Logger.log('[PARALLEL] ' + label.provider + ' returned no hazards array or parse failed');
       }
     } catch (parseErr) {
       Logger.log('[PARALLEL] ' + label.provider + ' parse error: ' + parseErr.toString());
