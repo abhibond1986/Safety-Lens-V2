@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "444013417941",
+    "project_id": "free-spark-6c398",
+    "storage_bucket": "free-spark-6c398.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:444013417941:android:cd743e3022e3741a80995c",
+        "android_client_info": {
+          "package_name": "com.sail.safety_lens"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBt5hsSykee7c8oYvBgLXZyctUC5ULs4tQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
