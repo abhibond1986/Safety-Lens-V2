@@ -210,9 +210,11 @@ class AdminMasterData {
       }
 
       // ★ v25: Sync API keys from backend — ensures all devices have keys
+      // Keys come from Script Properties (permanent) so they survive app redeployments
       if (remote['geminiApiKey'] is String && (remote['geminiApiKey'] as String).length > 10) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('gemini_vision_api_key', remote['geminiApiKey'] as String);
+        print('AdminMasterData: ✓ Gemini API key synced from server (${(remote['geminiApiKey'] as String).substring(0, 8)}...)');
         updated = true;
       }
       if (remote['groqApiKey'] is String && (remote['groqApiKey'] as String).length > 10) {

@@ -3,8 +3,11 @@
 //
 // CHANGES FROM v24:
 //   ✅ Reliability-first model order: gemini-2.0-flash primary (fastest, highest quota)
-//   ✅ Server budget: 22s max (was 18s — gives models more time to respond)
+//   ✅ Server budget: 22s max (gives models time to respond within client's 45s timeout)
 //   ✅ gemini-2.5-flash demoted to fallback (smarter but slower/less reliable)
+//   ✅ getMasterData() auto-injects GOOGLE_AI_KEY + GROQ_API_KEY from Script Properties
+//   ✅ Keys survive web app redeployments (never depend on localStorage alone)
+//   ✅ Added getGroqKey() for Groq Vision client-side fallback
 //
 // CHANGES FROM v23:
 //   ✅ Auto-repair headers: getSheet() detects missing/wrong column headers and fixes them
@@ -24,8 +27,9 @@
 //   ✅ Structured logging: [AI] / [PARALLEL] / [CACHE] prefixes
 //   ✅ parseGoogleResponse / parseOpenRouterResponse extracted for reuse
 //
-// REQUIRED SCRIPT PROPERTY:
+// REQUIRED SCRIPT PROPERTIES:
 //   GOOGLE_AI_KEY = AIza... (from https://aistudio.google.com/apikey)
+//   GROQ_API_KEY = gsk_... (from https://console.groq.com/keys) — for near-miss text AI
 //
 // OPTIONAL SCRIPT PROPERTY:
 //   AI_PRIMARY_PROVIDER = 'google' (default) | 'openrouter' | 'google_only'
@@ -332,6 +336,9 @@ function getGoogleKey() {
 }
 function getOpenRouterKey() {
   return PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY') || '';
+}
+function getGroqKey() {
+  return PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY') || '';
 }
 
 
@@ -1073,7 +1080,7 @@ function callGoogleDirectImage(prompt, base64, mimeType) {
     var model = GOOGLE_MODELS[mi];
     Logger.log('[AI] Model=' + model + ' (' + (mi+1) + '/' + GOOGLE_MODELS.length + ') starting...');
 
-    // ★ v25: Server budget — 22s max (must return well within client's 30s timeout)
+    // ★ v25: Server budget — 22s max (must return well within client's 45s timeout)
     var elapsed = new Date().getTime() - globalStart;
     if (elapsed > 22000) {
       Logger.log('[AI] TIMEOUT: total elapsed ' + Math.round(elapsed/1000) + 's, aborting (22s budget)');
@@ -2042,7 +2049,15 @@ function getMasterData() {
   var sheet = ss.getSheetByName(SHEET_MASTERDATA);
   if (!sheet) {
     // No master data saved yet — return empty (clients will use defaults)
-    return { ok: true, data: {}, isEmpty: true };
+    // ★ v25: Still inject API keys from Script Properties so client always has them
+    var emptyResult = {};
+    var gk = getGoogleKey();
+    if (gk) emptyResult['geminiApiKey'] = gk;
+    var ork = getOpenRouterKey();
+    if (ork) emptyResult['openRouterApiKey'] = ork;
+    var grk = getGroqKey();
+    if (grk) emptyResult['groqApiKey'] = grk;
+    return { ok: true, data: emptyResult, isEmpty: true };
   }
 
   var data = sheet.getDataRange().getValues();
@@ -2060,6 +2075,22 @@ function getMasterData() {
       }
       if (ts && ts > updatedAt) updatedAt = ts;
     }
+  }
+
+  // ★ v25: ALWAYS inject API keys from Script Properties (permanent source of truth)
+  // This ensures client gets keys on every startup even if masterdata sheet row is empty/missing
+  // and survives web app redeployments that wipe localStorage/SharedPreferences
+  var gKey = getGoogleKey();
+  if (gKey && (!result['geminiApiKey'] || result['geminiApiKey'].length < 10)) {
+    result['geminiApiKey'] = gKey;
+  }
+  var orKey = getOpenRouterKey();
+  if (orKey && (!result['openRouterApiKey'] || result['openRouterApiKey'].length < 10)) {
+    result['openRouterApiKey'] = orKey;
+  }
+  var grKey = getGroqKey();
+  if (grKey && (!result['groqApiKey'] || result['groqApiKey'].length < 10)) {
+    result['groqApiKey'] = grKey;
   }
 
   return { ok: true, data: result, updatedAt: updatedAt };
