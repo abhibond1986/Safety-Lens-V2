@@ -2282,11 +2282,19 @@ class _AIScanTabState extends State<AIScanTab> {
                           height: 1.4)),
                       if (hm['type'] != null)
                         Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            hm['type'].toString(),
-                            style: TextStyle(
-                                color: sl.text4, fontSize: 8))),
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _typeColor(hm['type'].toString()),
+                              borderRadius: BorderRadius.circular(4)),
+                            child: Text(
+                              hm['type'].toString(),
+                              style: TextStyle(
+                                  color: _typeTextColor(hm['type'].toString()),
+                                  fontSize: 7.5,
+                                  fontWeight: FontWeight.w600)))),
                     ])),
                   ])),
                 _htd(hm['description']?.toString() ?? '', sl),
@@ -2332,6 +2340,26 @@ class _AIScanTabState extends State<AIScanTab> {
       case 'MEDIUM':   return AppColors.cyan;
       case 'LOW':      return AppColors.green;
       default:         return AppColors.amber;
+    }
+  }
+
+  /// Background color for hazard type badge
+  Color _typeColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'line of fire': return const Color(0xFFFFE0E0); // soft red
+      case 'unsafe act':   return const Color(0xFFFFF3E0); // soft orange
+      case 'unsafe condition': return const Color(0xFFE3F2FD); // soft blue
+      default: return const Color(0xFFF3E5F5); // soft purple
+    }
+  }
+
+  /// Text color for hazard type badge
+  Color _typeTextColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'line of fire': return const Color(0xFFC62828); // dark red
+      case 'unsafe act':   return const Color(0xFFE65100); // dark orange
+      case 'unsafe condition': return const Color(0xFF1565C0); // dark blue
+      default: return const Color(0xFF6A1B9A); // dark purple
     }
   }
 
