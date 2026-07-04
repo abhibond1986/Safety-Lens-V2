@@ -29,10 +29,10 @@ class LocalAI {
       'S29: Lifting machines/cranes — SWL displayed, 6-monthly inspection\n'
       'S30: Revolving machinery — max safe speed must be marked\n'
       'S31: Pressure plant — SWP marked, relief valves functional\n'
-      'S32(a): Floors/stairs/gangways — sound, unobstructed, handrails required\n'
-      'S32(b): Safe means of access to every place of work\n'
-      'S32(c): WORKING AT HEIGHT — fencing OR harness MUST be provided. '
-      'ALWAYS cite S32(c) for height. NEVER S36 for height.\n'
+      'S32: Floors/stairs/gangways — sound, unobstructed, handrails required\n'
+      'S32: Safe means of access to every place of work\n'
+      'S32: WORKING AT HEIGHT — fencing OR harness MUST be provided. '
+      'ALWAYS cite S32 for height. NEVER S36 for height.\n'
       'S33: Pits, floor openings — securely covered or fenced\n'
       'S34: Excessive weights — Men max 55 kg, Women max 30 kg\n'
       'S35: Eye protection — goggles/shields mandatory where sparks, chemicals, molten metal\n'
@@ -46,7 +46,7 @@ class LocalAI {
 
     // ── SECTION 32(c) — HEIGHT ─────────────────────────────────────
     'working at height|wah|height|fall|harness|lanyard|scaffold|guardrail|s32|section 32':
-      'WORKING AT HEIGHT — SG/02 + FA S32(c):\n\n'
+      'WORKING AT HEIGHT — SG/02 + FA S32:\n\n'
       '⚠️ Applicable above 1.8 metres (IS 14489 Clause 4)\n\n'
       'MANDATORY EQUIPMENT:\n'
       '• Full body harness — IS 3521:1999; anchor min 15 kN\n'
@@ -57,7 +57,7 @@ class LocalAI {
       'PTW: Work at Height permit mandatory\n'
       'NEVER work at height during: wind >45 km/h, lightning, rain\n'
       '100% tie-off: always connected to anchor — no exceptions\n\n'
-      'Correct regulation: FA 1948 S32(c), IS 3521:1999, IS 4912:1978\n'
+      'Correct regulation: FA 1948 S32, IS 3521:1999, IS 4912:1978\n'
       'WRONG: S36 is for fumes/confined space only\n\n'
       'Ref: SG/02 Ministry of Steel, IS 14489:2018 Cl.4',
 
@@ -135,7 +135,7 @@ class LocalAI {
       '• Multiple energy sources = ALL must be isolated\n'
       '• Try Out confirms isolation before work begins — mandatory step\n'
       '• Green/Red lighting system in some SAIL plants for fit-to-work confirmation\n\n'
-      'Ref: SG/22, IS 14489:2018 Cl.7, CEA Reg 21',
+      'Ref: SG/22, IS 14489:2018 Cl.7, CEA Regulations 2010, Reg 46',
 
     // ── GAS CYLINDERS ──────────────────────────────────────────────
     'gas cylinder|cylinder|oxygen cylinder|acetylene|lpg cylinder|cylinder colour|cylinder colour code|smpv':
@@ -838,7 +838,7 @@ class LocalAI {
     } else if (q.contains('electric') || q.contains('loto') || q.contains('shock') || q.contains('live') || q.contains('panel')) {
       wsa   = '12. Inadequate isolation';
       root  = 'LOTOTO procedure not followed; energy isolation incomplete; danger notice not displayed';
-      fix   = 'Apply LOTOTO immediately; test for dead; display DANGER notice per CEA Reg 20; authorised personnel only';
+      fix   = 'Apply LOTOTO immediately; test for dead; display DANGER notice per Indian Electricity Rules 1956, Rule 50; authorised personnel only';
       title = 'Electrical Safety Violation — Inadequate Isolation';
     } else if (q.contains('fall') || q.contains('height') || q.contains('scaffold') || q.contains('ladder') || q.contains('guardrail')) {
       wsa   = '11. Unauthorized operation';
@@ -907,8 +907,8 @@ class LocalAI {
            'desc': 'Worker without ISI-marked helmet — FA 1948 S35, IS 2925:1984',
            'ref': 'FA 1948 S35 · IS 2925:1984 · SG/18'},
           {'name': 'Slip Hazard — Oil Spill', 'severity': 'MEDIUM',
-           'desc': 'Liquid spillage on walkway — FA 1948 S32(a), IS 14489 Cl.9',
-           'ref': 'FA 1948 S32(a) · IS 14489:2018 Cl.9 · SG/18'},
+           'desc': 'Liquid spillage on walkway — FA 1948 S32, IS 14489 Cl.9',
+           'ref': 'FA 1948 S32 · IS 14489:2018 Cl.9 · SG/18'},
         ],
         'rules': ['FA 1948 S35 — PPE mandatory in hazardous zones',
                   'IS 2925:1984 — Safety helmets standard',
@@ -924,17 +924,17 @@ class LocalAI {
       {
         'riskScore': 88, 'severity': 'CRITICAL',
         'hazardType': 'Working at Height — Fall Risk',
-        'summary': '⚠️ OFFLINE MODE: Showing example scenario. This is NOT analysis of your photo. AI requires internet connection. Example: Worker >1.8m without harness - FA 1948 S32(c) violation.',
+        'summary': '⚠️ OFFLINE MODE: Showing example scenario. This is NOT analysis of your photo. AI requires internet connection. Example: Worker >1.8m without harness - FA 1948 S32 violation.',
         'confidence': 0,  // Set to 0 to indicate this is example data
         'hazards': [
           {'name': 'No Fall Arrest at Height', 'severity': 'CRITICAL',
-           'desc': 'Worker >1.8m without IS 3521 harness — FA 1948 S32(c)',
-           'ref': 'FA 1948 S32(c) · IS 3521:1999 · IS 4912:1978 · SG/02'},
+           'desc': 'Worker >1.8m without IS 3521 harness — FA 1948 S32',
+           'ref': 'FA 1948 S32 · IS 3521:1999 · IS 4912:1978 · SG/02'},
           {'name': 'Unguarded Edge', 'severity': 'HIGH',
            'desc': 'Open edge — no guardrail or toe board — FA S33, IS 4912',
            'ref': 'FA 1948 S33 · IS 4912:1978 · SG/02'},
         ],
-        'rules': ['FA 1948 S32(c) — Fall protection at height (NOT S36)',
+        'rules': ['FA 1948 S32 — Fall protection at height (NOT S36)',
                   'IS 3521:1999 — Full body harness; anchor min 15kN',
                   'SG/02 — WAH permit mandatory; 100% tie-off rule'],
         'corrective': ['Immediate stop-work; evacuate worker from height',

@@ -9,6 +9,7 @@
 import 'dart:io' show File;
 import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
+import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1488,6 +1489,8 @@ class _AIScanTabState extends State<AIScanTab> {
       'confidence':      _result!['confidence']   ?? 0,
       'imageBase64':     _imageBytes != null
                          ? base64Encode(_imageBytes!) : null,
+      'thumbnailBase64': _imageBytes != null
+                         ? _generateThumbnail(_imageBytes!) : null,
     };
 
     // ✅ Add GPS location data if available
@@ -1500,6 +1503,21 @@ class _AIScanTabState extends State<AIScanTab> {
     }
 
     return incident;
+  }
+
+  /// ★ Generate a tiny thumbnail (60px wide) for the incident log card
+  /// Stored as base64 JPEG — typically 2-4KB (safe for localStorage)
+  String? _generateThumbnail(Uint8List imageBytes) {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return null;
+      final thumb = img.copyResize(decoded, width: 60);
+      final jpgBytes = img.encodeJpg(thumb, quality: 50);
+      return base64Encode(jpgBytes);
+    } catch (e) {
+      print('Thumbnail generation failed: $e');
+      return null;
+    }
   }
 
   Future<void> _uploadPdfBackground(

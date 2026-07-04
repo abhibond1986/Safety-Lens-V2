@@ -11,6 +11,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
+import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -653,6 +654,20 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     setState(() => _aiSuggestion = null);
   }
 
+  /// ★ Generate a tiny thumbnail (60px wide) for the incident log card
+  String? _generateThumbnail(Uint8List imageBytes) {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return null;
+      final thumb = img.copyResize(decoded, width: 60);
+      final jpgBytes = img.encodeJpg(thumb, quality: 50);
+      return base64Encode(jpgBytes);
+    } catch (e) {
+      print('Thumbnail generation failed: $e');
+      return null;
+    }
+  }
+
   Future<void> _uploadPdfBackground(Map<String, dynamic> incident, Map<String, dynamic>? user) async {
     try {
       final pdfBytes = await PdfExport.generateIncidentReportBytes(
@@ -1053,6 +1068,7 @@ ${_immediateAction.text.trim()}
         'reportedByPno':   user?['pno']  ?? '',
         'date':            DateTime.now().toIso8601String(),
         'imageBase64':     _imageBytes != null ? base64Encode(_imageBytes!) : null,
+        'thumbnailBase64': _imageBytes != null ? _generateThumbnail(_imageBytes!) : null,
       };
 
       // Add GPS data if available

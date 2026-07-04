@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../main.dart' show AppColors, SL;
@@ -296,7 +297,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  INCIDENT CARD
+  //  INCIDENT CARD — with type column + thumbnail
   // ═══════════════════════════════════════════════════════════════
   Widget _incidentCard(SL sl, Map<String, dynamic> inc) {
     final sev = inc['severity']?.toString().toUpperCase() ?? 'MEDIUM';
@@ -322,6 +323,15 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
     final date = inc['date']?.toString() ?? '';
     final dateStr = date.length >= 10 ? date.substring(0, 10) : date;
 
+    // ★ Type styling
+    final isAiScan = type == 'AI_SCAN';
+    final typeColor = isAiScan ? AppColors.accent : AppColors.amber;
+    final typeLabel = isAiScan ? 'AI Scan' : 'Near Miss';
+    final typeIcon = isAiScan ? Icons.image_search_rounded : Icons.warning_amber_rounded;
+
+    // ★ Thumbnail — check for stored thumbnail or imageBase64
+    final thumbnail = inc['thumbnailBase64']?.toString() ?? '';
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: GestureDetector(
@@ -340,82 +350,111 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
             ),
           ),
           padding: const EdgeInsets.all(12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // Title row
-            Row(children: [
-              Expanded(child: Text(
-                inc['title']?.toString() ?? 'Untitled',
-                style: TextStyle(color: sl.text1, fontSize: 13,
-                    fontWeight: FontWeight.w700),
-                maxLines: 1, overflow: TextOverflow.ellipsis,
-              )),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: statusColor.withOpacity(0.3)),
-                ),
-                child: Text(status, style: TextStyle(
-                    color: statusColor, fontSize: 8, fontWeight: FontWeight.w800)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // ★ LEFT COLUMN: Thumbnail / Type icon
+            Container(
+              width: 52,
+              height: 52,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: typeColor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: typeColor.withOpacity(0.2)),
               ),
-            ]),
-            const SizedBox(height: 6),
-            // Info row
-            Row(children: [
-              Icon(Icons.factory_outlined, color: sl.text4, size: 11),
-              const SizedBox(width: 3),
-              Flexible(child: Text(
-                inc['plant']?.toString() ?? '—',
-                style: TextStyle(color: sl.text3, fontSize: 10),
-                overflow: TextOverflow.ellipsis,
-              )),
-              const SizedBox(width: 8),
-              Icon(Icons.calendar_today_outlined, color: sl.text4, size: 10),
-              const SizedBox(width: 3),
-              Text(dateStr, style: TextStyle(color: sl.text3, fontSize: 10)),
-              const Spacer(),
-              // Severity badge
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: sevColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(4)),
-                child: Text(sev, style: TextStyle(
-                    color: sevColor, fontSize: 8, fontWeight: FontWeight.w800)),
-              ),
-            ]),
-            const SizedBox(height: 4),
-            // Bottom row: category + type + reported by
-            Row(children: [
-              if ((inc['wsaCategory']?.toString() ?? '').isNotEmpty) ...[
-                Icon(Icons.label_outline, color: sl.text4, size: 10),
-                const SizedBox(width: 3),
-                Flexible(child: Text(inc['wsaCategory'].toString(),
-                    style: TextStyle(color: sl.text4, fontSize: 9),
-                    overflow: TextOverflow.ellipsis)),
-                const SizedBox(width: 8),
-              ],
-              if (type.isNotEmpty)
+              clipBehavior: Clip.antiAlias,
+              child: thumbnail.isNotEmpty
+                  ? Image.memory(
+                      base64Decode(thumbnail),
+                      fit: BoxFit.cover,
+                      width: 52, height: 52,
+                      errorBuilder: (_, __, ___) => _typeIconWidget(typeIcon, typeColor),
+                    )
+                  : _typeIconWidget(typeIcon, typeColor),
+            ),
+            // ★ RIGHT COLUMN: Details
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Title + Status
+              Row(children: [
+                Expanded(child: Text(
+                  inc['title']?.toString() ?? 'Untitled',
+                  style: TextStyle(color: sl.text1, fontSize: 13,
+                      fontWeight: FontWeight.w700),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                )),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                   decoration: BoxDecoration(
-                    color: (type == 'AI_SCAN' ? AppColors.accent : AppColors.amber)
-                        .withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(3)),
-                  child: Text(type == 'AI_SCAN' ? 'AI' : 'NM',
-                      style: TextStyle(
-                          color: type == 'AI_SCAN' ? AppColors.accent : AppColors.amber,
-                          fontSize: 8, fontWeight: FontWeight.w700)),
+                    color: statusColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: statusColor.withOpacity(0.3)),
+                  ),
+                  child: Text(status, style: TextStyle(
+                      color: statusColor, fontSize: 8, fontWeight: FontWeight.w800)),
                 ),
-              const Spacer(),
-              if ((inc['reportedBy']?.toString() ?? '').isNotEmpty)
-                Text(inc['reportedBy'].toString(),
-                    style: TextStyle(color: sl.text4, fontSize: 9)),
-            ]),
+              ]),
+              const SizedBox(height: 5),
+              // Info row: plant, date, severity
+              Row(children: [
+                Icon(Icons.factory_outlined, color: sl.text4, size: 11),
+                const SizedBox(width: 3),
+                Flexible(child: Text(
+                  inc['plant']?.toString() ?? '—',
+                  style: TextStyle(color: sl.text3, fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                )),
+                const SizedBox(width: 8),
+                Icon(Icons.calendar_today_outlined, color: sl.text4, size: 10),
+                const SizedBox(width: 3),
+                Text(dateStr, style: TextStyle(color: sl.text3, fontSize: 10)),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: sevColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(4)),
+                  child: Text(sev, style: TextStyle(
+                      color: sevColor, fontSize: 8, fontWeight: FontWeight.w800)),
+                ),
+              ]),
+              const SizedBox(height: 5),
+              // Bottom row: category + type badge + reported by
+              Row(children: [
+                if ((inc['wsaCategory']?.toString() ?? '').isNotEmpty) ...[
+                  Icon(Icons.label_outline, color: sl.text4, size: 10),
+                  const SizedBox(width: 3),
+                  Flexible(child: Text(inc['wsaCategory'].toString(),
+                      style: TextStyle(color: sl.text4, fontSize: 9),
+                      overflow: TextOverflow.ellipsis)),
+                  const SizedBox(width: 8),
+                ],
+                // ★ Type badge (more prominent)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: typeColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: typeColor.withOpacity(0.3)),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(typeIcon, color: typeColor, size: 9),
+                    const SizedBox(width: 3),
+                    Text(typeLabel, style: TextStyle(
+                        color: typeColor, fontSize: 8, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+                const Spacer(),
+                if ((inc['reportedBy']?.toString() ?? '').isNotEmpty)
+                  Text(inc['reportedBy'].toString(),
+                      style: TextStyle(color: sl.text4, fontSize: 9)),
+              ]),
+            ])),
           ]),
         ),
       ),
     );
+  }
+
+  Widget _typeIconWidget(IconData icon, Color color) {
+    return Center(child: Icon(icon, color: color.withOpacity(0.5), size: 24));
   }
 }

@@ -435,7 +435,7 @@ CORRECTIVE ACTION for BSP:
     {
       'title': 'Chhattisgarh Factories Rules — Working at height & scaffolding',
       'source': 'CG Factories Rules, Rule 64',
-      'content': '''APPLIES TO BSP. Citation under FA 1948 S32(c).
+      'content': '''APPLIES TO BSP. Citation under FA 1948 S32.
 
 Rule 64 — Safe means of access, work at heights, and scaffolding:
 
@@ -822,7 +822,7 @@ CORRECTIVE ACTION:
       'content': '''CRITICAL CITATION RULES:
 
 WORKING AT HEIGHT (any fall risk above 1.8 m / 6 ft):
-→ ALWAYS cite FA 1948 S32(c) + IS 3521:1999 Part 1/2/3
+→ ALWAYS cite FA 1948 S32 + IS 3521:1999 Part 1/2/3
 → NEVER cite S36 (S36 is for confined space/dangerous fumes ONLY)
 → Add state-specific: CG Rule 64 / Odisha equivalent / TN equivalent
 

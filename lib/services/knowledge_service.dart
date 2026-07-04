@@ -25,13 +25,14 @@ REGULATORY FRAMEWORK:
 • Factories Act 1948 — Chapter IV Safety (S21–S41), Chapter IVA Hazardous Processes (S41A–H)
 • IS 14489:2018 — Occupational Health & Safety Code of Practice for Iron & Steel Industry
 • SMPV Rules 2016 — Static & Mobile Pressure Vessels (Rules 10–22)
-• CEA Regulations 2023 — Electrical Safety (Reg 20, 21, 39, 43, 46)
+• CEA Regulations 2010 — Electrical Safety (Reg 36, 44, 45, 46, 47)
+• Indian Electricity Rules 1956 — (Rule 29, 44, 50, 61, 64)
 • Ministry of Steel Safety Guidelines SG/01–SG/41 (2019–2024)
 • ILO Code of Practice: Safety & Health in Iron & Steel Industry 2005
 • BIS PPE Standards: IS 2925 (helmets), IS 3521 (harness), IS 4912 (goggles), IS 5852 (boots), IS 5983 (gloves), IS 6994 (ear muffs), IS 9167 (respirators)
 
 CRITICAL SAFETY RULES — NEVER GET WRONG:
-1. Working at height (>1.8m) → FA 1948 S32(c) + IS 3521:1999. Full body harness mandatory. Anchor min 15kN.
+1. Working at height (>1.8m) → FA 1948 S32 + IS 3521:1999. Full body harness mandatory. Anchor min 15kN.
 2. S36 = Confined space / dangerous fumes ONLY (NOT height).
 3. O₂ + Flammable gas cylinders: minimum 6m separation (SMPV Rule 14 Table-3).
 4. Cylinder colours: O₂=Black/White shoulder, C₂H₂=Maroon, LPG=Silver, N₂=Grey/Black, CO₂=Grey.
