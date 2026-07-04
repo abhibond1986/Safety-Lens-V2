@@ -29,8 +29,6 @@ class _LanguageFabState extends State<LanguageFab>
   static const _langs = [
     {'code': 'en', 'label': 'EN', 'name': 'English'},
     {'code': 'hi', 'label': 'HI', 'name': 'Hindi'},
-    {'code': 'bn', 'label': 'BN', 'name': 'Bengali'},
-    {'code': 'or', 'label': 'OR', 'name': 'Odia'},
   ];
 
   @override

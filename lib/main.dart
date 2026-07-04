@@ -536,15 +536,11 @@ class LocaleService extends ChangeNotifier {
   static const List<Locale> supportedLocales = [
     Locale('en'),
     Locale('hi'),
-    Locale('bn'),
-    Locale('or'),
   ];
 
   static const List<Map<String, String>> languages = [
     {'code': 'en', 'name': 'English', 'native': 'English', 'flag': '🇬🇧'},
     {'code': 'hi', 'name': 'Hindi',   'native': 'हिंदी',    'flag': '🇮🇳'},
-    {'code': 'bn', 'name': 'Bengali', 'native': 'বাংলা',    'flag': '🇮🇳'},
-    {'code': 'or', 'name': 'Odia',    'native': 'ଓଡ଼ିଆ',   'flag': '🇮🇳'},
   ];
 }
 
@@ -742,8 +738,6 @@ class AppLocalizations {
   String _t(String key) {
     final lang = locale.languageCode;
     if (lang == 'hi') return _hi[key] ?? _en[key] ?? key;
-    if (lang == 'bn') return _bn[key] ?? _en[key] ?? key;
-    if (lang == 'or') return _or[key] ?? _en[key] ?? key;
     return _en[key] ?? key;
   }
 
@@ -922,176 +916,6 @@ class AppLocalizations {
     'reset': 'रीसेट', 'search': 'खोजें', 'noData': 'कोई डेटा उपलब्ध नहीं',
     'error': 'त्रुटि', 'success': 'सफल', 'warning': 'चेतावनी', 'info': 'जानकारी',
   };
-
-  // ── Bengali ───────────────────────────────────────────────────────────
-  static const Map<String, String> _bn = {
-    'appName': 'SAIL সেফটি লেন্স',
-    'selectLanguage': 'ভাষা নির্বাচন করুন', 'languageSaved': 'ভাষা আপডেট হয়েছে',
-    'login': 'লগইন', 'register': 'নিবন্ধন', 'logout': 'লগআউট',
-    'username': 'ব্যবহারকারীর নাম', 'password': 'পাসওয়ার্ড', 'name': 'নাম',
-    'designation': 'পদবি', 'plant': 'প্ল্যান্ট / ইউনিট', 'employeeNo': 'কর্মচারী নম্বর',
-    'loginBtn': 'লগইন করুন', 'registerBtn': 'অ্যাকাউন্ট তৈরি করুন',
-    'loginFailed': 'ভুল তথ্য', 'fillAllFields': 'সমস্ত ক্ষেত্র পূরণ করুন',
-    'dashboard': 'ড্যাশবোর্ড', 'safetyScore': 'নিরাপত্তা স্কোর',
-    'totalIncidents': 'মোট ঘটনা', 'openIncidents': 'খোলা',
-    'criticalIncidents': 'গুরুতর', 'aiScans': 'AI স্ক্যান',
-    'quickActions': 'দ্রুত ক্রিয়া', 'reportNearMiss': 'নিয়ার মিস রিপোর্ট করুন',
-    'startAiScan': 'AI স্ক্যান শুরু করুন', 'viewReports': 'রিপোর্ট দেখুন',
-    'askAi': 'AI কে জিজ্ঞেস করুন', 'plantSummary': 'প্ল্যান্ট সারসংক্ষেপ',
-    'recentActivity': 'সাম্প্রতিক কার্যক্রম', 'noRecentActivity': 'কোনো সাম্প্রতিক কার্যক্রম নেই',
-    'good': 'ভালো', 'needsAttention': 'মনোযোগ প্রয়োজন', 'critical': 'গুরুতর',
-    'nearMissTitle': 'নিয়ার মিস রিপোর্ট',
-    'nearMissSubtitle': 'অনিরাপদ পরিস্থিতি বা নিয়ার মিস ঘটনার রিপোর্ট করুন',
-    'incidentDate': 'ঘটনার তারিখ', 'incidentTime': 'ঘটনার সময়',
-    'location': 'স্থান / এলাকা', 'department': 'বিভাগ',
-    'incidentDescription': 'ঘটনার বিবরণ',
-    'incidentDescHint': 'কী হয়েছিল, কী দেখেছিলেন বা কী ভুল হতে পারত তা বর্ণনা করুন...',
-    'immediateAction': 'তাৎক্ষণিক ব্যবস্থা',
-    'immediateActionHint': 'ঘটনার পরপরই কী করা হয়েছিল?',
-    'injuryOccurred': 'কোনো আঘাত হয়েছে কি?', 'yes': 'হ্যাঁ', 'no': 'না',
-    'injuryDetails': 'আঘাতের বিবরণ', 'injuryDetailsHint': 'আঘাতের ধরন ও মাত্রা বর্ণনা করুন...',
-    'witnesses': 'সাক্ষী (যদি থাকে)', 'witnessesHint': 'উপস্থিত সাক্ষীদের নাম...',
-    'submitReport': 'রিপোর্ট জমা দিন', 'reportSubmitted': 'রিপোর্ট সফলভাবে জমা হয়েছে',
-    'reportFailed': 'রিপোর্ট জমা হয়নি। আবার চেষ্টা করুন।',
-    'voiceInput': 'বলতে মাইক চাপুন', 'listening': 'শুনছি...', 'tapToSpeak': 'বলতে চাপুন',
-    'severityLevel': 'গুরুত্বের মাত্রা', 'selectSeverity': 'গুরুত্ব নির্বাচন করুন',
-    'wsaCause': 'WSA কারণ বিভাগ', 'selectWsa': 'WSA কারণ নির্বাচন করুন',
-    'attachPhoto': 'ছবি সংযুক্ত করুন', 'photoAttached': 'ছবি সংযুক্ত হয়েছে',
-    'rootCause': 'মূল কারণ', 'rootCauseHint': 'মূল কারণ কী ছিল?',
-    'correctiveAction': 'সংশোধনমূলক ব্যবস্থা',
-    'correctiveActionHint': 'পুনরাবৃত্তি রোধে কী পদক্ষেপ নেওয়া উচিত?',
-    'aiScanTitle': 'AI হ্যাজার্ড স্ক্যান',
-    'aiScanSubtitle': 'AI বিশ্লেষণের জন্য ছবি তুলুন বা আপলোড করুন',
-    'takePhoto': 'ছবি তুলুন', 'uploadPhoto': 'গ্যালারি থেকে আপলোড করুন',
-    'analysing': 'ছবি বিশ্লেষণ হচ্ছে...', 'analysisComplete': 'বিশ্লেষণ সম্পন্ন',
-    'hazardsFound': 'বিপদ পাওয়া গেছে', 'noHazardsFound': 'কোনো বিপদ পাওয়া যায়নি',
-    'riskScore': 'ঝুঁকি স্কোর', 'confidence': 'আস্থা', 'hazardType': 'বিপদের ধরন',
-    'summary': 'সারসংক্ষেপ', 'hazards': 'বিপদসমূহ',
-    'correctiveActions': 'সংশোধনমূলক ব্যবস্থা', 'preventiveActions': 'প্রতিরোধমূলক ব্যবস্থা',
-    'regulations': 'প্রযোজ্য বিধিমালা', 'exportPdf': 'PDF রিপোর্ট রপ্তানি করুন',
-    'shareReport': 'রিপোর্ট শেয়ার করুন', 'scanAnother': 'আরেকটি স্ক্যান করুন',
-    'reportsTitle': 'ঘটনার রিপোর্ট', 'filterAll': 'সব',
-    'filterCritical': 'গুরুতর', 'filterHigh': 'উচ্চ',
-    'filterMedium': 'মাঝারি', 'filterLow': 'কম',
-    'filterOpen': 'খোলা', 'filterClosed': 'বন্ধ',
-    'noReports': 'কোনো রিপোর্ট পাওয়া যায়নি', 'reportDate': 'তারিখ',
-    'reportSeverity': 'গুরুত্ব', 'reportStatus': 'অবস্থা', 'reportType': 'ধরন',
-    'viewDetail': 'বিস্তারিত দেখুন', 'markClosed': 'বন্ধ হিসেবে চিহ্নিত করুন',
-    'deleteReport': 'মুছুন', 'confirmDelete': 'মুছে ফেলার নিশ্চিত করুন',
-    'deleteWarning': 'এই ক্রিয়াটি পূর্বাবস্থায় ফেরানো যাবে না।',
-    'cancel': 'বাতিল', 'confirm': 'নিশ্চিত করুন',
-    'chatTitle': 'AI কে জিজ্ঞেস করুন', 'chatHint': 'নিরাপত্তা বিষয়ে জিজ্ঞেস করুন...',
-    'chatSend': 'পাঠান',
-    'chatWelcome': 'নমস্কার! PPE, LOTO, উচ্চতায় কাজ সম্পর্কে জিজ্ঞেস করুন।',
-    'chatOffline': 'অফলাইন মোড — স্থানীয় জ্ঞানভান্ডার',
-    'chatThinking': 'ভাবছি...', 'chatNoAnswer': 'PPE, LOTO, নিরাপত্তা বিষয় জিজ্ঞেস করুন।',
-    'settingsTitle': 'সেটিংস', 'settingsBackend': 'ব্যাকএন্ড URL',
-    'settingsSyncNow': 'এখন সিঙ্ক করুন', 'settingsTheme': 'থিম',
-    'settingsLanguage': 'ভাষা', 'settingsDark': 'ডার্ক', 'settingsLight': 'লাইট',
-    'settingsVersion': 'সংস্করণ', 'settingsSyncSuccess': 'সিঙ্ক সম্পন্ন', 'settingsSyncFail': 'সিঙ্ক ব্যর্থ',
-    'adminTitle': 'অ্যাডমিন কন্ট্রোল প্যানেল', 'adminKnowledge': 'জ্ঞানভান্ডার',
-    'adminUsers': 'ব্যবহারকারী', 'adminAnalytics': 'বিশ্লেষণ',
-    'adminAddText': 'টেক্সট এন্ট্রি যোগ করুন', 'adminSyncCloud': 'ক্লাউড থেকে সিঙ্ক করুন',
-    'adminEbook': 'ই-বুক → লোকাল AI KB', 'adminEbookSubtitle': 'KB তৈরির জন্য PDF আপলোড করুন',
-    'adminSelectPdf': 'PDF ই-বুক বেছে নিতে চাপুন...',
-    'adminGenerateKb': 'KB তৈরি করুন', 'adminKbGenerated': 'KB কোড তৈরি!',
-    'adminCopyCode': 'কোড কপি করুন', 'adminCopied': 'কপি হয়েছে!',
-    'adminProcessing': 'প্রক্রিয়া হচ্ছে...', 'adminNoDocuments': 'এখনো কোনো নথি নেই',
-    'adminNoUsers': 'কোনো নিবন্ধিত ব্যবহারকারী নেই',
-    'severity_critical': 'গুরুতর', 'severity_high': 'উচ্চ',
-    'severity_medium': 'মাঝারি', 'severity_low': 'কম',
-    'status_open': 'খোলা', 'status_closed': 'বন্ধ', 'status_inprogress': 'চলমান',
-    'loading': 'লোড হচ্ছে...', 'retry': 'আবার চেষ্টা করুন', 'save': 'সংরক্ষণ করুন',
-    'update': 'আপডেট করুন', 'delete': 'মুছুন', 'edit': 'সম্পাদনা করুন',
-    'close': 'বন্ধ করুন', 'back': 'পেছনে', 'next': 'পরবর্তী', 'submit': 'জমা দিন',
-    'reset': 'রিসেট', 'search': 'খুঁজুন', 'noData': 'কোনো ডেটা পাওয়া যায়নি',
-    'error': 'ত্রুটি', 'success': 'সফল', 'warning': 'সতর্কতা', 'info': 'তথ্য',
-  };
-
-  // ── Odia ──────────────────────────────────────────────────────────────
-  static const Map<String, String> _or = {
-    'appName': 'SAIL ସେଫ୍ଟି ଲେନ୍ସ',
-    'selectLanguage': 'ଭାଷା ବାଛନ୍ତୁ', 'languageSaved': 'ଭାଷା ଅଦ୍ୟତନ ହୋଇଛି',
-    'login': 'ଲଗଇନ', 'register': 'ପଞ୍ଜୀକରଣ', 'logout': 'ଲଗଆଉଟ',
-    'username': 'ଉପଯୋଗକର୍ତ୍ତା ନାମ', 'password': 'ପାସୱାର୍ଡ', 'name': 'ନାମ',
-    'designation': 'ପଦବୀ', 'plant': 'ପ୍ଲାଣ୍ଟ / ୟୁନିଟ', 'employeeNo': 'କର୍ମଚାରୀ ନଂ',
-    'loginBtn': 'ଲଗଇନ କରନ୍ତୁ', 'registerBtn': 'ଖାତା ତିଆରି କରନ୍ତୁ',
-    'loginFailed': 'ଭୁଲ ପ୍ରମାଣପତ୍ର', 'fillAllFields': 'ଦୟାକରି ସମସ୍ତ କ୍ଷେତ୍ର ପୂରଣ କରନ୍ତୁ',
-    'dashboard': 'ଡ୍ୟାଶବୋର୍ଡ', 'safetyScore': 'ସୁରକ୍ଷା ସ୍କୋର',
-    'totalIncidents': 'ମୋଟ ଘଟଣା', 'openIncidents': 'ଖୋଲା',
-    'criticalIncidents': 'ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ', 'aiScans': 'AI ସ୍କ୍ୟାନ',
-    'quickActions': 'ତ୍ୱରିତ କ୍ରିୟା', 'reportNearMiss': 'ନିୟର ମିସ ରିପୋର୍ଟ କରନ୍ତୁ',
-    'startAiScan': 'AI ସ୍କ୍ୟାନ ଆରମ୍ଭ କରନ୍ତୁ', 'viewReports': 'ରିପୋର୍ଟ ଦେଖନ୍ତୁ',
-    'askAi': 'AI କୁ ପଚାରନ୍ତୁ', 'plantSummary': 'ପ୍ଲାଣ୍ଟ ସାରାଂଶ',
-    'recentActivity': 'ସଦ୍ୟତନ କାର୍ଯ୍ୟକଳାପ', 'noRecentActivity': 'କୌଣସି ସଦ୍ୟତନ କାର୍ଯ୍ୟକଳାପ ନାହିଁ',
-    'good': 'ଭଲ', 'needsAttention': 'ଧ୍ୟାନ ଦରକାର', 'critical': 'ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ',
-    'nearMissTitle': 'ନିୟର ମିସ ରିପୋର୍ଟ',
-    'nearMissSubtitle': 'ଅସୁରକ୍ଷିତ ଅବସ୍ଥା ବା ନିୟର ମିସ ଘଟଣା ରିପୋର୍ଟ କରନ୍ତୁ',
-    'incidentDate': 'ଘଟଣାର ତାରିଖ', 'incidentTime': 'ଘଟଣାର ସମୟ',
-    'location': 'ସ୍ଥାନ / ଏଲାକା', 'department': 'ବିଭାଗ',
-    'incidentDescription': 'ଘଟଣାର ବିବରଣୀ',
-    'incidentDescHint': 'କ\'ଣ ହୋଇଥିଲା, କ\'ଣ ଦେଖିଥିଲେ ବା କ\'ଣ ଭୁଲ ହୋଇ ପାରିଥାନ୍ତା ବର୍ଣ୍ଣନା କରନ୍ତୁ...',
-    'immediateAction': 'ତୁରନ୍ତ ଗ୍ରହଣ କରାଯାଇଥିବା ପଦକ୍ଷେପ',
-    'immediateActionHint': 'ଘଟଣା ପରେ ତୁରନ୍ତ କ\'ଣ କରାଯାଇଥିଲା?',
-    'injuryOccurred': 'କୌଣସି ଆଘାତ ଲାଗିଛି କି?', 'yes': 'ହଁ', 'no': 'ନା',
-    'injuryDetails': 'ଆଘାତ ବିବରଣୀ', 'injuryDetailsHint': 'ଆଘାତର ପ୍ରକୃତି ଓ ମାତ୍ରା ବର୍ଣ୍ଣନା କରନ୍ତୁ...',
-    'witnesses': 'ସାକ୍ଷୀ (ଯଦି ଥାଏ)', 'witnessesHint': 'ଉପସ୍ଥିତ ସାକ୍ଷୀଙ୍କ ନାମ...',
-    'submitReport': 'ରିପୋର୍ଟ ଦାଖଲ କରନ୍ତୁ', 'reportSubmitted': 'ରିପୋର୍ଟ ସଫଳତାର ସହ ଦାଖଲ ହୋଇଛି',
-    'reportFailed': 'ରିପୋର୍ଟ ଦାଖଲ ହୋଇ ପାରିଲା ନାହିଁ। ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।',
-    'voiceInput': 'କହିବା ପାଇଁ ମାଇକ୍ ଦବାନ୍ତୁ', 'listening': 'ଶୁଣୁଛି...', 'tapToSpeak': 'କହିବା ପାଇଁ ଦବାନ୍ତୁ',
-    'severityLevel': 'ଗୁରୁତ୍ୱ ସ୍ତର', 'selectSeverity': 'ଗୁରୁତ୍ୱ ବାଛନ୍ତୁ',
-    'wsaCause': 'WSA କାରଣ ବର୍ଗ', 'selectWsa': 'WSA କାରଣ ବାଛନ୍ତୁ',
-    'attachPhoto': 'ଫଟୋ ସଂଲଗ୍ନ କରନ୍ତୁ', 'photoAttached': 'ଫଟୋ ସଂଲଗ୍ନ ହୋଇଛି',
-    'rootCause': 'ମୂଳ କାରଣ', 'rootCauseHint': 'ମୂଳ କାରଣ କ\'ଣ ଥିଲା?',
-    'correctiveAction': 'ସଂଶୋଧନମୂଳକ ପଦକ୍ଷେପ',
-    'correctiveActionHint': 'ପୁନରାବୃତ୍ତି ରୋକିବା ପାଇଁ କ\'ଣ ପଦକ୍ଷେପ ନେବା ଉଚିତ?',
-    'aiScanTitle': 'AI ହ୍ୟାଜାର୍ଡ ସ୍କ୍ୟାନ',
-    'aiScanSubtitle': 'AI ବିଶ୍ଳେଷଣ ପାଇଁ ଫଟୋ ନିଅନ୍ତୁ ବା ଅପଲୋଡ କରନ୍ତୁ',
-    'takePhoto': 'ଫଟୋ ନିଅନ୍ତୁ', 'uploadPhoto': 'ଗ୍ୟାଲେରୀରୁ ଅପଲୋଡ କରନ୍ତୁ',
-    'analysing': 'ଛବି ବିଶ୍ଳେଷଣ ହେଉଛି...', 'analysisComplete': 'ବିଶ୍ଳେଷଣ ସମ୍ପୂର୍ଣ୍ଣ',
-    'hazardsFound': 'ବିପଦ ମିଳିଛି', 'noHazardsFound': 'କୌଣସି ବିପଦ ମିଳିଲା ନାହିଁ',
-    'riskScore': 'ଝୁଁକି ସ୍କୋର', 'confidence': 'ଆସ୍ଥା', 'hazardType': 'ବିପଦ ପ୍ରକାର',
-    'summary': 'ସାରାଂଶ', 'hazards': 'ବିପଦ',
-    'correctiveActions': 'ସଂଶୋଧନମୂଳକ ପଦକ୍ଷେପ', 'preventiveActions': 'ପ୍ରତିରୋଧମୂଳକ ପଦକ୍ଷେପ',
-    'regulations': 'ପ୍ରଯୋଜ୍ୟ ନିୟମ', 'exportPdf': 'PDF ରିପୋର୍ଟ ରପ୍ତାନି କରନ୍ତୁ',
-    'shareReport': 'ରିପୋର୍ଟ ଅଂଶୀଦାର କରନ୍ତୁ', 'scanAnother': 'ଆଉ ଗୋଟିଏ ସ୍କ୍ୟାନ କରନ୍ତୁ',
-    'reportsTitle': 'ଘଟଣା ରିପୋର୍ଟ', 'filterAll': 'ସବୁ',
-    'filterCritical': 'ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ', 'filterHigh': 'ଉଚ୍ଚ',
-    'filterMedium': 'ମଧ୍ୟମ', 'filterLow': 'କମ',
-    'filterOpen': 'ଖୋଲା', 'filterClosed': 'ବନ୍ଦ',
-    'noReports': 'କୌଣସି ରିପୋର୍ଟ ମିଳିଲା ନାହିଁ', 'reportDate': 'ତାରିଖ',
-    'reportSeverity': 'ଗୁରୁତ୍ୱ', 'reportStatus': 'ଅବସ୍ଥା', 'reportType': 'ପ୍ରକାର',
-    'viewDetail': 'ବିବରଣୀ ଦେଖନ୍ତୁ', 'markClosed': 'ବନ୍ଦ ଭାବେ ଚିହ୍ନିତ କରନ୍ତୁ',
-    'deleteReport': 'ଡିଲିଟ କରନ୍ତୁ', 'confirmDelete': 'ଡିଲିଟ ନିଶ୍ଚିତ କରନ୍ତୁ',
-    'deleteWarning': 'ଏହି କ୍ରିୟା ପୂର୍ବାବସ୍ଥାକୁ ଫେରାଯାଇ ପାରିବ ନାହିଁ।',
-    'cancel': 'ବାତିଲ', 'confirm': 'ନିଶ୍ଚିତ କରନ୍ତୁ',
-    'chatTitle': 'AI କୁ ପଚାରନ୍ତୁ', 'chatHint': 'ସୁରକ୍ଷା ବିଷୟ ପଚାରନ୍ତୁ...',
-    'chatSend': 'ପଠାନ୍ତୁ',
-    'chatWelcome': 'ନମସ୍କାର! PPE, LOTO, ଉଚ୍ଚତାରେ କାର୍ଯ୍ୟ ବାବଦ ପଚାରନ୍ତୁ।',
-    'chatOffline': 'ଅଫଲାଇନ ମୋଡ — ସ୍ଥାନୀୟ ଜ୍ଞାନ ଭଣ୍ଡାର',
-    'chatThinking': 'ଭାବୁଛି...', 'chatNoAnswer': 'PPE, LOTO, ସୁରକ୍ଷା ବିଷୟ ପଚାରନ୍ତୁ।',
-    'settingsTitle': 'ସେଟିଂ', 'settingsBackend': 'ବ୍ୟାକଏଣ୍ଡ URL',
-    'settingsSyncNow': 'ଏବେ ସିଙ୍କ କରନ୍ତୁ', 'settingsTheme': 'ଥିମ',
-    'settingsLanguage': 'ଭାଷା', 'settingsDark': 'ଅନ୍ଧାର', 'settingsLight': 'ଆଲୋକ',
-    'settingsVersion': 'ସଂସ୍କରଣ', 'settingsSyncSuccess': 'ସିଙ୍କ ସମ୍ପୂର୍ଣ୍ଣ', 'settingsSyncFail': 'ସିଙ୍କ ବିଫଳ',
-    'adminTitle': 'ଆଡमିନ କଣ୍ଟ୍ରୋଲ ପ୍ୟାନେଲ', 'adminKnowledge': 'ଜ୍ଞାନ ଭଣ୍ଡାର',
-    'adminUsers': 'ଉପଯୋଗକର୍ତ୍ତା', 'adminAnalytics': 'ବିଶ୍ଳେଷଣ',
-    'adminAddText': 'ଟେକ୍ସଟ ଏଣ୍ଟ୍ରି ଯୋଡନ୍ତୁ', 'adminSyncCloud': 'କ୍ଲାଉଡରୁ ସିଙ୍କ କରନ୍ତୁ',
-    'adminEbook': 'ଇ-ବୁକ → ଲୋକାଲ AI KB', 'adminEbookSubtitle': 'KB ପାଇଁ PDF ଅପଲୋଡ କରନ୍ତୁ',
-    'adminSelectPdf': 'PDF ଇ-ବୁକ ବାଛିବା ପାଇଁ ଦବାନ୍ତୁ...',
-    'adminGenerateKb': 'KB ତିଆରି କରନ୍ତୁ', 'adminKbGenerated': 'KB କୋଡ ପ୍ରସ୍ତୁତ!',
-    'adminCopyCode': 'କୋଡ କପି କରନ୍ତୁ', 'adminCopied': 'କପି ହୋଇଛି!',
-    'adminProcessing': 'ପ୍ରକ୍ରିୟା ହେଉଛି...', 'adminNoDocuments': 'ଏ ପର୍ଯ୍ୟନ୍ତ କୌଣସି ଡକ୍ୟୁମେଣ୍ଟ ନାହିଁ',
-    'adminNoUsers': 'କୌଣସି ପଞ୍ଜୀକୃତ ଉପଯୋଗକର୍ତ୍ତା ନାହିଁ',
-    'severity_critical': 'ଗୁରୁତ୍ୱପୂର୍ଣ୍ଣ', 'severity_high': 'ଉଚ୍ଚ',
-    'severity_medium': 'ମଧ୍ୟମ', 'severity_low': 'କମ',
-    'status_open': 'ଖୋଲା', 'status_closed': 'ବନ୍ଦ', 'status_inprogress': 'ଚଲୁଛି',
-    'loading': 'ଲୋଡ ହେଉଛି...', 'retry': 'ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ', 'save': 'ସଞ୍ଚୟ କରନ୍ତୁ',
-    'update': 'ଅଦ୍ୟତନ କରନ୍ତୁ', 'delete': 'ଡିଲିଟ କରନ୍ତୁ', 'edit': 'ସଂପାଦନ କରନ୍ତୁ',
-    'close': 'ବନ୍ଦ କରନ୍ତୁ', 'back': 'ପଛକୁ', 'next': 'ପରବର୍ତ୍ତୀ', 'submit': 'ଦାଖଲ କରନ୍ତୁ',
-    'reset': 'ରିସେଟ', 'search': 'ଖୋଜନ୍ତୁ', 'noData': 'କୌଣସି ଡେଟା ଉପಲବ୍ଧ ନାହିଁ',
-    'error': 'ତ୍ରୁଟି', 'success': 'ସଫଳ', 'warning': 'ଚେତାବନୀ', 'info': 'ସୂଚନା',
-  };
 }
 
 // ── Delegate ──────────────────────────────────────────────────────────────────
@@ -1100,10 +924,11 @@ class _AppLocalizationsDelegate
   const _AppLocalizationsDelegate();
   @override
   bool isSupported(Locale locale) =>
-      ['en', 'hi', 'bn', 'or'].contains(locale.languageCode);
+      ['en', 'hi'].contains(locale.languageCode);
   @override
   Future<AppLocalizations> load(Locale locale) async =>
       AppLocalizations(locale);
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
+

@@ -446,29 +446,46 @@ class GeminiVision {
   //  SHARED PROMPT — used by Groq & OpenRouter (client-side)
   // ══════════════════════════════════════════════════════════════════════════
   static String _getHazardPrompt() {
-    return '''You are an industrial safety inspector for SAIL (Steel Authority of India). Analyze this workplace image for ALL visible safety hazards.
+    return '''You are a senior industrial safety inspector for SAIL (Steel Authority of India Limited), with expertise in IS 14489:2018 and Factories Act 1948.
 
-SCAN METHODOLOGY: Inspect systematically — foreground → middle → background, then left → right. Check every zone for PPE, housekeeping, fire, electrical, fall, chemical, machine guarding, ergonomic, and confined space hazards.
+METHODOLOGY: Scan systematically — foreground → middle → background, left → right.
 
-Return ONLY a JSON object (no markdown, no explanation) with this exact structure:
+PROFESSIONAL STANDARDS:
+- Report only hazards you can CLEARLY see and justify. No vague/generic padding.
+- 4-7 specific, well-described hazards are better than 10 vague ones.
+- Every corrective action must be SPECIFIC (not generic "ensure safety").
+
+LINE OF FIRE (LOF) — MANDATORY CHECK:
+"Line of Fire" = person positioned where energy release, object movement, or material flow could strike them. Identify 1-2 LOFs if visible:
+• Person in path of crane/suspended load → "LOF: Suspended Load"
+• Person near moving conveyor/roller table → "LOF: Moving Equipment"
+• Person near hot metal/slag/ladle → "LOF: Molten Metal Path"
+• Person in swing radius of vehicle/excavator → "LOF: Vehicle Movement"
+• Person below work at height → "LOF: Falling Objects"
+• Person near pressurized lines (steam/hydraulic/gas) → "LOF: Pressurized System"
+• Person near rotating equipment without guards → "LOF: Rotating Parts"
+• Person in path of railway wagon/loco → "LOF: Rail Movement"
+• Person near gas lines/cylinders → "LOF: Gas Release"
+• Person near electrical panel during switching → "LOF: Arc Flash"
+
+Return ONLY a JSON object (no markdown, no explanation):
 {
-  "overallRisk": "HIGH" or "MEDIUM" or "LOW" or "CRITICAL",
-  "riskScore": <number 0-100>,
-  "confidence": <number 0-100>,
-  "people": <count of people visible>,
-  "summary": "<2-3 sentence summary of key findings>",
+  "overallRisk": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
+  "riskScore": <0-100>,
+  "confidence": <0-100>,
+  "people": <count of visible persons>,
+  "summary": "<2-3 sentences: what is visible, key concern, regulatory context>",
   "hazards": [
     {
-      "name": "<short hazard name>",
-      "description": "<what the hazard is and why dangerous>",
-      "severity": "HIGH" or "MEDIUM" or "LOW" or "CRITICAL",
-      "regulation": "<applicable IS/WSA/Factories Act regulation>",
-      "correctiveAction": "<specific corrective action>"
+      "name": "<max 5 words, specific>",
+      "description": "<what is visible, why dangerous, consequence>",
+      "severity": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
+      "regulation": "<exact section e.g. FA 1948 S21, IS 14489 Cl.4>",
+      "correctiveAction": "<starts with action verb, specific steps>",
+      "type": "Unsafe Act" or "Unsafe Condition" or "Line of Fire"
     }
   ]
-}
-
-Be thorough — identify EVERY visible hazard. Minimum 3 hazards expected for any industrial setting.''';
+}''';
   }
 
   // ── Offline fallback ─────────────────────────────────────────────────────

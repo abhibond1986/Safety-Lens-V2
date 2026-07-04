@@ -30,14 +30,10 @@ class LocaleService extends ChangeNotifier {
   static const List<Locale> supportedLocales = [
     Locale('en'),
     Locale('hi'),
-    Locale('bn'),
-    Locale('or'),
   ];
 
   static const List<Map<String, String>> languages = [
     {'code': 'en', 'name': 'English', 'native': 'English', 'flag': '🇬🇧'},
     {'code': 'hi', 'name': 'Hindi',   'native': 'हिंदी',    'flag': '🇮🇳'},
-    {'code': 'bn', 'name': 'Bengali', 'native': 'বাংলা',    'flag': '🇮🇳'},
-    {'code': 'or', 'name': 'Odia',    'native': 'ଓଡ଼ିଆ',   'flag': '🇮🇳'},
   ];
 }

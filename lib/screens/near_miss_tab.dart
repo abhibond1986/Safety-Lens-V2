@@ -104,8 +104,6 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   static const Map<String, String> _voiceLocaleMap = {
     'en': 'en-IN',
     'hi': 'hi-IN',   // Devanagari output — Hindi speech → Hindi text
-    'bn': 'bn-IN',   // Bengali script output
-    'or': 'or-IN',   // Odia script output
   };
 
   // ★ v25: Selected voice language — starts as app language but user can change
@@ -333,14 +331,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
           // No result received — locale may not be supported
           _speech.stop();
           setState(() { _isListening = false; _activeMicField = null; });
-          final langName = _selectedVoiceLang == 'bn' ? 'Bengali'
-              : _selectedVoiceLang == 'or' ? 'Odia'
-              : _selectedVoiceLang == 'hi' ? 'Hindi' : 'English';
+          final langName = _selectedVoiceLang == 'hi' ? 'Hindi' : 'English';
           _snack('$langName voice not available in this browser. Switching to Hindi.', AppColors.amber);
-          // ★ Auto-fallback: switch to Hindi for Odia, or hi-IN for unsupported locales
-          if (_selectedVoiceLang == 'or' || _selectedVoiceLang == 'bn') {
-            setState(() => _selectedVoiceLang = 'hi');
-          }
         }
       });
     } catch (e) {
@@ -352,23 +344,19 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
 
   // ═══════════════════════════════════════════════════════════════
   //  ★ v25: AUTO LANGUAGE DETECTION from speech input
-  //  Detects Hindi, Bengali, Odia, or English based on Unicode ranges
+  //  Detects Hindi or English based on Unicode ranges
   // ═══════════════════════════════════════════════════════════════
   void _detectLanguageFromText(String text) {
     if (text.trim().isEmpty) return;
-    int devanagari = 0, bengali = 0, odia = 0, latin = 0;
+    int devanagari = 0, latin = 0;
     for (final c in text.runes) {
       if (c >= 0x0900 && c <= 0x097F) devanagari++;      // Hindi/Devanagari
-      else if (c >= 0x0980 && c <= 0x09FF) bengali++;    // Bengali
-      else if (c >= 0x0B00 && c <= 0x0B7F) odia++;       // Odia
       else if (c >= 0x0041 && c <= 0x007A) latin++;      // English (ASCII letters)
     }
-    final max = [devanagari, bengali, odia, latin].reduce((a, b) => a > b ? a : b);
+    final max = [devanagari, latin].reduce((a, b) => a > b ? a : b);
     if (max == 0) return;
     String detected;
     if (max == devanagari) detected = 'hi';
-    else if (max == bengali) detected = 'bn';
-    else if (max == odia) detected = 'or';
     else detected = 'en';
     if (detected != _detectedLang) {
       debugPrint('Language auto-detected: $detected (from: ${text.substring(0, text.length.clamp(0, 30))})');
@@ -380,8 +368,6 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   String get _detectedLangName {
     switch (_detectedLang) {
       case 'hi': return 'Hindi';
-      case 'bn': return 'Bengali';
-      case 'or': return 'Odia';
       default: return 'English';
     }
   }
@@ -567,7 +553,7 @@ Analyze this and respond in STRICT JSON format:
   "reason": "brief explanation why this is or is not a near miss (in the same language as worker's input)",
   "refined": "rewritten professional near-miss description with proper safety terminology, clear grammar, and structured format (in the same language as worker's input)",
   "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation",
-  "detectedLanguage": "the language the worker spoke in (English/Hindi/Bengali/Odia)"
+  "detectedLanguage": "the language the worker spoke in (English/Hindi)"
 }
 
 NEAR MISS DEFINITION: An unplanned event that DID NOT result in injury/illness/damage but HAD THE POTENTIAL to do so. It involves an unexpected hazardous exposure, a close call, or a condition that could lead to an accident.
@@ -1653,7 +1639,7 @@ ${_immediateAction.text.trim()}
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
           // ★ v25: Voice language selector chips
           _buildVoiceLangChips(sl),
-          _buildTextField('Tap mic → speak in ${_selectedVoiceLang == "hi" ? "Hindi" : _selectedVoiceLang == "bn" ? "Bengali" : _selectedVoiceLang == "or" ? "Odia" : "English"} → AI frames it', _description, Icons.description_outlined, sl, maxLines: 3,
+          _buildTextField('Tap mic → speak in ${_selectedVoiceLang == "hi" ? "Hindi" : "English"} → AI frames it', _description, Icons.description_outlined, sl, maxLines: 3,
             suffix: _micButton(_description), onChanged: _onDescriptionChanged),
           // ★ AI Suggestion Card
           if (_aiRefining)
@@ -1712,8 +1698,6 @@ ${_immediateAction.text.trim()}
           const SizedBox(height: 16),
           _langOption('hi', 'हिन्दी (Hindi)', '🇮🇳'),
           _langOption('en', 'English', '🇬🇧'),
-          _langOption('bn', 'বাংলা (Bengali)', '🇮🇳'),
-          _langOption('or', 'ଓଡ଼ିଆ (Odia)', '🇮🇳'),
           const SizedBox(height: 8),
         ]),
       ),
@@ -1725,8 +1709,6 @@ ${_immediateAction.text.trim()}
     const langs = [
       {'code': 'hi', 'label': 'हिन्दी', 'short': 'Hindi'},
       {'code': 'en', 'label': 'English', 'short': 'EN'},
-      {'code': 'bn', 'label': 'বাংলা', 'short': 'Bengali'},
-      {'code': 'or', 'label': 'ଓଡ଼ିଆ', 'short': 'Odia'},
     ];
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),

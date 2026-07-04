@@ -321,14 +321,39 @@ PIPE vs WIRE DIFFERENTIATION
   Only label as wire/cable if PVC insulation, cable trays, conduit, or junction boxes visible.
 
 ═══════════════════════════════════════════════════════
-CRITICAL RULES
+LINE OF FIRE (LOF) ASSESSMENT — MANDATORY
 ═══════════════════════════════════════════════════════
-1. Be EXHAUSTIVE — report ALL visible hazards. A thorough report with 8-12 hazards is expected when the scene is complex.
+"Line of Fire" means a person is positioned where energy release, object movement, or material flow could strike them. You MUST identify 1-2 LOFs if ANY of these are visible:
+
+COMMON LOFs IN STEEL PLANTS:
+• Person in path of overhead crane/suspended load → "LOF: Suspended Load"
+• Person near moving conveyor belt/roller table → "LOF: Moving Equipment"
+• Person near hot metal/slag runner/ladle → "LOF: Molten Metal Path"
+• Person in swing radius of excavator/vehicle → "LOF: Vehicle Movement"
+• Person below work at height (dropped objects) → "LOF: Falling Objects"
+• Person near pressurized lines (steam/hydraulic/gas) → "LOF: Pressurized System"
+• Person near rotating equipment without guarding → "LOF: Rotating Parts"
+• Person in path of moving railway wagon/loco → "LOF: Rail Movement"
+• Person near gas lines/cylinders (CO/O2/acetylene) → "LOF: Gas Release"
+• Person in strip/coil pass line in rolling mills → "LOF: Strip Whip"
+• Person near electrical panel during switching → "LOF: Arc Flash"
+• Person in dumper/tipper reversing zone → "LOF: Reversing Vehicle"
+
+For each LOF identified, set type="Line of Fire" and provide specific action:
+  - Define exclusion zone dimensions
+  - Specify barricading/signage requirement
+  - State communication protocol needed
+
+═══════════════════════════════════════════════════════
+CRITICAL RULES — PROFESSIONAL STANDARDS
+═══════════════════════════════════════════════════════
+1. QUALITY over QUANTITY — report only hazards you can CLEARLY see and justify. Do NOT pad with vague or generic observations. 4-7 specific, well-described hazards are better than 10 vague ones.
 2. Cite EXACT regulation sections — never say "applicable regulations".
 3. Working at height → FA 1948 S32(c). S36 = confined space ONLY.
-4. Every corrective action MUST start with an action verb.
+4. Every corrective action MUST start with an action verb and be SPECIFIC (not generic like "ensure safety").
 5. Bounding box values: normalized 0.0–1.0.
 6. If image is too blurry for analysis, return single "Image quality insufficient" hazard.
+7. LOF identification is MANDATORY — always check if any person is in a line of fire.
 
 ═══════════════════════════════════════════════════════
 OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
@@ -346,7 +371,7 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
       "description": "What is visible, why dangerous, what could happen.",
       "regulation": "exact section e.g. SMPV Rules 2016 Rule 14",
       "correctiveAction": "starts with action verb; specific steps",
-      "type": "Unsafe Act|Unsafe Condition",
+      "type": "Unsafe Act|Unsafe Condition|Line of Fire",
       "wsaCause": "number. description e.g. 5. Equipment failure",
       "bbox": {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.4}
     }

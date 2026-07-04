@@ -928,6 +928,23 @@ function getSailPrompt(promptMode) {
     + '  • Worker in danger zone or unsafe body position\n'
     + '  • Improper manual handling (men >55kg, women >30kg — FA 1948 S34)\n\n'
 
+    + '── LINE OF FIRE (LOF) — MANDATORY CHECK ──\n'
+    + '"Line of Fire" = person positioned where energy release, object movement,\n'
+    + 'or material flow could strike them. Identify 1-2 LOFs if visible:\n'
+    + '  • Person in path of crane/suspended load → "LOF: Suspended Load"\n'
+    + '  • Person near moving conveyor/roller table → "LOF: Moving Equipment"\n'
+    + '  • Person near hot metal/slag/ladle → "LOF: Molten Metal Path"\n'
+    + '  • Person in swing radius of vehicle/excavator → "LOF: Vehicle Movement"\n'
+    + '  • Person below work at height → "LOF: Falling Objects"\n'
+    + '  • Person near pressurized lines (steam/hydraulic/gas) → "LOF: Pressurized System"\n'
+    + '  • Person near rotating equipment without guards → "LOF: Rotating Parts"\n'
+    + '  • Person in path of railway wagon/loco → "LOF: Rail Movement"\n'
+    + '  • Person near gas lines/cylinders → "LOF: Gas Release"\n'
+    + '  • Person near electrical panel during switching → "LOF: Arc Flash"\n'
+    + '  • Person in splash zone during grinding/cutting → "LOF: Flying Particles"\n'
+    + '  • Person near stacked/unstable materials → "LOF: Material Collapse"\n'
+    + 'When reporting LOF, set type = "Line of Fire" and cite IS 14489:2018 Clause 5.\n\n'
+
     + '── STORAGE / CHEMICAL / GAS CYLINDERS (only if visible) ──\n'
     + '  • Gas cylinders not chained/secured against falling (SMPV Rules 2016 Rule 14)\n'
     + '  • Full and empty cylinders not segregated (SMPV Rules 2016 Rule 14)\n'
@@ -1031,7 +1048,7 @@ function getSailPrompt(promptMode) {
     + 'otherwise \\"General safety principles\\"",\n'
     + '      "correctiveAction": "starts with action verb; specific to this '
     + 'hazard",\n'
-    + '      "type": "Unsafe Act|Unsafe Condition",\n'
+    + '      "type": "Unsafe Act|Unsafe Condition|Line of Fire",\n'
     + '      "wsaCause": "number. description e.g. 5. Equipment failure",\n'
     + '      "bbox": {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.4}\n'
     + '    }\n'
@@ -1043,11 +1060,12 @@ function getSailPrompt(promptMode) {
     + '}\n\n'
 
     + 'REMEMBER:\n'
+    + '  • QUALITY over QUANTITY — 4-7 specific, well-described hazards beat 10 vague ones.\n'
     + '  • An empty hazards list is acceptable if the image truly shows no hazards.\n'
-    + '  • Be EXHAUSTIVE — when items are visible, report ALL associated hazards.\n'
-    + '  • For complex scenes (cylinders, drums, extinguishers together), expect 8-12 hazards.\n'
+    + '  • Every hazard must be CLEARLY VISIBLE and justified — never pad the list.\n'
+    + '  • Always check for Line of Fire situations when people are visible.\n'
     + '  • Check: securing, segregation, signage, access, housekeeping, ventilation, labelling.\n'
-    + '  • Your reputation depends on THOROUGHNESS — missing a real hazard is worse than a long report.\n'
+    + '  • Every corrective action must be SPECIFIC (not generic "ensure safety").\n'
     + '  • Only OMIT hazards that are genuinely NOT visible — never omit for brevity.';
 }
 

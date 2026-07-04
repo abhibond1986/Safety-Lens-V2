@@ -75,8 +75,6 @@ class _VoiceTextFieldState extends State<VoiceTextField> {
   String _getSpeechLocale() {
     switch (I18n.currentLang) {
       case 'hi': return 'hi_IN';
-      case 'bn': return 'bn_IN';
-      case 'or': return 'or_IN';
       default:   return 'en_IN';  // en_IN for Indian English
     }
   }

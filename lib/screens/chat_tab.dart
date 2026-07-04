@@ -110,12 +110,30 @@ class _ChatTabState extends State<ChatTab> {
     '• If language is Hindi, respond fully in Hindi (देवनागरी)\n'
     '• If unsure of a specific value, omit it — do NOT speculate\n\n'
 
+    'LINE OF FIRE (LOF) KNOWLEDGE:\n'
+    '"Line of Fire" = person positioned where energy release, object movement, '
+    'or material flow could strike them.\n'
+    'Common LOFs in steel plants:\n'
+    '• Suspended load (crane/hoist) path\n'
+    '• Moving conveyor/roller table zone\n'
+    '• Molten metal/slag/ladle splash radius\n'
+    '• Vehicle/loco/wagon swing/travel path\n'
+    '• Falling objects from height work\n'
+    '• Pressurized system (steam/hydraulic/gas) burst zone\n'
+    '• Rotating equipment contact zone\n'
+    '• Flying particles from grinding/cutting\n'
+    '• Unstable stacked materials collapse zone\n'
+    '• Arc flash zone near electrical panels\n'
+    'LOF corrective actions: barricading, exclusion zones, interlocks, '
+    'spotter deployment, awareness training, standoff distance marking.\n\n'
+
     'TOPICS YOU CAN ANSWER:\n'
     'Gas cylinder storage and colour codes, working at height, confined space entry, '
     'LOTOTO energy isolation, hot work PTW, blast furnace gas safety, coke oven safety, '
     'hot metal handling, electrical safety CEA regulations, machinery guarding, '
     'PPE selection and standards, crane and lifting, barricading, contractor safety, '
     'incident classification (LTI/FAC/RWC/near miss), WSA 13 causes, '
+    'Line of Fire (LOF) hazards and controls, '
     'emergency response (CO exposure, hot metal fire, electrical shock), '
     'IS 14489 clauses, SMPV Rules, Ministry of Steel guidelines SG/01–SG/41';
 
@@ -146,6 +164,7 @@ class _ChatTabState extends State<ChatTab> {
             '🔴 SMPV Rules 2016 (gas cylinders, pressure vessels)\n'
             '⚡ CEA Regulations 2023 (electrical safety)\n'
             '🏭 Process safety: Blast Furnace, Coke Ovens, EAF, BOF, Rolling Mills\n'
+            '⚠️ Line of Fire (LOF) hazards & controls\n'
             '🦺 IS 14489:2018, all BIS PPE standards\n'
             '📊 WSA 13 causes + incident classification\n'
             '🚨 Emergency response procedures\n'
@@ -746,6 +765,7 @@ class _ChatTabState extends State<ChatTab> {
       'Incident classification LTI FAC RWC',
       'WSA 13 causes list',
       'Contractor safety requirements',
+      'Line of Fire hazards in steel plant',
       'Liquid metal — dry ladle rule',
       'All Ministry of Steel guidelines list',
     ];

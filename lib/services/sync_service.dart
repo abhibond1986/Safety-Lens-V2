@@ -217,7 +217,7 @@ class SyncService {
         'prompt': prompt,
       }, timeout: const Duration(seconds: 30));
       if (resp != null && resp.statusCode == 200) {
-        // ★ v29 FIX: Force UTF-8 decode for Hindi/Bengali/Odia text
+        // ★ v29 FIX: Force UTF-8 decode for Hindi text
         return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
       }
       return null;

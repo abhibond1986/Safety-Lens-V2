@@ -98,7 +98,7 @@ class GroqService {
 
       if (response.statusCode == 200) {
         // ★ v29 FIX: Force UTF-8 decode — response.body defaults to Latin-1
-        // which corrupts Hindi/Bengali/Odia text
+        // which corrupts Hindi text
         final responseText = utf8.decode(response.bodyBytes);
         final data = jsonDecode(responseText) as Map<String, dynamic>;
         final choices = data['choices'] as List?;
@@ -189,7 +189,7 @@ Respond in STRICT JSON format:
   "reason": "brief explanation (in worker's language)",
   "refined": "rewritten professional near-miss description with safety terminology (in worker's language)",
   "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation",
-  "detectedLanguage": "English/Hindi/Bengali/Odia"
+  "detectedLanguage": "English/Hindi"
 }
 
 NEAR MISS DEFINITION: An unplanned event that DID NOT result in injury/illness/damage but HAD THE POTENTIAL to do so.

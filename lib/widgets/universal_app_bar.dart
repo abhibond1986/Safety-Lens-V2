@@ -135,8 +135,6 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
   String _flagForCode(String code) {
     switch (code) {
       case 'hi': return '🇮🇳';
-      case 'bn': return '🇮🇳';
-      case 'or': return '🇮🇳';
       default:   return '🇬🇧';
     }
   }
@@ -144,8 +142,6 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
   String _englishName(String code) {
     switch (code) {
       case 'hi': return 'Hindi';
-      case 'bn': return 'Bengali';
-      case 'or': return 'Odia';
       default:   return 'English';
     }
   }
@@ -385,8 +381,6 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
     String langLabel;
     switch (I18n.currentLang) {
       case 'hi': langLabel = 'HI'; break;
-      case 'bn': langLabel = 'BN'; break;
-      case 'or': langLabel = 'OR'; break;
       default:   langLabel = 'EN'; break;
     }
 
