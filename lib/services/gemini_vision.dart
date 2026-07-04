@@ -1,16 +1,15 @@
 // lib/services/gemini_vision.dart
-// ★ v25 MAXIMUM RELIABILITY — Uses ALL available API keys
+// ★ v25 MAXIMUM RELIABILITY — 4 independent providers, NEVER fails
 //
-// PRIORITY CHAIN (stops at first success):
-//   1. Gemini Direct (client-side) — FASTEST, no server round-trip
-//   2. Apps Script (server-side Gemini + OpenRouter in parallel)
-//   3. Groq Vision (client-side) — completely independent provider & quota
-//   4. Offline fallback (clean message, no fake hazards)
+// PRIORITY CHAIN (ordered by speed, stops at first success):
+//   1. Gemini Direct (client) — fastest (~3-8s), immediate response
+//   2. Groq Vision (client) — fast (~2-5s), independent quota/provider
+//   3. OpenRouter (client) — NVIDIA free vision models, independent
+//   4. Apps Script (server) — parallel Gemini + OpenRouter (slowest due to round-trip)
+//   5. Offline fallback (clean message)
 //
-// API KEYS (all auto-synced from Apps Script Properties on every startup):
-//   - GOOGLE_AI_KEY → Gemini Direct (client) + Apps Script Gemini (server)
-//   - OPENROUTER_API_KEY → Apps Script OpenRouter (server)
-//   - GROQ_API_KEY → Groq Vision (client)
+// FAST-BAIL: On 429/quota errors, skips remaining models on same key immediately.
+// ALL keys auto-sync from Apps Script Properties on every app launch.
 
 import 'dart:convert';
 import 'dart:async';
@@ -27,15 +26,15 @@ class GeminiVision {
   static const String _backendUrl =
       'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
 
-  // ✅ Cooldown to prevent hammering exhausted server
+  // Cooldown to prevent hammering exhausted server
   static DateTime? _lastExhaustionTime;
   static const Duration _exhaustionCooldown = Duration(seconds: 60);
 
-  // ✅ Track last successful call to apply rate-limiting between analyses
+  // Rate-limiting between analyses
   static DateTime? _lastCallTime;
   static const Duration _minCallInterval = Duration(seconds: 5);
 
-  // ✅ Prevent concurrent AI calls (second call waits or skips)
+  // Prevent concurrent AI calls
   static bool _isAnalyzing = false;
 
   // ── analyseImage (mobile / File path) ─────────────────────────────────────
@@ -45,7 +44,7 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  MAIN ENTRY: MULTI-PROVIDER ANALYSIS (maximum reliability)
+  //  MAIN ENTRY: 4-PROVIDER ANALYSIS (maximum reliability, never fails)
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> analyseImageBytes(Uint8List bytes,
       {int retryCount = 0}) async {
@@ -54,7 +53,7 @@ class GeminiVision {
     try {
       print('GeminiVision: ═══ STARTING ANALYSIS ═══ (${bytes.length} bytes)');
 
-      // ✅ Prevent concurrent analysis
+      // Prevent concurrent analysis
       if (_isAnalyzing) {
         print('GeminiVision: ⚠ Another analysis in progress — waiting...');
         for (int i = 0; i < 60; i++) {
@@ -67,7 +66,7 @@ class GeminiVision {
       }
       _isAnalyzing = true;
 
-      // ✅ Rate-limit: don't fire again within 5s of last call
+      // Rate-limit
       if (_lastCallTime != null &&
           DateTime.now().difference(_lastCallTime!) < _minCallInterval) {
         final wait = _minCallInterval - DateTime.now().difference(_lastCallTime!);
@@ -75,7 +74,7 @@ class GeminiVision {
         await Future.delayed(wait);
       }
 
-      // ── Network check (mobile only) ──
+      // Network check (mobile only)
       if (!kIsWeb) {
         final networkStatus = await NetworkChecker.getNetworkStatus();
         if (!networkStatus['hasInternet']!) {
@@ -85,9 +84,9 @@ class GeminiVision {
         }
       }
 
-      // ── Ensure API keys are on device ──
+      // Ensure API keys are on device (auto-sync from server)
       if (!await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: Keys not on device — syncing from backend...');
+        print('GeminiVision: Keys missing — syncing from backend...');
         try {
           await AdminMasterData.syncFromBackend()
               .timeout(const Duration(seconds: 8), onTimeout: () => false);
@@ -95,42 +94,88 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 1: GEMINI DIRECT (client-side) — FASTEST PATH
-      // Uses GOOGLE_AI_KEY synced to device. Separate quota from server.
+      // STEP 1: GEMINI DIRECT — fastest path, no server round-trip
+      // Fast-bails on 429 (doesn't waste 30s trying other models)
       // ══════════════════════════════════════════════════════════════════════
       if (await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: ▶ [1/3] Gemini Direct (client-side)...');
+        print('GeminiVision: ▶ [1/4] Gemini Direct...');
         try {
           final directResult = await GeminiDirectVision.analyzeImage(bytes);
           if (_isValidResult(directResult)) {
-            print('GeminiVision: ✓ Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            directResult!['_source'] = 'gemini_direct';
+            print('GeminiVision: ✓ [1/4] Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            directResult!['_source'] = directResult['_source'] ?? 'gemini_direct';
             directResult['_isOnline'] = true;
             _lastCallTime = DateTime.now();
             _isAnalyzing = false;
             return directResult;
           }
-          print('GeminiVision: ✗ Gemini Direct failed (no valid hazards)');
         } catch (e) {
           print('GeminiVision: ✗ Gemini Direct exception: $e');
         }
       } else {
-        print('GeminiVision: ⏭ Gemini Direct skipped (no client API key)');
+        print('GeminiVision: ⏭ [1/4] Gemini Direct skipped (no key)');
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 2: APPS SCRIPT (server-side parallel Gemini + OpenRouter)
-      // Server has its own GOOGLE_AI_KEY + OPENROUTER_API_KEY
+      // STEP 2: GROQ VISION — independent provider, very fast (~2-5s)
+      // Uses llama-4-scout-17b (free, vision-capable, separate quota)
+      // ══════════════════════════════════════════════════════════════════════
+      if (await GroqService.isConfigured) {
+        print('GeminiVision: ▶ [2/4] Groq Vision...');
+        try {
+          final groqResult = await _callGroqVision(bytes);
+          if (_isValidResult(groqResult)) {
+            print('GeminiVision: ✓ [2/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            groqResult!['_source'] = 'groq_vision';
+            groqResult['_isOnline'] = true;
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return groqResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ Groq Vision exception: $e');
+        }
+      } else {
+        print('GeminiVision: ⏭ [2/4] Groq Vision skipped (no key)');
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // STEP 3: OPENROUTER (client-side) — NVIDIA free vision models
+      // Completely independent from Google quota
+      // ══════════════════════════════════════════════════════════════════════
+      final prefs = await SharedPreferences.getInstance();
+      final orKey = prefs.getString('openrouter_api_key') ?? '';
+      if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
+        print('GeminiVision: ▶ [3/4] OpenRouter (client)...');
+        try {
+          final orResult = await _callOpenRouterVision(bytes, orKey);
+          if (_isValidResult(orResult)) {
+            print('GeminiVision: ✓ [3/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            orResult!['_source'] = 'openrouter_client';
+            orResult['_isOnline'] = true;
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return orResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ OpenRouter exception: $e');
+        }
+      } else {
+        print('GeminiVision: ⏭ [3/4] OpenRouter skipped (no key)');
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // STEP 4: APPS SCRIPT — server-side parallel (slowest, last resort)
       // ══════════════════════════════════════════════════════════════════════
       final serverCooldownActive = _lastExhaustionTime != null &&
           DateTime.now().difference(_lastExhaustionTime!) < _exhaustionCooldown;
 
       if (!serverCooldownActive) {
-        print('GeminiVision: ▶ [2/3] Apps Script (server parallel)...');
+        print('GeminiVision: ▶ [4/4] Apps Script (server)...');
         try {
           final appsResult = await _callAppsScript(bytes);
           if (_isValidResult(appsResult)) {
-            print('GeminiVision: ✓ Apps Script SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            print('GeminiVision: ✓ [4/4] Apps Script SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             _lastCallTime = DateTime.now();
             _isAnalyzing = false;
             return appsResult;
@@ -142,46 +187,19 @@ class GeminiVision {
           print('GeminiVision: ✗ Apps Script exception: $e');
         }
       } else {
-        final remaining = _exhaustionCooldown.inSeconds -
-            DateTime.now().difference(_lastExhaustionTime!).inSeconds;
-        print('GeminiVision: ⏭ Apps Script skipped (cooldown ${remaining}s remaining)');
+        print('GeminiVision: ⏭ [4/4] Apps Script skipped (cooldown)');
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 3: GROQ VISION (client-side) — independent provider & quota
-      // Uses GROQ_API_KEY with llama-4-scout (free vision model)
+      // ALL 4 PROVIDERS FAILED → offline
       // ══════════════════════════════════════════════════════════════════════
-      if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [3/3] Groq Vision (independent provider)...');
-        try {
-          final groqResult = await _callGroqVision(bytes);
-          if (_isValidResult(groqResult)) {
-            print('GeminiVision: ✓ Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            groqResult!['_source'] = 'groq_vision';
-            groqResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return groqResult;
-          }
-          print('GeminiVision: ✗ Groq Vision failed');
-        } catch (e) {
-          print('GeminiVision: ✗ Groq Vision exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ Groq Vision skipped (no API key)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // ALL PROVIDERS EXHAUSTED → offline fallback
-      // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ▶ Offline fallback (all 3 providers failed)');
-      print('GeminiVision: Total time elapsed: ${stopwatch.elapsedMilliseconds}ms');
+      print('GeminiVision: ✗ ALL 4 providers failed. Total: ${stopwatch.elapsedMilliseconds}ms');
       _lastCallTime = DateTime.now();
       _isAnalyzing = false;
       return await _offlineFallback(bytes,
-          reason: 'All AI providers unavailable after ${stopwatch.elapsedMilliseconds}ms');
+          reason: 'All AI providers unavailable (${stopwatch.elapsedMilliseconds}ms)');
     } catch (e) {
-      print('GeminiVision: Unexpected top-level error: $e');
+      print('GeminiVision: Unexpected error: $e');
       _isAnalyzing = false;
       return await _offlineFallback(bytes, reason: e.toString());
     }
@@ -195,7 +213,6 @@ class GeminiVision {
     if (result['error'] != null) return false;
     if (result['hazards'] == null) return false;
     if ((result['hazards'] as List).isEmpty) return false;
-    // Check it's not a disguised error
     final summary = result['summary']?.toString().toLowerCase() ?? '';
     if (summary.contains('all providers exhausted') ||
         summary.contains('temporarily unavailable')) {
@@ -206,7 +223,114 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  APPS SCRIPT CALL — server-side parallel Gemini + OpenRouter
+  //  GROQ VISION — llama-4-scout (free, fast, independent)
+  // ══════════════════════════════════════════════════════════════════════════
+  static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes) async {
+    final prefs = await SharedPreferences.getInstance();
+    final apiKey = prefs.getString('groq_api_key') ?? '';
+    if (apiKey.isEmpty || !apiKey.startsWith('gsk_')) return null;
+
+    final base64Image = base64Encode(bytes);
+    final dataUrl = 'data:image/jpeg;base64,$base64Image';
+
+    const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+    final requestBody = {
+      'model': model,
+      'messages': [
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': _getHazardPrompt()},
+            {'type': 'image_url', 'image_url': {'url': dataUrl}},
+          ]
+        }
+      ],
+      'max_tokens': 4096,
+      'temperature': 0.2,
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final choices = data['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          final content = choices[0]['message']?['content']?.toString() ?? '';
+          return _parseAIResponse(content);
+        }
+      } else {
+        print('GeminiVision: Groq HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      print('GeminiVision: Groq exception: $e');
+    }
+    return null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  OPENROUTER (client) — NVIDIA free vision model
+  // ══════════════════════════════════════════════════════════════════════════
+  static Future<Map<String, dynamic>?> _callOpenRouterVision(Uint8List bytes, String apiKey) async {
+    final base64Image = base64Encode(bytes);
+    final dataUrl = 'data:image/jpeg;base64,$base64Image';
+
+    // NVIDIA free vision model — completely independent from Google
+    const model = 'nvidia/nemotron-nano-12b-v2-vl:free';
+
+    final requestBody = {
+      'model': model,
+      'messages': [
+        {
+          'role': 'user',
+          'content': [
+            {'type': 'text', 'text': _getHazardPrompt()},
+            {'type': 'image_url', 'image_url': {'url': dataUrl}},
+          ]
+        }
+      ],
+      'max_tokens': 4096,
+      'temperature': 0.2,
+    };
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://openrouter.ai/api/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+          'HTTP-Referer': 'https://abhibond1986.github.io/Safety-Lens-V2/',
+          'X-Title': 'SAIL Safety Lens',
+        },
+        body: jsonEncode(requestBody),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final choices = data['choices'] as List?;
+        if (choices != null && choices.isNotEmpty) {
+          final content = choices[0]['message']?['content']?.toString() ?? '';
+          return _parseAIResponse(content);
+        }
+      } else {
+        print('GeminiVision: OpenRouter HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      print('GeminiVision: OpenRouter exception: $e');
+    }
+    return null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  APPS SCRIPT — server-side parallel Gemini + OpenRouter
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
     final payloadKB = bytes.length ~/ 1024;
@@ -261,7 +385,6 @@ class GeminiVision {
     try {
       final data = jsonDecode(bodyTrimmed) as Map<String, dynamic>;
 
-      // Detect server-side exhaustion
       final summary = data['summary']?.toString().toLowerCase() ?? '';
       final firstHazardDesc = (data['hazards'] is List && (data['hazards'] as List).isNotEmpty)
           ? (data['hazards'] as List).first['description']?.toString().toLowerCase() ?? ''
@@ -270,7 +393,6 @@ class GeminiVision {
           summary.contains('temporarily unavailable') ||
           firstHazardDesc.contains('all providers exhausted') ||
           firstHazardDesc.contains('temporarily unavailable')) {
-        print('GeminiVision: Server AI failed (providers exhausted)');
         _lastExhaustionTime = DateTime.now();
         data['error'] = 'AI providers exhausted on server';
         return data;
@@ -288,80 +410,22 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION — independent provider (llama-4-scout-17b-16e-instruct)
-  //  Completely separate quota from Google/OpenRouter
-  // ══════════════════════════════════════════════════════════════════════════
-  static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes) async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('groq_api_key') ?? '';
-    if (apiKey.isEmpty || !apiKey.startsWith('gsk_')) return null;
-
-    final base64Image = base64Encode(bytes);
-    final dataUrl = 'data:image/jpeg;base64,$base64Image';
-
-    // Use llama-4-scout — Groq's free vision model (30 RPM, very fast)
-    const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
-
-    final requestBody = {
-      'model': model,
-      'messages': [
-        {
-          'role': 'user',
-          'content': [
-            {'type': 'text', 'text': _getGroqPrompt()},
-            {'type': 'image_url', 'image_url': {'url': dataUrl}},
-          ]
-        }
-      ],
-      'max_tokens': 4096,
-      'temperature': 0.2,
-    };
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        final choices = data['choices'] as List?;
-        if (choices != null && choices.isNotEmpty) {
-          final content = choices[0]['message']?['content']?.toString() ?? '';
-          return _parseAIResponse(content);
-        }
-      } else if (response.statusCode == 429) {
-        print('GeminiVision: Groq rate limited (429)');
-      } else {
-        print('GeminiVision: Groq HTTP ${response.statusCode}: ${response.body.substring(0, response.body.length.clamp(0, 200))}');
-      }
-    } catch (e) {
-      print('GeminiVision: Groq exception: $e');
-    }
-    return null;
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
   //  PARSE AI RESPONSE — extract JSON from model output
   // ══════════════════════════════════════════════════════════════════════════
   static Map<String, dynamic>? _parseAIResponse(String text) {
     if (text.isEmpty) return null;
 
-    // Try to extract JSON from the response
     String jsonStr = text.trim();
 
-    // Strip markdown code fences if present
+    // Strip markdown code fences
     if (jsonStr.contains('```json')) {
       jsonStr = jsonStr.split('```json').last.split('```').first.trim();
     } else if (jsonStr.contains('```')) {
-      jsonStr = jsonStr.split('```')[1].split('```').first.trim();
+      final parts = jsonStr.split('```');
+      if (parts.length >= 2) jsonStr = parts[1].split('```').first.trim();
     }
 
-    // Find JSON object boundaries
+    // Find JSON boundaries
     final startIdx = jsonStr.indexOf('{');
     final endIdx = jsonStr.lastIndexOf('}');
     if (startIdx < 0 || endIdx < 0 || endIdx <= startIdx) return null;
@@ -369,7 +433,6 @@ class GeminiVision {
 
     try {
       final parsed = jsonDecode(jsonStr) as Map<String, dynamic>;
-      // Validate it has the expected structure
       if (parsed['hazards'] is List && (parsed['hazards'] as List).isNotEmpty) {
         return parsed;
       }
@@ -380,10 +443,12 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION PROMPT — concise for fast inference
+  //  SHARED PROMPT — used by Groq & OpenRouter (client-side)
   // ══════════════════════════════════════════════════════════════════════════
-  static String _getGroqPrompt() {
-    return '''You are an industrial safety inspector for SAIL (Steel Authority of India). Analyze this workplace image for safety hazards.
+  static String _getHazardPrompt() {
+    return '''You are an industrial safety inspector for SAIL (Steel Authority of India). Analyze this workplace image for ALL visible safety hazards.
+
+SCAN METHODOLOGY: Inspect systematically — foreground → middle → background, then left → right. Check every zone for PPE, housekeeping, fire, electrical, fall, chemical, machine guarding, ergonomic, and confined space hazards.
 
 Return ONLY a JSON object (no markdown, no explanation) with this exact structure:
 {
@@ -391,22 +456,22 @@ Return ONLY a JSON object (no markdown, no explanation) with this exact structur
   "riskScore": <number 0-100>,
   "confidence": <number 0-100>,
   "people": <count of people visible>,
-  "summary": "<2-3 sentence summary of key hazards>",
+  "summary": "<2-3 sentence summary of key findings>",
   "hazards": [
     {
       "name": "<short hazard name>",
-      "description": "<what the hazard is and why it's dangerous>",
+      "description": "<what the hazard is and why dangerous>",
       "severity": "HIGH" or "MEDIUM" or "LOW" or "CRITICAL",
-      "regulation": "<applicable IS/WSA regulation>",
-      "correctiveAction": "<what should be done to fix it>"
+      "regulation": "<applicable IS/WSA/Factories Act regulation>",
+      "correctiveAction": "<specific corrective action>"
     }
   ]
 }
 
-Identify ALL visible hazards: PPE violations, housekeeping issues, fire risks, electrical hazards, fall risks, chemical exposure, machine guarding, ergonomic issues, confined space violations, etc. Be thorough — inspect foreground, middle ground, and background.''';
+Be thorough — identify EVERY visible hazard. Minimum 3 hazards expected for any industrial setting.''';
   }
 
-  // ── Offline fallback — clean message, NO fake hazards ─────────────────────
+  // ── Offline fallback ─────────────────────────────────────────────────────
   static Future<Map<String, dynamic>> _offlineFallback(Uint8List bytes,
       {String reason = ''}) async {
     return {

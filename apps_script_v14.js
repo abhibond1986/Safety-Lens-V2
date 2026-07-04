@@ -335,7 +335,8 @@ function getGoogleKey() {
   return PropertiesService.getScriptProperties().getProperty('GOOGLE_AI_KEY') || '';
 }
 function getOpenRouterKey() {
-  return PropertiesService.getScriptProperties().getProperty('OPENROUTER_API_KEY') || '';
+  var props = PropertiesService.getScriptProperties();
+  return props.getProperty('OPENROUTER_API_KEY') || props.getProperty('OPENROUTER') || '';
 }
 function getGroqKey() {
   return PropertiesService.getScriptProperties().getProperty('GROQ_API_KEY') || '';
@@ -2003,7 +2004,7 @@ function getSheet(name) {
 //  Stored in a 'masterdata' sheet as key-value JSON rows.
 // ════════════════════════════════════════════════════════════════════════
 const SHEET_MASTERDATA = 'masterdata';
-const MASTERDATA_KEYS = ['plants', 'departments', 'wsaCauses', 'severities', 'statuses', 'obsTypes', 'geminiApiKey', 'groqApiKey', 'geminiModel'];
+const MASTERDATA_KEYS = ['plants', 'departments', 'wsaCauses', 'severities', 'statuses', 'obsTypes', 'geminiApiKey', 'groqApiKey', 'openRouterApiKey', 'geminiModel'];
 
 function saveMasterData(params) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();

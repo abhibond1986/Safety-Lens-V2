@@ -77,59 +77,62 @@ class GeminiDirectVision {
     'gemini-2.0-flash-lite', // Last resort — lowest quality but rarely rate-limited
   ];
 
+  // ★ v25: Track if quota is exhausted (429) — all models on same key are blocked
+  static bool _quotaExhausted = false;
+  static DateTime? _quotaExhaustedAt;
+
   /// Analyze image for safety hazards
   /// Returns structured hazard data or null on failure
-  /// ★ v31: Tries configured model, then falls through entire chain on 429/failure
+  /// ★ v25: FAST BAIL on 429 — all models share same key/quota, no point trying others
   static Future<Map<String, dynamic>?> analyzeImage(Uint8List imageBytes) async {
     if (!await isConfigured) return null;
+
+    // If quota was exhausted recently (within 60s), skip entirely
+    if (_quotaExhausted && _quotaExhaustedAt != null &&
+        DateTime.now().difference(_quotaExhaustedAt!).inSeconds < 60) {
+      print('GeminiDirectVision: ⏭ Skipping — quota exhausted ${DateTime.now().difference(_quotaExhaustedAt!).inSeconds}s ago');
+      return null;
+    }
+    _quotaExhausted = false;
 
     final apiKey = await getApiKey();
     final model = await getModel();
     final base64Image = base64Encode(imageBytes);
 
-    // ── PRIMARY: Try with configured model ──
-    print('GeminiDirectVision: ▶ Primary model: $model');
+    // ── Try primary model only — BAIL FAST on 429 ──
+    print('GeminiDirectVision: ▶ Model: $model');
     final result = await _callModel(model, apiKey, base64Image);
+
+    // 429 detected — don't try any other model
+    if (_quotaExhausted) {
+      print('GeminiDirectVision: ⚡ QUOTA EXHAUSTED on $model — bailing immediately (all models blocked)');
+      return null;
+    }
 
     if (result != null &&
         result['hazards'] != null &&
         (result['hazards'] as List).isNotEmpty) {
-      // ── SMART FALLBACK: If confidence < 60 or < 3 hazards, try Pro ──
-      final confidence = (result['confidence'] as num?) ?? 0;
-      final hazardCount = (result['hazards'] as List).length;
-      if ((confidence < 60 || hazardCount < 3) && model != _fallbackModel) {
-        print('GeminiDirectVision: ⚠ Low confidence ($confidence) or few hazards ($hazardCount) — trying $_fallbackModel');
-        final proResult = await _callModel(_fallbackModel, apiKey, base64Image);
-        if (proResult != null) {
-          final proHazards = (proResult['hazards'] as List?)?.length ?? 0;
-          final proConfidence = (proResult['confidence'] as num?) ?? 0;
-          if (proHazards > hazardCount || proConfidence > confidence) {
-            proResult['_source'] = 'gemini_direct_pro';
-            return proResult;
-          }
-        }
-      }
       return result;
     }
 
-    // ── PRIMARY FAILED: Try fallback models in chain ──
-    print('GeminiDirectVision: ✗ Primary failed — trying fallback chain');
-    for (final fallbackModel in _modelFallbackChain) {
-      if (fallbackModel == model) continue; // already tried
-      // ★ v33: Small delay between attempts to avoid cascading 429s
-      await Future.delayed(const Duration(milliseconds: 500));
-      print('GeminiDirectVision: ▶ Trying fallback: $fallbackModel');
-      final fbResult = await _callModel(fallbackModel, apiKey, base64Image);
-      if (fbResult != null &&
-          fbResult['hazards'] != null &&
-          (fbResult['hazards'] as List).isNotEmpty) {
-        print('GeminiDirectVision: ✓ Fallback $fallbackModel succeeded');
-        fbResult['_source'] = 'gemini_direct_$fallbackModel';
-        return fbResult;
-      }
+    // Only try ONE more fallback (not the whole chain) — and only if NOT quota issue
+    final fallback = model == 'gemini-2.0-flash' ? 'gemini-2.0-flash-lite' : 'gemini-2.0-flash';
+    print('GeminiDirectVision: ▶ Quick fallback: $fallback');
+    final fbResult = await _callModel(fallback, apiKey, base64Image);
+
+    if (_quotaExhausted) {
+      print('GeminiDirectVision: ⚡ QUOTA EXHAUSTED — bailing');
+      return null;
     }
 
-    print('GeminiDirectVision: ✗ All models in chain failed');
+    if (fbResult != null &&
+        fbResult['hazards'] != null &&
+        (fbResult['hazards'] as List).isNotEmpty) {
+      fbResult['_source'] = 'gemini_direct_$fallback';
+      return fbResult;
+    }
+
+    print('GeminiDirectVision: ✗ Both models failed');
     return null;
   }
 
@@ -165,7 +168,7 @@ class GeminiDirectVision {
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 25));
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         // ★ v29 FIX: Force UTF-8 decode for non-English text support
@@ -183,10 +186,14 @@ class GeminiDirectVision {
         print('GeminiDirectVision: [$model] No candidates in response');
         return null;
       } else if (response.statusCode == 429) {
-        print('GeminiDirectVision: [$model] Rate limited (429)');
+        print('GeminiDirectVision: [$model] Rate limited (429) — ALL models on this key are blocked');
+        _quotaExhausted = true;
+        _quotaExhaustedAt = DateTime.now();
         return null;
       } else if (response.statusCode == 403) {
         print('GeminiDirectVision: [$model] API key invalid or quota exceeded (403)');
+        _quotaExhausted = true;
+        _quotaExhaustedAt = DateTime.now();
         return null;
       } else {
         print('GeminiDirectVision: [$model] Error ${response.statusCode}: ${response.body.substring(0, response.body.length.clamp(0, 200))}');

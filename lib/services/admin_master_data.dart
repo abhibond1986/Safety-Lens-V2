@@ -209,21 +209,25 @@ class AdminMasterData {
         updated = true;
       }
 
-      // ★ v25: Sync API keys from backend — ensures all devices have keys
+      // ★ v25: Sync ALL API keys from backend — ensures all devices have keys
       // Keys come from Script Properties (permanent) so they survive app redeployments
+      final prefs = await SharedPreferences.getInstance();
       if (remote['geminiApiKey'] is String && (remote['geminiApiKey'] as String).length > 10) {
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setString('gemini_vision_api_key', remote['geminiApiKey'] as String);
-        print('AdminMasterData: ✓ Gemini API key synced from server (${(remote['geminiApiKey'] as String).substring(0, 8)}...)');
+        print('AdminMasterData: ✓ Gemini key synced (${(remote['geminiApiKey'] as String).substring(0, 8)}...)');
         updated = true;
       }
       if (remote['groqApiKey'] is String && (remote['groqApiKey'] as String).length > 10) {
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setString('groq_api_key', remote['groqApiKey'] as String);
+        print('AdminMasterData: ✓ Groq key synced');
+        updated = true;
+      }
+      if (remote['openRouterApiKey'] is String && (remote['openRouterApiKey'] as String).length > 10) {
+        await prefs.setString('openrouter_api_key', remote['openRouterApiKey'] as String);
+        print('AdminMasterData: ✓ OpenRouter key synced');
         updated = true;
       }
       if (remote['geminiModel'] is String && (remote['geminiModel'] as String).isNotEmpty) {
-        final prefs = await SharedPreferences.getInstance();
         await prefs.setString('gemini_vision_model', remote['geminiModel'] as String);
         updated = true;
       }
