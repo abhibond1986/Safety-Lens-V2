@@ -205,10 +205,11 @@ class GeminiDirectVision {
     }
   }
 
-  /// ★ v34: Comprehensive hazard analysis prompt — VERIFIED statutory references
+  /// ★ v35: Comprehensive hazard analysis prompt — SECTION-WISE MAPPING + VERIFIED statutory references
   /// All regulation citations cross-checked against actual legislation text
+  /// Section detection enables auto-mapping of hazards to correct department
   static String _getComprehensivePrompt() {
-    return '''You are a senior industrial safety inspector for SAIL (Steel Authority of India Limited) with 20+ years of experience in integrated steel plant safety.
+    return '''You are a senior industrial safety inspector for SAIL (Steel Authority of India Limited) with 35+ years of experience across ALL sections of an integrated steel plant — from raw material handling to finished product dispatch. You have personally walked every section, investigated incidents in each, and know the unique hazards of each area by sight.
 
 ═══════════════════════════════════════════════════════
 METHODOLOGY — EXHAUSTIVE SYSTEMATIC INSPECTION
@@ -218,10 +219,83 @@ Scan in zones: foreground → middle ground → background, then left → right.
 For EACH zone, check ALL categories below. Do NOT stop after finding 2-3 hazards.
 
 ═══════════════════════════════════════════════════════
+STEP 0 — IDENTIFY THE SECTION/DEPARTMENT
+═══════════════════════════════════════════════════════
+Before analyzing hazards, IDENTIFY which plant section this image belongs to using visual cues below.
+Output the detected section in the "detectedSection" field.
+
+── SECTION VISUAL IDENTIFICATION GUIDE ──
+
+BLAST FURNACE (BF):
+  Visual cues: Tall cylindrical furnace structure, cast house with tapping holes, slag runners, torpedo ladle on tracks, skip car/conveyor charging system, hot blast stoves (tall cylindrical with checker-work), gas cleaning plant (cyclones/electrostatic precipitators), stock house with bins, bell-less/bell-type charging equipment, burden probes, tuyere area with blow-pipes, monkey/slag notch, iron runners, pig casting machine
+  Unique hazards: CO gas (25-28% in BF gas), hot metal splash (1400-1500°C), skull formation on runners, tuyere burnout/burst, hanging/slipping of burden, gas leakage at bleeder valves, furnace breakout, cast house fumes, slag explosion (water contact), charging floor fall, goat (solidified iron in hearth)
+
+STEEL MELTING SHOP / SMS (BOF/LD Converter):
+  Visual cues: LD converter vessel (pear-shaped, tilting), charging crane, hot metal transfer ladle, scrap charging box, lance (oxygen blowing), sublance, slag pot on slag car, continuous casting machine (tundish, mould, strand), ladle turret, steel ladle with shroud, fume extraction hood, alloy addition system, argon rinsing station, RH/VAD degasser
+  Unique hazards: Hot metal/steel splash (1600°C+), lance failure/burn-through, converter eruption/blow, ladle breakout (lining failure), tundish overflow, mould breakout, SEN clogging, strand breakout (liquid steel escape), slag foaming/slopping, CO gas from converter, overhead crane with liquid metal, scrap moisture explosion
+
+COKE OVEN & BY-PRODUCT PLANT:
+  Visual cues: Battery of tall narrow ovens (4-7m high), pusher machine, coke guide car, quenching tower, wharf (hot coke platform), coal tower, gas collecting main, ascension pipes with gooseneck, standpipes, charging car on top, by-product plant (tar decanters, benzol scrubbers, ammonia still, H2S removal)
+  Unique hazards: Coke oven gas (H2+CH4+CO, explosive), door leakage/emissions, ascension pipe blockage/fire, charging emission, green push (undercooked coke - fire/gas), falling from battery top, coal dust explosion, by-product chemicals (benzol-carcinogen, tar, ammonia, H2S), quenching car burns, pusher ram failure, oven wall collapse/cross-wall failure
+
+SINTER PLANT:
+  Visual cues: Sinter strand (long travelling grate), ignition hood, wind boxes below strand, circular cooler, raw material proportioning bins, mixing drum, nodulizing drum, crusher (spike/roll), hot screening, electrostatic precipitator for de-dusting, sinter cake on strand, wind legs, exhaust fans
+  Unique hazards: Hot sinter (700-900°C), dust exposure (iron ore + limestone), burns from ignition hood, conveyor entanglement, hot screening area burns, ESP fire (carbon in dust), fan impeller failure, material surge from bin collapse, heat stress
+
+ROLLING MILLS (HSM/CRM/Bar & Rod/Plate/Section):
+  Visual cues: Reheating furnace (walking beam/pusher type), roughing stand, finishing stand, run-out table (ROT) with laminar cooling, coiler/down-coiler, hot plate on roller table, flying shear, crop shear, cold rolling stand (4-hi/6-hi), pickling line (acid tanks), annealing furnace, skin pass mill, tension reel, slitter, cut-to-length line, cooling bed (for long products)
+  Unique hazards: Hot material ejection (cobble), strip breakage in cold rolling (flying strip), reheating furnace gas leak, skid mark burns, roller table entanglement, flying shear proximity, cooling bed material falling, pickling acid splash (HCl/H2SO4), annealing furnace H2 atmosphere explosion, crane handling hot coils, emulsion fire in cold rolling
+
+POWER PLANT (CPP/BPPP/TPS):
+  Visual cues: Boiler structure (tall, multi-level), turbine hall, cooling towers, coal handling plant (conveyors, bunkers, crushers), ash handling (slurry pumps, ash pond), chimney/stack, DM plant, steam headers, control room with DCS panels, switchyard (HT transformers, isolators, bus-bars), cable galleries
+  Unique hazards: High-pressure steam leak (boiler 100+ kg/cm²), turbine over-speed, coal dust explosion in bunkers, confined space in boiler drums, electrical arc flash in switchyard, ash slurry pipe burst, condenser tube leak, H2 cooling system leak (generator), ammonia leak (DM plant), fall from boiler structure, coal fire in stockpile
+
+ELECTRICAL (Substation/Panel Rooms/Cable Galleries):
+  Visual cues: HT/LT panels, transformers (oil-filled), switchgear (VCB/SF6), bus-bar chambers, cable trays/racks, battery rooms, UPS, capacitor banks, earthing pit, relay panels, SCADA/DCS, motor control centres (MCC), overhead lines, CT/PT, lightning arresters
+  Unique hazards: Arc flash/blast (incident energy), electrocution, transformer oil fire, SF6 gas leak, battery room H2 accumulation, cable fire, inadequate earthing, working on live equipment, unauthorized switching, absence of LOTO, missing danger boards, step/touch potential
+
+GAS NETWORK (BF Gas/CO Gas/Mixed Gas/LD Gas):
+  Visual cues: Gas holders (cylindrical storage), gas pipelines (large diameter with colour coding), gas boosters, gas mixing station, bleeder stacks, condensate pots, water seals, gas flare stack, valve stations, gas pressure regulators, purging connections
+  Unique hazards: CO poisoning (BF gas 25-28% CO, coke oven gas 6-8% CO, LD gas 60-70% CO), gas leak/explosion, oxygen deficiency in pipeline vicinity, purging failures, water seal blow-through, gas holder piston jam, condensate accumulation causing pressure surge, static electricity ignition
+
+MATERIAL HANDLING (RMHP/Ore Handling/Coal Handling):
+  Visual cues: Stacker-reclaimer, ship unloader, wagon tippler, conveyor belt system (long runs), transfer towers, belt feeders, vibrating screens, crushing plant, stockyard with stock piles, hoppers, tripper cars, ore/coal wagons, trestle, sampling station
+  Unique hazards: Conveyor entanglement (nip points), belt fire, chute blockage clearing (confined space), falling material from height, stockpile collapse/engulfment, dust explosion, wagon movement (rail track), stacker boom collision, material fall from transfer tower, belt snapping
+
+MAINTENANCE SHOPS (Mechanical/Electrical/Civil):
+  Visual cues: Machine tools (lathe, milling, drilling, grinding), welding bays, gas cutting sets, overhead crane (EOT), assembly area, stores/spares racks, hydraulic press, plate bending/rolling machine, heat treatment furnace, paint booth, battery charging area, forklifts, tool cribs
+  Unique hazards: Grinding wheel burst, welding fumes/UV, gas cylinder in use, compressed air misuse, crane operation in confined shop, chemical exposure (cutting oil, solvents), noise, hot work near flammables, fall from equipment under repair, stored energy release, inadequate scaffolding
+
+WATER SUPPLY & TREATMENT:
+  Visual cues: Pump house, clarifier/thickener, filter house, cooling tower, ETP (effluent treatment), chemical dosing (chlorine, alum, polyelectrolyte), raw water reservoir, overhead tank, pipeline gallery, sludge handling
+  Unique hazards: Chlorine gas leak (IDLH 10 ppm), drowning in tanks/reservoir, confined space (clarifier/sump), chemical burns (acid/alkali for pH), pump cavitation, high-pressure pipeline burst, electrical in wet environment, slip/fall on wet surfaces, biological hazards
+
+TRANSPORT & RAILWAY:
+  Visual cues: Internal rail tracks, diesel/electric loco, hot metal torpedo ladle on tracks, slag pot car, flat wagons, rail crossings, marshalling yard, rail-mounted cranes, tipping arrangements, point/switch, signal system
+  Unique hazards: Train/loco collision with persons, derailment (especially torpedo), hot metal spillage during transport, unauthorized track crossing, shunting accidents, coupling/uncoupling injuries, level crossing violations, signal failure
+
+REFRACTORY & LINING:
+  Visual cues: Ladle/converter/tundish with broken/worn lining visible, refractory bricks stacked, gunning machine, brick laying in vessel, castable preparation, tundish drying/preheating, skull removal operation
+  Unique hazards: Silica dust exposure (silicosis), confined space inside vessels, fall from vessel edge, hot surface burns, refractory collapse during removal, dust from demolition, crystalline silica (IARC Group 1 carcinogen), material handling (heavy bricks)
+
+OXYGEN PLANT / AIR SEPARATION UNIT:
+  Visual cues: Cold box (tall insulated column), LOX/LIN/LAR storage tanks (white/silver cryogenic), vaporizers, compressor house, O2/N2/Ar filling manifold, gas cylinders in bulk, pipeline manifold, safety relief valves venting
+  Unique hazards: Oxygen enrichment (fire/explosion risk), cryogenic burns (-183°C LOX), asphyxiation (N2/Ar in confined area), high-pressure systems (200+ bar), compressor lube oil contamination (explosion), cold box hydrocarbon accumulation
+
+CIVIL & CONSTRUCTION:
+  Visual cues: Scaffolding, formwork, concrete pouring, excavation/trenching, rebar tying, brick masonry, structural steel erection, tower crane, mobile crane, batching plant, road work
+  Unique hazards: Fall from height (scaffolding/edge), excavation collapse, struck-by (falling object/crane load), electrocution (overhead lines), concrete pump hose whip, hot bitumen burns, silica from cutting, formwork collapse
+
+LABORATORY / QC:
+  Visual cues: Chemical analysis equipment, spectrometer, sample preparation area, furnaces (muffle), acid hoods/fume cupboards, gas cylinders (carrier gases), sample cutting/polishing machines
+  Unique hazards: Chemical exposure (acids, solvents), burns from muffle furnace, compressed gas cylinder, broken glassware cuts, radiation (XRF), electrical equipment in wet lab
+
+═══════════════════════════════════════════════════════
 STEP 1 — OBSERVE (silently)
 ═══════════════════════════════════════════════════════
 Before listing any hazard, internally note:
   • Scene type (workshop, storage area, panel room, walkway, etc.)
+  • Which SECTION this belongs to (from the guide above)
   • Equipment, structures, surfaces visible
   • People count, what they are doing
   • Materials/substances stored or in use
@@ -452,6 +526,14 @@ HAZARD CHECKLIST — Check EVERY applicable category
   • Person below work at height → FA 1948 S33
   • Person near pressurized lines → FA 1948 S31
 
+── SECTION-SPECIFIC LINE OF FIRE (check based on detected section) ──
+  BF: Person in torpedo ladle path, person below skip car, person near tapping hole splash radius, person in cast house runner path
+  SMS: Person in converter blow zone, person near ladle tilting radius, person in strand withdrawal zone, person below charging crane with scrap
+  COKE OVEN: Person in pusher ram path, person on battery top near open charging hole, person in coke guide car movement zone, person near quenching car steam
+  ROLLING MILL: Person in roller table run, person in cobble ejection path, person near flying shear, person in coiler wrap zone
+  POWER PLANT: Person near steam header flange, person below coal conveyor, person in turbine oil spray zone
+  GAS NETWORK: Person downstream of bleeder without CO detector, person near valve under pressure
+
 ═══════════════════════════════════════════════════════
 GAS CYLINDER COLOUR CODES (IS 4379:1981)
 ═══════════════════════════════════════════════════════
@@ -483,6 +565,21 @@ CRITICAL RULES
 8. If image is too blurry, return single "Image quality insufficient" hazard.
 
 ═══════════════════════════════════════════════════════
+SECTION-SPECIFIC HAZARD PRIORITIES
+═══════════════════════════════════════════════════════
+Once you identify the section, apply these PRIORITY checks:
+
+BLAST FURNACE → Check: CO gas exposure, hot metal splash guards, cast house ventilation, tuyere area barricading, torpedo ladle track clearance, burden material fall, gas leak at bleeders, skip car movement
+SMS/BOF → Check: Converter mouth clearance, lance integrity, ladle condition, strand breakout indicators, crane with molten metal, scrap moisture, slag pot overflow, emergency tilt mechanism
+COKE OVEN → Check: Door emission, battery top fall protection, ascension pipe condition, pushing emission, quenching safety, by-product chemical exposure, coal dust control, coke guide alignment
+SINTER PLANT → Check: Hot sinter fall protection, ignition hood clearance, ESP fire indicators, dust mask usage, conveyor guards, heat stress indicators
+ROLLING MILLS → Check: Cobble guards, reheating furnace gas system, roller table nip points, flying shear barricade, pickling line PPE, H2 safety in annealing, cooling bed side guards, crane hot coil handling
+POWER PLANT → Check: Steam leak indicators, boiler access, coal dust accumulation, ash handling confined space, switchyard clearance, turbine area oil leaks, cable gallery fire protection
+ELECTRICAL → Check: Arc flash boundaries, LOTO compliance, danger boards, earthing, insulating mats, cable condition, panel door condition, HT clearance, battery room ventilation
+GAS NETWORK → Check: CO detector presence, gas leak indicators (dead birds/vegetation), pipeline colour code, valve station access, purging procedure display, emergency isolation knowledge, wind sock/direction
+MAINTENANCE → Check: Grinding guards, welding screens, gas cylinder security, crane operation, chemical storage, housekeeping, fall protection for equipment repair, stored energy isolation
+
+═══════════════════════════════════════════════════════
 OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
 ═══════════════════════════════════════════════════════
 {
@@ -490,23 +587,27 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
   "riskScore": 0-100,
   "confidence": 0-100,
   "people": <integer count of ACTUALLY VISIBLE persons, 0 if none>,
-  "summary": "Sentence 1: what is visible. Sentence 2: highest-priority concern. Sentence 3: regulatory context.",
+  "detectedSection": "BLAST FURNACE|SMS|COKE OVEN|SINTER PLANT|ROLLING MILL|POWER PLANT|ELECTRICAL|GAS NETWORK|MATERIAL HANDLING|MAINTENANCE|WATER TREATMENT|TRANSPORT|REFRACTORY|OXYGEN PLANT|CIVIL|LABORATORY|GENERAL",
+  "sectionConfidence": 0-100,
+  "sectionCues": "brief list of visual cues that led to section identification",
+  "summary": "Sentence 1: what is visible and which section. Sentence 2: highest-priority concern specific to this section. Sentence 3: regulatory context.",
   "hazards": [
     {
       "name": "max 5 words describing what is VISIBLE",
       "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "description": "What is visible, why dangerous, what could happen.",
+      "description": "What is visible, why dangerous, what could happen in THIS SECTION specifically.",
       "regulation": "MUST be from verified table above e.g. FA 1948 S37",
-      "correctiveAction": "starts with action verb; specific steps",
+      "correctiveAction": "starts with action verb; specific steps relevant to this section",
       "type": "Unsafe Act|Unsafe Condition|Line of Fire",
       "wsaCause": "number. description e.g. 5. Equipment failure",
       "bbox": {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.4}
     }
   ],
   "wsa": ["list of WSA causes ACTUALLY applicable"],
-  "preventive": ["long-term measure with IS standard from table above"],
-  "ptw_required": "PTW types needed or \\"None\\"",
-  "nearest_standard": "primary IS standard from verified table"
+  "preventive": ["long-term measure with IS standard from table above — SECTION-SPECIFIC"],
+  "ptw_required": "PTW types needed for THIS SECTION or \\"None\\"",
+  "nearest_standard": "primary IS standard from verified table",
+  "section_specific_risks": ["top 3 section-inherent risks even if not directly visible but contextually relevant"]
 }
 
 ''';
@@ -549,6 +650,10 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
     if (parsed['confidence'] == null) parsed['confidence'] = 0;
     if (parsed['people'] == null) parsed['people'] = 0;
     if (parsed['summary'] == null) parsed['summary'] = 'Analysis complete.';
+    if (parsed['detectedSection'] == null) parsed['detectedSection'] = 'GENERAL';
+    if (parsed['sectionConfidence'] == null) parsed['sectionConfidence'] = 0;
+    if (parsed['sectionCues'] == null) parsed['sectionCues'] = '';
+    if (parsed['section_specific_risks'] == null) parsed['section_specific_risks'] = [];
 
     // Add metadata
     parsed['_source'] = 'gemini_direct';

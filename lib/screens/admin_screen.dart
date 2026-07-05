@@ -4189,8 +4189,9 @@ class _AdminScreenState extends State<AdminScreen>
               color: AppColors.green, size: 16),
           const SizedBox(width: 8),
           Expanded(child: Text(
-            'Alerts active — Email (free via MailApp) + Push Notifications (FCM). '
-            'Firing rules will send real notifications to recipients.',
+            'Real-time SMS + Email alerts via Apps Script backend. '
+            'Alerts fire automatically when AI Scan, Near Miss, or Incidents are synced. '
+            'Configure department-specific rules below.',
             style: TextStyle(color: sl.text3, fontSize: 10.5, height: 1.4))),
         ])),
 
@@ -4235,25 +4236,44 @@ class _AdminScreenState extends State<AdminScreen>
               ])),
           ]))),
 
-      // ★ v25: Send alerts NOW button
+      // ★ v35: Send alerts NOW + Sync rules to backend
       if (firing.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(top: 10),
-          child: ElevatedButton.icon(
-            onPressed: _isSendingAlerts ? null : () => _fireAlertsNow(firing),
-            icon: _isSendingAlerts
-                ? const SizedBox(width: 14, height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.send_rounded, size: 16),
-            label: Text(_isSendingAlerts ? 'Sending...' : 'Send Alerts Now',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE53935),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: Row(children: [
+            Expanded(child: ElevatedButton.icon(
+              onPressed: _isSendingAlerts ? null : () => _fireAlertsNow(firing),
+              icon: _isSendingAlerts
+                  ? const SizedBox(width: 14, height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.send_rounded, size: 16),
+              label: Text(_isSendingAlerts ? 'Sending...' : 'Send Alerts Now',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            )),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final ok = await AdminAlerts.syncToBackend();
+                if (mounted) _toast(ok ? 'Rules synced to backend' : 'Sync failed',
+                    ok ? AppColors.green : AppColors.red);
+              },
+              icon: const Icon(Icons.cloud_upload_rounded, size: 14),
+              label: const Text('Sync Rules',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFE53935),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                side: const BorderSide(color: Color(0xFFE53935)),
+              ),
             ),
-          ),
+          ]),
         ),
 
       const SizedBox(height: 18),
@@ -4285,6 +4305,76 @@ class _AdminScreenState extends State<AdminScreen>
         ..._alertRules.map((r) => Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _alertRuleCard(r, sl))),
+
+      // ★ v35: Alert History section
+      const SizedBox(height: 20),
+      _sectionHeader('Alert History (recent)', sl),
+      const SizedBox(height: 8),
+      FutureBuilder<List<Map<String, dynamic>>>(
+        future: AdminAlerts.getAlertHistory(),
+        builder: (ctx, snap) {
+          if (!snap.hasData || snap.data!.isEmpty) {
+            return Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: sl.card, borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: sl.border)),
+              child: Row(children: [
+                Icon(Icons.history_rounded, color: sl.text4, size: 18),
+                const SizedBox(width: 8),
+                Text('No alerts sent yet',
+                    style: TextStyle(color: sl.text3, fontSize: 11.5)),
+              ]));
+          }
+          final history = snap.data!.take(20).toList();
+          return Column(children: history.map((h) {
+            final success = h['success'] == true;
+            final ts = h['timestamp']?.toString() ?? '';
+            final timeStr = ts.length >= 16 ? ts.substring(0, 16).replaceAll('T', ' ') : ts;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: success ? AppColors.green.withOpacity(0.04) : AppColors.red.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: success ? AppColors.green.withOpacity(0.2) : AppColors.red.withOpacity(0.2))),
+              child: Row(children: [
+                Icon(success ? Icons.check_circle_outline : Icons.error_outline,
+                    size: 12, color: success ? AppColors.green : AppColors.red),
+                const SizedBox(width: 6),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(h['ruleName']?.toString() ?? h['trigger']?.toString() ?? '',
+                      style: TextStyle(color: sl.text1, fontSize: 10, fontWeight: FontWeight.w700)),
+                  Text('${h['reason'] ?? ''} ${h['department']?.toString().isNotEmpty == true ? "• ${h['department']}" : ""}',
+                      style: TextStyle(color: sl.text3, fontSize: 9),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ])),
+                Text(timeStr, style: TextStyle(color: sl.text4, fontSize: 8.5)),
+              ]));
+          }).toList());
+        }),
+
+      // ★ v35: Quick setup for default rules
+      const SizedBox(height: 16),
+      if (_alertRules.isEmpty)
+        OutlinedButton.icon(
+          onPressed: () async {
+            final defaults = AdminAlerts.getDefaultRules(_currentActor);
+            for (final r in defaults) {
+              await AdminAlerts.save(r);
+            }
+            await _loadAll();
+            _toast('5 default rules added (disabled) — configure recipients & enable', AppColors.green);
+          },
+          icon: const Icon(Icons.auto_fix_high_rounded, size: 14),
+          label: const Text('Load Default Rules (recommended starting templates)',
+              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xFFE53935),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            side: const BorderSide(color: Color(0xFFE53935))),
+        ),
     ]);
   }
 
@@ -4294,6 +4384,10 @@ class _AdminScreenState extends State<AdminScreen>
     final triggerLabel = AdminAlerts.triggerLabels[trigger] ?? trigger;
     final recipients = (r['recipients'] is List)
         ? (r['recipients'] as List).join(', ') : '';
+    final dept = r['department']?.toString() ?? '';
+    final channel = r['channel']?.toString().toUpperCase() ?? 'EMAIL';
+    final fireCount = r['fireCount'] ?? 0;
+    final lastFired = r['lastFired']?.toString() ?? '';
 
     return Container(
       padding: const EdgeInsets.all(11),
@@ -4323,6 +4417,17 @@ class _AdminScreenState extends State<AdminScreen>
           Expanded(child: Text(triggerLabel,
               style: TextStyle(color: sl.text2, fontSize: 10.5,
                   fontWeight: FontWeight.w600))),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: channel == 'BOTH' ? const Color(0xFFE53935).withOpacity(0.1)
+                   : channel == 'SMS' ? Colors.orange.withOpacity(0.1)
+                   : Colors.blue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(4)),
+            child: Text(channel,
+                style: TextStyle(fontSize: 8, fontWeight: FontWeight.w800,
+                    color: channel == 'BOTH' ? const Color(0xFFE53935)
+                         : channel == 'SMS' ? Colors.orange : Colors.blue))),
         ]),
         if (r['plant']?.toString().isNotEmpty == true) ...[
           const SizedBox(height: 2),
@@ -4333,6 +4438,16 @@ class _AdminScreenState extends State<AdminScreen>
                 style: TextStyle(color: sl.text3, fontSize: 10)),
           ]),
         ],
+        if (dept.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Row(children: [
+            Icon(Icons.domain_rounded, size: 11, color: sl.text4),
+            const SizedBox(width: 4),
+            Text('Dept: $dept',
+                style: TextStyle(color: sl.text3, fontSize: 10,
+                    fontWeight: FontWeight.w600)),
+          ]),
+        ],
         if (recipients.isNotEmpty) ...[
           const SizedBox(height: 2),
           Row(children: [
@@ -4341,6 +4456,15 @@ class _AdminScreenState extends State<AdminScreen>
             Expanded(child: Text(recipients,
                 style: TextStyle(color: sl.text3, fontSize: 10),
                 maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ]),
+        ],
+        if (fireCount > 0 || lastFired.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Row(children: [
+            Icon(Icons.history_rounded, size: 10, color: sl.text4),
+            const SizedBox(width: 4),
+            Text('Fired $fireCount time(s)${lastFired.isNotEmpty ? " • Last: ${lastFired.substring(0, lastFired.length.clamp(0, 16))}" : ""}',
+                style: TextStyle(color: sl.text4, fontSize: 9)),
           ]),
         ],
         const SizedBox(height: 8),
@@ -4399,6 +4523,7 @@ class _AdminScreenState extends State<AdminScreen>
         text: existing?['threshold']?.toString() ?? '3');
     String trigger = existing?['trigger']?.toString() ?? AdminAlerts.trigCriticalIncident;
     String plant   = existing?['plant']?.toString() ?? '';
+    String department = existing?['department']?.toString() ?? '';
     String channel = existing?['channel']?.toString() ?? 'email';
 
     final ok = await showDialog<bool>(context: context, builder: (_) =>
@@ -4446,7 +4571,7 @@ class _AdminScreenState extends State<AdminScreen>
                   _dlgField('Threshold (count)', threshold, sl),
                 ],
                 const SizedBox(height: 10),
-                Text('Plant filter (optional, leave blank for all)',
+                Text('Plant filter (optional)',
                     style: TextStyle(color: sl.text3, fontSize: 10,
                         fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                 const SizedBox(height: 4),
@@ -4473,8 +4598,41 @@ class _AdminScreenState extends State<AdminScreen>
                   ],
                   onChanged: (v) => setSt(() => plant = v ?? '')),
                 const SizedBox(height: 10),
+                Text('Department / Section filter (optional)',
+                    style: TextStyle(color: sl.text3, fontSize: 10,
+                        fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+                const SizedBox(height: 2),
+                Text('Alerts fire only for this department (AI-detected section)',
+                    style: TextStyle(color: sl.text4, fontSize: 9)),
+                const SizedBox(height: 4),
+                DropdownButtonFormField<String>(
+                  value: department,
+                  dropdownColor: sl.card,
+                  style: TextStyle(color: sl.text1, fontSize: 11.5),
+                  decoration: InputDecoration(
+                    filled: true, fillColor: sl.bg, isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: BorderSide(color: sl.border))),
+                  items: [
+                    const DropdownMenuItem(value: '',
+                        child: Text('All departments',
+                            style: TextStyle(fontSize: 11.5))),
+                    ...AdminAlerts.departments.map((d) => DropdownMenuItem(
+                      value: d,
+                      child: Text(d,
+                          style: const TextStyle(fontSize: 11.5),
+                          overflow: TextOverflow.ellipsis))),
+                  ],
+                  onChanged: (v) => setSt(() => department = v ?? '')),
+                const SizedBox(height: 10),
                 _dlgField('Recipients (email/mobile, comma-separated)',
                     recips, sl),
+                const SizedBox(height: 4),
+                Text('Email: name@sail.in  |  SMS: +919876543210',
+                    style: TextStyle(color: sl.text4, fontSize: 9)),
                 const SizedBox(height: 10),
                 Text('Channel', style: TextStyle(
                     color: sl.text3, fontSize: 10,
@@ -4513,26 +4671,29 @@ class _AdminScreenState extends State<AdminScreen>
 
     final rule = <String, dynamic>{
       if (existing != null) 'id': existing['id'],
-      'name'      : name.text.trim(),
-      'trigger'   : trigger,
+      'name'       : name.text.trim(),
+      'trigger'    : trigger,
       if (trigger == AdminAlerts.trigThresholdDaily)
         'threshold' : int.tryParse(threshold.text.trim()) ?? 3,
-      'plant'     : plant,
-      'recipients': recips.text.split(',')
+      'plant'      : plant,
+      'department' : department,
+      'recipients' : recips.text.split(',')
                     .map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
-      'channel'   : channel,
-      'enabled'   : existing?['enabled'] ?? true,
+      'channel'    : channel,
+      'enabled'    : existing?['enabled'] ?? true,
     };
     await AdminAlerts.save(rule);
+    // Sync rules to backend so backend can evaluate on data arrival
+    AdminAlerts.syncToBackend();
     await AdminAudit.log(
       action: existing == null
           ? AdminAudit.actAlertRuleAdd
           : AdminAudit.actSettingsChange,
       actor: _currentActor,
       targetName: rule['name'] as String,
-      meta: {'trigger': trigger, 'plant': plant});
+      meta: {'trigger': trigger, 'plant': plant, 'department': department});
     await _loadAll();
-    _toast(existing == null ? 'Rule added' : 'Rule updated',
+    _toast(existing == null ? 'Rule added & synced to backend' : 'Rule updated & synced',
         const Color(0xFFE53935));
   }
 

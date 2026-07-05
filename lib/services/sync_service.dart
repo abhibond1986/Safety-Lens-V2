@@ -1023,28 +1023,58 @@ class SyncService {
   }
 
   // ★ v25: Auto-fire alerts when a CRITICAL incident is synced
+  /// ★ v35: Enhanced alert evaluation — supports all trigger types
+  /// Fires backend-triggered SMS/Email for incidents, AI scans, and near misses
   static Future<void> _checkAndFireAlerts(Map<String, dynamic> incident) async {
     try {
       final severity = (incident['severity']?.toString() ?? '').toUpperCase();
-      if (severity != 'CRITICAL') return; // Only auto-fire for CRITICAL
+      final type = incident['type']?.toString() ?? '';
 
-      final rules = await AdminAlerts.getRules();
-      // Find enabled critical_incident rules that match this incident's plant
-      final matchingRules = rules.where((r) {
-        if (r['enabled'] != true) return false;
-        if (r['trigger'] != AdminAlerts.trigCriticalIncident) return false;
-        final plant = r['plant']?.toString() ?? '';
-        return plant.isEmpty || plant == incident['plant']?.toString();
-      }).toList();
+      // Determine what type of alert data this is
+      final isAiScan = type == 'ai_scan' || incident.containsKey('detectedSection');
+      final isNearMiss = type == 'near_miss' || type == 'Near Miss';
 
-      if (matchingRules.isEmpty) return;
+      // ★ Backend-triggered approach: tell backend to evaluate and send alerts
+      // Backend has the full rule set (synced via syncAlertRules) and handles delivery
+      await AdminAlerts.fireImmediateAlert(
+        type: isAiScan ? 'ai_scan' : (isNearMiss ? 'near_miss' : 'incident'),
+        data: {
+          'id': incident['id'] ?? '',
+          'title': incident['title'] ?? incident['desc'] ?? '',
+          'severity': severity,
+          'plant': incident['plant'] ?? '',
+          'dept': incident['dept'] ?? incident['department'] ?? '',
+          'detectedSection': incident['detectedSection'] ?? '',
+          'date': incident['date'] ?? DateTime.now().toIso8601String(),
+          'reportedBy': incident['reportedBy'] ?? '',
+          'summary': incident['summary'] ?? '',
+          'riskScore': incident['riskScore'] ?? 0,
+          'hazardCount': (incident['hazards'] is List)
+              ? (incident['hazards'] as List).length : 0,
+          'topHazards': (incident['hazards'] is List)
+              ? (incident['hazards'] as List)
+                  .take(3)
+                  .map((h) => h is Map ? '${h['name']} (${h['severity']})' : h.toString())
+                  .toList()
+              : [],
+        },
+      );
 
-      // Fire each matching rule
-      for (final rule in matchingRules) {
-        final firingRule = {...rule, 'reason': 'CRITICAL incident: ${incident['title'] ?? incident['desc'] ?? incident['id']}'};
-        await AdminAlerts.deliver([firingRule], [incident]);
+      // Also do local evaluation for immediate rules (backup if backend is slow)
+      if (severity == 'CRITICAL' || severity == 'HIGH' || isAiScan || isNearMiss) {
+        final rules = await AdminAlerts.getRules();
+        final firingRules = AdminAlerts.evaluate(
+          rules,
+          [incident],
+          latestAiScan: isAiScan ? incident : null,
+          latestNearMiss: isNearMiss ? incident : null,
+        );
+
+        if (firingRules.isNotEmpty) {
+          await AdminAlerts.deliver(firingRules, [incident]);
+          print('[SyncService] Auto-fired ${firingRules.length} alert(s) for $type (severity: $severity)');
+        }
       }
-      print('[SyncService] Auto-fired ${matchingRules.length} alert(s) for CRITICAL incident');
     } catch (e) {
       print('[SyncService] Alert fire error (non-fatal): $e');
     }

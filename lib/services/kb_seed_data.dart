@@ -895,6 +895,397 @@ WSA 13 CAUSES (mandatory tagging per SAIL):
 13. Emergency response inadequate''',
     },
 
+    // ════════════════════════════════════════════════════════════
+    // SECTION-SPECIFIC HAZARDS & SAFETY PROTOCOLS
+    // ════════════════════════════════════════════════════════════
+
+    {
+      'title': 'Blast Furnace — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/26, IS 14489:2018 Clause 7',
+      'content': '''SECTION: BLAST FURNACE (BF)
+
+CRITICAL HAZARDS:
+1. CO Gas Poisoning — BF gas contains 25-28% CO. TLV = 50 ppm (8-hr TWA). IDLH = 1200 ppm.
+   Controls: Fixed CO detectors at cast house, stock house, stove area. Personal CO monitors for all entrants. Wind sock at all entry points.
+2. Hot Metal Splash — Tapping temperature 1400-1500°C. Splash radius up to 5m from runner.
+   Controls: Heat-resistant PPE (IS 15748 aluminised suit), splash guards on runners, standoff barricading, preheated ladles only.
+3. Burden Slip/Hanging — Sudden descent of charged material causes gas rush from tuyeres.
+   Controls: Monitor stock level continuously, never stand below charging floor during slip, emergency tuyere cap procedure.
+4. Tuyere Burn-Through — Cooling water meets hot metal = steam explosion risk.
+   Controls: Tuyere water flow monitoring, emergency water shut-off, drill for tuyere change.
+5. Furnace Breakout — Shell/hearth failure releases hot metal uncontrollably.
+   Controls: Thermocouples on shell, refractory monitoring (fiber optics), contingency runners, emergency tap.
+6. Gas Leakage at Bleeder Valves — BF top pressure 2-3 kg/cm², bleeder opens releasing raw gas.
+   Controls: Remote operation, exclusion zone during bleeder operation, continuous gas monitoring.
+7. Cast House Operations — Runner skulling, clay gun/drill machine operation, runner repair with hot metal proximity.
+   Controls: Designated walkways, emergency escape routes (min 2), radio communication with furnace operator.
+
+KEY PTW REQUIREMENTS:
+- Any work on BF proper: Gas-free certificate + confined space permit
+- Cast house repair during campaign: Hot work permit + gas-free + manning certificate
+- Stove dome repair: Height permit + gas-free + confined space
+- Stock house belt work: LOTO + height permit
+
+EMERGENCY RESPONSE:
+- CO alarm (>50 ppm): Evacuate upwind, head count, rescue team with SCBA
+- Hot metal breakout: Sound siren, evacuate cast house, inform SMS/transport to stop torpedo movement
+- Burden slip: All personnel away from tuyere level, control room to reduce wind
+
+REGULATIONS: FA 1948 S36 (gas), S38 (fire), S41C (PPE), IS 14489 Clause 7.2, SG/26 BF Safety''',
+    },
+
+    {
+      'title': 'Steel Melting Shop (SMS/BOF) — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/27, IS 14489:2018 Clause 7',
+      'content': '''SECTION: STEEL MELTING SHOP (SMS / BOF / LD Converter)
+
+CRITICAL HAZARDS:
+1. Converter Eruption/Blow/Slopping — Slag-metal reaction ejects molten material from converter mouth.
+   Controls: Maintain Fe content in slag <25%, no wet scrap, lance height control, sub-lance sampling before turn-down.
+2. Ladle Breakout — Refractory lining failure causes hot steel to pour from ladle shell.
+   Controls: Ladle life tracking (max heats), residual lining thickness measurement (>75mm), preheat to 800°C minimum, visual inspection before each use.
+3. Strand/Mould Breakout (Continuous Casting) — Liquid steel escapes from solidifying shell in caster.
+   Controls: Mould level control (±5mm), breakout prediction system (thermocouple), oscillation monitoring, tundish temperature control.
+4. Scrap Moisture Explosion — Wet/oily scrap + hot metal = violent steam explosion in converter.
+   Controls: Scrap inspection yard, no sealed containers, drying protocol for monsoon scrap, visual moisture check before charge.
+5. Oxygen Lance Failure — Lance burn-through/breakage during blow sprays molten metal.
+   Controls: Lance cooling water monitoring (flow + temperature), lance consumption tracking, emergency lance retract.
+6. Crane Operations with Liquid Metal — Overhead crane carrying 100-300 ton ladle over personnel areas.
+   Controls: Dedicated hot metal crane pathway (no personnel below), hooter before movement, interlocked sirens, trained crane operators with medical fitness.
+7. Gas Hazards — CO generated during blow, converter mouth area exposure during turn-down.
+   Controls: Fume extraction hood, gas recovery system, CO detectors at converter floor, escape route drills.
+
+KEY PTW REQUIREMENTS:
+- Converter relining: Confined space + height + hot work
+- Ladle bay work: Hot work + crane isolation
+- Caster segment change: Heavy lift + LOTO
+- Gas duct repair: Gas-free + confined space + height
+
+EMERGENCY RESPONSE:
+- Ladle breakout: Sound alarm, evacuate ladle bay, activate emergency drain
+- Converter eruption: All personnel below converter level, control room emergency tilt to vertical
+- Strand breakout: Emergency casting stop, evacuate below caster, spray cooling on breach
+
+REGULATIONS: FA 1948 S31, S41C, IS 14489 Clause 7.3, SG/27 SMS Safety''',
+    },
+
+    {
+      'title': 'Coke Oven & By-Product Plant — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/28, IS 14489:2018 Clause 7',
+      'content': '''SECTION: COKE OVEN & BY-PRODUCT PLANT
+
+CRITICAL HAZARDS:
+1. Coke Oven Gas (COG) — Composition: H2 55%, CH4 25%, CO 6-8%, C2H4, benzol vapour. Explosive limits: 5-30% in air.
+   Controls: Gas-tight doors, collecting main seals, continuous LEL monitoring, no hot work without gas-free certificate.
+2. Door Emissions/Leakage — Visible emissions from oven doors indicate gas escape.
+   Controls: Door maintenance schedule, self-sealing doors, emission monitoring cameras, door luting after every push.
+3. Green Push — Pushing undercoked material causes fire/gas release on coke wharf.
+   Controls: Coking time compliance (min 18-22 hr), temperature monitoring in heating flues, push sequence control.
+4. Battery Top Fall — Working at height (6-8m) on battery top during charging, inspection.
+   Controls: Permanent handrails, fixed platforms with gratings, safety harness for edge work, anti-slip surfaces.
+5. Ascension Pipe Fire/Blockage — Tar/carbon buildup ignites or blocks gas flow causing pressure buildup.
+   Controls: Regular decarbonization, temperature monitoring, steam lancing provisions, emergency steam quenching.
+6. By-Product Chemicals — Benzol (carcinogen Group 1), crude tar, ammonia (IDLH 300 ppm), H2S (IDLH 100 ppm), naphthalene.
+   Controls: Closed systems, LEV at all transfer points, air monitoring, medical surveillance per S41C, SCBA for emergencies.
+7. Charging Emissions — Particulate and gas escape during coal charging from larry car.
+   Controls: Sequential charging, jumper pipe system, stage charging, aspiration system on charging holes.
+
+KEY PTW REQUIREMENTS:
+- Oven repair (hot): Confined space + gas-free + hot work + height
+- By-product vessel entry: Confined space + gas-free (benzol IDLH 500 ppm)
+- Gas main work: Gas isolation + gas-free certificate + hot work
+- Battery top work: Height permit mandatory
+
+EMERGENCY RESPONSE:
+- Gas leak on battery: Evacuate upwind, emergency steam to collecting main, isolate section
+- Person collapsed (CO/H2S): DO NOT enter without SCBA, rescue team call, fresh air resuscitation
+- By-product plant chemical release: Evacuate 100m radius, activate wind indicators, call fire services
+
+REGULATIONS: FA 1948 S14 (dust/fume), S36 (gas), S37 (explosive), IS 14489 Clause 7.4, SG/28''',
+    },
+
+    {
+      'title': 'Rolling Mills — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/30-33, IS 14489:2018 Clause 7',
+      'content': '''SECTION: ROLLING MILLS (HSM / CRM / Plate / Bar & Rod / Section Mill)
+
+CRITICAL HAZARDS:
+1. Cobble/Bar Whip (Hot Rolling) — Material exits mill stand uncontrolled at high speed (10-60 m/s).
+   Controls: Cobble guards on all stands, emergency stop (looper down), operator shielded cabin, no standing in pass line, repeater screens in pulpit.
+2. Strip Break (Cold Rolling) — High-tension strip snaps, sharp edges fly at high velocity.
+   Controls: Enclosed mill housing, interlock on doors, strip tension monitoring, crack detection sensors, kevlar guards.
+3. Reheating Furnace Gas System — Mixed gas (BF+COG) at 1200-1300°C; furnace atmosphere CO+incomplete combustion.
+   Controls: Flame failure detection, gas pressure interlocks, furnace purge before light-up (5 volume changes), no entry without gas-free certificate.
+4. Pickling Line Acid Exposure (CRM) — HCl 18-20% or H2SO4 at 60-90°C; acid fumes and splash.
+   Controls: Enclosed tanks with fume extraction, acid-resistant PPE (IS 4501), emergency shower within 10 seconds, acid-resistant flooring, spill containment.
+5. Annealing Furnace H2 Atmosphere — H2 (75-100%) at 700°C; explosive if air ingress occurs.
+   Controls: N2 purge before H2 introduction and before opening, O2 analyzer interlock (<1% O2), no hot work near furnace seal, leak detection.
+6. Roller Table/Conveyor Nip Points — Rotating rollers in contact with hot material; entanglement risk.
+   Controls: Guards on all accessible nip points (IS 11572), emergency pull-cords along entire table length, no manual intervention on moving table.
+7. Crane Handling Hot Coils/Slabs — 20-30 ton hot coils (200-600°C) moved overhead.
+   Controls: Designated hot storage area, no walking under suspended coils, tong/C-hook inspection, coil fall protection cradles.
+
+KEY PTW REQUIREMENTS:
+- Roll change: LOTO on main drive + hydraulic
+- Furnace entry: Gas-free + confined space + hot work (for repairs)
+- Pickling tank maintenance: Chemical isolation + confined space
+- Below roller table: LOTO + height (if pit access)
+
+REGULATIONS: FA 1948 S21 (guards), S22 (machinery in motion), S32 (access), IS 14489 Clause 7.5-7.8, SG/30-33''',
+    },
+
+    {
+      'title': 'Power Plant (CPP/TPS) — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/35, IS 14489:2018 Clause 7',
+      'content': '''SECTION: POWER PLANT (Captive Power Plant / Thermal Power Station / BPPP)
+
+CRITICAL HAZARDS:
+1. High-Pressure Steam Leak — Boiler operates at 100-170 kg/cm², 540°C. Invisible steam jet can cut flesh.
+   Controls: Steam trap maintenance, flange guard covers on high-pressure joints, NO work on pressurized lines, leak detection surveys (ultrasonic), exclusion zones during start-up.
+2. Turbine Hall Hazards — High-speed rotating equipment (3000 RPM), oil fire risk, H2 cooling explosion.
+   Controls: Turbine supervision room, oil mist detection, H2 purity monitoring (>98%), bearing vibration alarms, no loose clothing near turbine.
+3. Coal Dust Explosion — Coal bunkers and transfer points accumulate explosive dust (Kst = 100-200 bar·m/s).
+   Controls: Dust suppression (water spray), bunker level monitoring (prevent empty bunker fires), inerting for storage, no cutting/welding near coal handling without gas-free.
+4. Boiler Drum/Tube Failure — Sudden energy release; superheated water flashes to steam (1600x volume expansion).
+   Controls: IBR compliance, annual inspection by boiler inspector, hydro test per schedule, tube thickness monitoring, safety valve testing.
+5. Switchyard/HT Electrical — 220kV/132kV/33kV; arc flash incident energy can exceed 40 cal/cm².
+   Controls: Arc flash study per IEEE 1584, PPE category labels on each panel, minimum approach distances, LOTO before any work, earthing before touch.
+6. Ash Handling Confined Space — Ash slurry sumps, ESP hoppers, flue gas ducts.
+   Controls: Confined space permit, O2 check (CO from incomplete combustion), heat stress in ESP, tripod rescue at sump entry.
+7. Coal Fire in Stockpile — Spontaneous combustion in stored coal (especially high-volatile coal).
+   Controls: Temperature monitoring probes, FIFO stock rotation, compaction, height limit <6m, fire hydrant coverage.
+
+KEY PTW REQUIREMENTS:
+- Boiler entry: Confined space + height + isolation of steam/water/fuel
+- Turbine opening: LOTO (electrical + steam + oil + H2)
+- Coal bunker entry: Confined space + O2 monitoring
+- Switchyard work: Electrical isolation permit + earthing certificate
+
+REGULATIONS: Indian Boiler Regulations 1950, CEA Regulations 2010, Indian Electricity Rules 1956, FA 1948 S31, IS 14489 Clause 7.9, SG/35''',
+    },
+
+    {
+      'title': 'Electrical Systems — Section-Specific Safety',
+      'source': 'CEA Regulations 2010, Indian Electricity Rules 1956, IS 14489',
+      'content': '''SECTION: ELECTRICAL (Substations / Panel Rooms / Cable Galleries / MCC)
+
+CRITICAL HAZARDS:
+1. Arc Flash/Arc Blast — Electrical fault creates plasma (20,000°C), pressure wave, molten metal spray.
+   Controls: Arc flash study (IEEE 1584), incident energy labels on every panel, FR clothing per NFPA 70E category, arc-rated face shield, maintain working distance.
+2. Electrocution — Contact with live parts (direct or indirect via damaged insulation/failed earthing).
+   Controls: LOTO per IS 14489, PTW for all electrical work, insulating gloves (IS 4770) tested per 6 months, insulating mats (IS 15652), GFI/RCCB on portable equipment.
+3. Transformer Fire — Oil-filled transformers (10,000+ litres); internal fault → oil fire/explosion.
+   Controls: Buchholz relay, PRV, oil temperature monitoring, fire wall between transformers, deluge system, oil pit with soak pit, AFFF foam system.
+4. Cable Fire — Overloaded or damaged cables in galleries/trenches ignite; fire propagates along cable run.
+   Controls: Fire-retardant cables (IS 10810 C type), cable tray fire barriers every 15m, fire detection in cable galleries, no combustible storage in cable basement.
+5. Battery Room Hydrogen — Lead-acid batteries produce H2 during charging (explosive at 4% in air).
+   Controls: Forced ventilation (min 5 air changes/hr), explosion-proof electrical fittings, no naked flame, H2 detector, eye wash station (acid splash).
+6. Working on Live Equipment — Emergency troubleshooting on energized circuits.
+   Controls: Live work permit (Chief Electrical Engineer authority only), proximity warning devices, insulated tools (IS 7406), minimum 2 persons, rescue plan ready.
+
+LOTO PROCEDURE (MANDATORY for all electrical work):
+1. Notify affected personnel
+2. Identify all energy sources (electrical, mechanical, pneumatic, hydraulic, thermal, chemical, gravity)
+3. Isolate (open breaker, rack out, remove fuses)
+4. Lock (each worker applies own lock + tag with name, date, reason)
+5. Try-out (attempt to start — verify dead)
+6. Earth/ground (discharge stored energy, apply earthing)
+7. Work
+8. Remove earths, remove locks in reverse order, re-energize
+
+REGULATIONS: CEA Reg 36 (earthing), Reg 44 (overcurrent), Reg 46 (shock protection), IE Rules 50 (danger notice), Rule 61 (work near live), IS 5216, IS 3043''',
+    },
+
+    {
+      'title': 'Gas Network — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/34, IS 14489:2018 Clause 6.5',
+      'content': '''SECTION: GAS NETWORK (BF Gas / Coke Oven Gas / LD Gas / Mixed Gas)
+
+GAS PROPERTIES (CRITICAL KNOWLEDGE):
+- BF Gas: CO 25-28%, CO2 15-18%, N2 55%, H2 2-3%. Calorific value 750-900 kcal/Nm³. Explosive range 35-74%.
+- Coke Oven Gas: H2 55%, CH4 25%, CO 6-8%, C2H4 2%. Calorific value 4200-4500 kcal/Nm³. Explosive range 5-30%.
+- LD Gas: CO 60-70%, CO2 15-18%, N2 12-15%. Calorific value 2000-2200 kcal/Nm³. MOST DANGEROUS.
+- Mixed Gas: BF+COG blended to 1000-1200 kcal/Nm³ for burners.
+- CO TLV: 50 ppm (8-hr TWA). STEL: 400 ppm. IDLH: 1200 ppm. Immediately dangerous.
+- CO is colourless, odourless — CANNOT be detected by human senses.
+
+CRITICAL HAZARDS:
+1. CO Poisoning — Leading cause of gas-related fatalities in steel plants.
+   Controls: Personal CO detector mandatory for ALL gas zone workers, fixed multi-point CO monitors, buddy system, wind direction awareness, escape route knowledge.
+2. Gas Explosion — Leaked gas + ignition source in confined/semi-confined space.
+   Controls: No hot work within 30m of gas installation without gas-free, LEL monitoring, purging procedure (N2 purge to <2% combustible), elimination of ignition sources.
+3. Oxygen Deficiency — Gas displaces air in low-lying areas, manholes, tunnels.
+   Controls: O2 monitor (<19.5% = danger), never enter low area near gas lines without detector, forced ventilation before entry.
+4. Pipeline Failure — Corrosion, vibration fatigue, thermal expansion/contraction stress.
+   Controls: Ultrasonic thickness gauging (annual), vibration monitoring, expansion joints, cathodic protection, colour coding per IS 2379.
+5. Water Seal Blow-Through — Pressure surge pushes gas past water seal safety device.
+   Controls: Water level monitoring, overflow alarms, standby N2 purge, emergency isolation valves.
+6. Gas Holder Piston Jam — Stuck piston causes over-pressure in supply system.
+   Controls: Piston guide rail inspection, pressure relief valves, level indicators, emergency flaring.
+
+GAS-FREE CERTIFICATE PROCEDURE:
+1. Isolate gas supply (close valve + install spectacle blind/slip plate)
+2. Purge with N2 until O2 < 2% (prevent explosive mixture forming during purge)
+3. Then purge with air until O2 > 20.5% and CO < 25 ppm and LEL = 0%
+4. Gas-free certificate issued by authorized Gas Safety Officer
+5. Continuous monitoring during work
+6. Reverse procedure for gas-in (air purge → N2 purge → gas-in)
+
+PIPELINE COLOUR CODES (IS 2379):
+- BF Gas: Grey
+- Coke Oven Gas: Red
+- Mixed Gas: Blue
+- LD Gas: White with red bands
+- Nitrogen: Black with white bands
+- Oxygen: Light blue
+- Steam: Silver grey
+- Compressed Air: Light blue with white bands
+- Water (fire): Red
+
+REGULATIONS: FA 1948 S36, S37, IS 14489 Clause 6.5, SG/34, OISD-116 (gas pipeline)''',
+    },
+
+    {
+      'title': 'Material Handling & Conveyors — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/36, IS 14489:2018 Clause 6.4',
+      'content': '''SECTION: MATERIAL HANDLING (RMHP / Ore Handling / Coal Handling / Conveyors)
+
+CRITICAL HAZARDS:
+1. Conveyor Belt Entanglement — Nip points at head/tail pulleys, return idlers, snub pulleys kill workers every year.
+   Controls: Guards on ALL nip points (mesh guard per IS 11572), pull-cord along entire length (both sides), zero-speed switch, belt alignment switch, emergency stop at every 30m, LOTO before any work.
+2. Belt Fire — Friction (slipping belt on locked pulley), hot material, or electrical fault.
+   Controls: Slip/speed sensors, fire-resistant belting (IS 1891 Part 4), fire detection (linear heat), water spray deluge at transfer points, no combustible storage below conveyors.
+3. Stockpile Collapse/Engulfment — Undermining during reclaiming causes overhang collapse.
+   Controls: No working under overhang, mechanical reclaiming only (no manual), barricading of reclaim face, no personnel on active stockpile.
+4. Transfer Tower Falls — Multi-level structures with chutes, gates, and moving equipment.
+   Controls: Permanent platforms with guardrails, anti-slip grating, proper lighting, fall arrest for edge work, housekeeping (material spillage removal).
+5. Wagon Movement/Rail Track — Internal rail transport of ore/coal; shunting operations.
+   Controls: Track-crossing only at designated points, look-listen-cross, no riding on wagons, flagman during shunting, buffer stop maintenance.
+6. Dust Exposure — Iron ore, coal, limestone dust; respirable fraction <10 microns.
+   Controls: Dust suppression (water/chemical), enclosed transfer points, LEV at discharge, dust masks (IS 9473 / IS 13408 P2 minimum), ambient dust monitoring.
+7. Stacker-Reclaimer Collision — Boom collision with ground personnel, vehicles, or other equipment.
+   Controls: Anti-collision sensors, operating radius barricading, dedicated walkways away from boom swing, radio communication with ground staff.
+
+KEY RULES:
+- NO manual cleaning of running belt
+- NO crossing under running belt (use designated crossovers)
+- NO riding on belt
+- ALL personnel to stay 1m from belt edge
+- Pull-cord test every shift
+- LOTO for ANY maintenance including clearing blockages
+
+REGULATIONS: FA 1948 S21 (guards), S22 (machinery in motion), S32 (access), IS 11592 (belt conveyor safety), IS 14489 Clause 6.4''',
+    },
+
+    {
+      'title': 'Crane & Lifting Operations — Section-Specific Safety',
+      'source': 'FA 1948 S28-29, IS 807, IS 13367, SAIL SG/37',
+      'content': '''SECTION: CRANE & LIFTING (EOT Cranes / Mobile Cranes / Hoists)
+
+CRANE TYPES IN STEEL PLANT:
+- Hot Metal Crane (350-400t) — SMS ladle handling, HIGHEST RISK
+- Charging Crane (200-300t) — Scrap/hot metal charging to converter
+- Stripper Crane — Ingot stripping
+- Soaking Pit Crane — Heated ingot handling
+- EOT Crane (5-250t) — General purpose workshops/stores
+- Gantry Crane — Open yard material handling
+- Mobile Crane — Maintenance/erection (telescopic/lattice boom)
+- Hoist — Chain/wire rope for smaller loads
+
+CRITICAL HAZARDS:
+1. Crane Failure with Molten Metal — Catastrophic: hot metal crane failure = mass casualty.
+   Controls: Hot metal cranes designed with 2x safety factor, dual braking, dual hoisting, NEVER walk below hot metal crane in operation, exclusion zone enforced.
+2. Overloading — Exceeding SWL causes structural/rope failure.
+   Controls: Safe Working Load (SWL) displayed prominently, load indicator mandatory (IS 13367), automatic overload cut-off, lift plan for critical lifts (>80% SWL).
+3. Sling Failure — Worn/damaged slings snap under load.
+   Controls: Colour-coded quarterly inspection (Q1-Red, Q2-Yellow, Q3-Green, Q4-Blue), discard criteria (10% broken wires in one pitch), certified slings only, SWL tag on every sling.
+4. Two-Blocking — Hook block contacts boom tip sheave = catastrophic failure.
+   Controls: Anti-two-block device, limit switches tested pre-shift, operator awareness.
+5. Person Under Suspended Load — NO ONE ever stands under crane carrying load.
+   Controls: Barricade load path, banksman/rigger signals, audio alarm before lift, "NO STANDING" zone marking.
+6. Crane-to-Crane Collision — Two cranes on same gantry rail in same bay.
+   Controls: Anti-collision device, buffer stops, communication protocol between operators.
+
+PRE-OPERATION CHECKS (EVERY SHIFT):
+✓ Brakes (hoisting, cross-travel, long-travel)
+✓ Limit switches (upper/lower, travel)
+✓ Wire rope condition (visual)
+✓ Hook latch, hook condition
+✓ Emergency stop functionality
+✓ Warning devices (hooter, flashing light)
+✓ Load indicator reading (if fitted)
+✓ Operator fitness (not under influence, fatigue check)
+
+LIFTING PLAN REQUIRED WHEN:
+- Load >80% of crane SWL
+- Tandem lift (2 cranes)
+- Load over personnel area
+- Blind lift (operator cannot see load)
+- Critical/fragile equipment
+- Night operation with limited visibility
+
+REGULATIONS: FA 1948 S28, S29, IS 807:2006, IS 13367:1992, IS 3177 (chain slings), IS 15360 (wire rope slings), Form 36 register''',
+    },
+
+    {
+      'title': 'Sinter Plant — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines SG/29, IS 14489:2018',
+      'content': '''SECTION: SINTER PLANT
+
+CRITICAL HAZARDS:
+1. Hot Sinter Burns — Sinter cake temperature 700-900°C at discharge; cooled sinter 100-150°C.
+   Controls: No manual contact with hot sinter, heat-resistant PPE near cooler discharge, barricading of hot zones, IR temperature monitoring.
+2. Sinter Strand Fall Hazards — Multi-level structure with gratings, wind boxes, ignition hood.
+   Controls: Permanent handrails, anti-slip grating, proper lighting, safety harness for maintenance above strand.
+3. Dust Exposure — Iron ore + limestone + coke breeze dust; silica content 5-15%.
+   Controls: Enclosed transfer points, bag filters, ESP for main exhaust, P2/P3 respirators, ambient monitoring.
+4. Ignition Hood Area — High temperature (1100-1200°C), radiant heat, gas burners.
+   Controls: Heat shields, FR clothing, no combustible storage nearby, gas leak detection, burner management system.
+5. Crusher/Screen Area — High noise (>100 dBA), vibration, nip points.
+   Controls: Acoustic enclosures, ear protectors (IS 9167), machine guards, LOTO for maintenance, anti-vibration mounts.
+6. ESP Fire — Carbon in dust + spark = fire inside ESP.
+   Controls: CO monitoring in ESP outlet, rapping system maintenance, temperature monitoring, CO2/N2 injection system, fire detection.
+7. Conveyor & Proportioning Bins — Material surge, chute blockage, belt fire.
+   Controls: Level indicators, chute vibrators, anti-roll-back devices, fire-resistant belting.
+
+KEY PTW REQUIREMENTS:
+- Strand maintenance (during campaign): Hot work + height + isolation of strand drive
+- ESP entry: Confined space + electrical isolation (HT power to electrodes)
+- Ignition hood repair: Gas isolation + hot work + height
+- Below strand (wind box area): Confined space characteristics
+
+REGULATIONS: FA 1948 S14, S21, S32, S38, IS 14489 Clause 7.1, SG/29''',
+    },
+
+    {
+      'title': 'Oxygen Plant / Air Separation Unit — Section-Specific Safety',
+      'source': 'SAIL Safety Guidelines, IS 14489, SMPV Rules 2016',
+      'content': '''SECTION: OXYGEN PLANT / AIR SEPARATION UNIT (ASU)
+
+CRITICAL HAZARDS:
+1. Oxygen Enrichment Fire/Explosion — O2 >23.5% makes normally non-flammable materials (clothing, oil, grease) burn violently.
+   Controls: NO oil/grease on O2 equipment, dedicated O2-clean tools, O2 monitoring in enclosed spaces near O2 lines, fire-resistant clothing in O2 plant.
+2. Cryogenic Burns — LOX (-183°C), LIN (-196°C), LAR (-186°C) cause instant frostbite.
+   Controls: Cryogenic PPE (leather gloves, face shield, cuffless trousers over boot tops), splash guards on transfer connections, training on cryogenic first-aid.
+3. Asphyxiation (N2/Ar) — Nitrogen and Argon are odourless asphyxiants. Displace O2 causing unconsciousness in seconds.
+   Controls: O2 monitors at all N2/Ar venting points, confined space procedures near cold box/storage areas, rescue plan with SCBA, NO entry to enclosed areas without O2 check.
+4. High Pressure Systems — Compressor output 6-200 bar; stored gas cylinders 150-200 bar.
+   Controls: SMPV compliance, pressure relief valves, regular hydro-testing, no unauthorized repair of HP fittings, barricading of HP manifolds.
+5. Cold Box Hydrocarbon Accumulation — Trace hydrocarbons from intake air can accumulate in cold box → explosion.
+   Controls: Inlet air quality monitoring (total hydrocarbon <1 ppm near cold box), deriming schedule, emergency N2 flood provision.
+6. Compressor Lube Oil Contamination — Oil entering O2 stream = explosion risk.
+   Controls: Oil-free compressors for O2, multi-stage filtration, automatic oil detection shutdown.
+
+KEY RULES FOR O2 PLANT:
+- NO smoking within 15m of O2 storage/piping
+- NO oil, grease, or hydrocarbon-based substances on ANY O2 equipment
+- O2 cylinders stored separately from fuel gas (minimum 6m separation)
+- Valve operation: open SLOWLY (adiabatic compression heating of trapped gas)
+- ALL O2 piping degreased and O2-cleaned before commissioning
+
+REGULATIONS: SMPV Rules 2016 (Rule 10, 14), IS 14489, IS 7312 (cylinder storage), IS 4379 (colour codes), FA 1948 S31, S37''',
+    },
+
     {
       'title': 'SAIL Plant List & Applicable State Rules',
       'source': 'SAIL Safety Lens — jurisdictional reference',
