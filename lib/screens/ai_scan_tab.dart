@@ -1465,12 +1465,20 @@ class _AIScanTabState extends State<AIScanTab> {
     }
 
     // Build base incident
+    // ★ v35: Include detected section for department-wise alerts & analytics
+    final detectedSection = _result!['detectedSection']?.toString() ?? 'GENERAL';
+    final sectionCues = _result!['sectionCues']?.toString() ?? '';
+
     final incident = {
       'id':              DateTime.now().millisecondsSinceEpoch.toString(),
       'title':           'AI Hazard Scan: ${firstHazard.toString()}',
       'plant':           user['plant']?.toString() ?? 'SAIL Safety Organisation',
-      'dept':            user['department']?.toString() ?? '',
-      'location':        'AI scan result',
+      'dept':            user['department']?.toString().isNotEmpty == true
+                         ? user['department'].toString()
+                         : detectedSection,
+      'detectedSection': detectedSection,
+      'sectionCues':     sectionCues,
+      'location':        'AI scan result — $detectedSection',
       'severity':        _result!['overallRisk'] ?? 'MEDIUM',
       'wsaCategory':     firstHazardMap['wsaCause']?.toString() ?? 'Multiple causes',
       'obsType':         'N/A',
@@ -1487,6 +1495,8 @@ class _AIScanTabState extends State<AIScanTab> {
       'hazards':         hazards,
       'riskScore':       _result!['riskScore']    ?? 0,
       'confidence':      _result!['confidence']   ?? 0,
+      'ptw_required':    _result!['ptw_required']?.toString() ?? 'None',
+      'section_specific_risks': _result!['section_specific_risks'] ?? [],
       'imageBase64':     _imageBytes != null
                          ? base64Encode(_imageBytes!) : null,
       'thumbnailBase64': _imageBytes != null
