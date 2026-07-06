@@ -5,6 +5,7 @@
 // Each hazard's `bbox` is expected as [yMin, xMin, yMax, xMax] normalized 0–1000
 // (Gemini Vision format) OR as [x, y, w, h] normalized 0–1.
 
+import 'dart:math' show sqrt;
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/material.dart';
 
@@ -133,7 +134,31 @@ class _BboxOverlay extends StatelessWidget {
 
         return Stack(
           clipBehavior: Clip.hardEdge,
-          children: hazards.asMap().entries.map((entry) {
+          children: [
+            // ✅ LOF Zone overlays (rendered BELOW bboxes)
+            ...hazards.asMap().entries
+                .where((e) =>
+                    (e.value as Map)['type']?.toString().toLowerCase() ==
+                        'line of fire' &&
+                    (e.value as Map)['lofZone'] != null)
+                .map((entry) {
+              final hazard = Map<String, dynamic>.from(entry.value as Map);
+              final zone = hazard['lofZone'] as Map;
+              final x1 = (num.tryParse(zone['x1']?.toString() ?? '') ?? 0).toDouble();
+              final y1 = (num.tryParse(zone['y1']?.toString() ?? '') ?? 0).toDouble();
+              final x2 = (num.tryParse(zone['x2']?.toString() ?? '') ?? 0).toDouble();
+              final y2 = (num.tryParse(zone['y2']?.toString() ?? '') ?? 0).toDouble();
+              return Positioned.fill(
+                child: CustomPaint(
+                  painter: _LofZonePainter(
+                    x1: x1, y1: y1, x2: x2, y2: y2,
+                    containerW: w, containerH: h,
+                  ),
+                ),
+              );
+            }),
+            // ✅ Bbox overlays
+            ...hazards.asMap().entries.map((entry) {
             final i = entry.key;
             final hazard = Map<String, dynamic>.from(entry.value as Map);
             final bbox = hazard['bbox'];
@@ -264,6 +289,7 @@ class _BboxOverlay extends StatelessWidget {
               ),
             );
           }).toList(),
+          ],
         );
       },
     );
@@ -278,4 +304,83 @@ class _BboxOverlay extends StatelessWidget {
       default:         return const Color(0xFFF59E0B);
     }
   }
+}
+
+/// ✅ Custom painter for Line of Fire shaded zone corridor
+/// Draws a semi-transparent tapered path from source (x1,y1) to person (x2,y2)
+class _LofZonePainter extends CustomPainter {
+  final double x1, y1, x2, y2;
+  final double containerW, containerH;
+
+  _LofZonePainter({
+    required this.x1, required this.y1,
+    required this.x2, required this.y2,
+    required this.containerW, required this.containerH,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final srcX = x1 * containerW;
+    final srcY = y1 * containerH;
+    final dstX = x2 * containerW;
+    final dstY = y2 * containerH;
+
+    // Corridor half-width (tapers from source to person)
+    final srcHalfW = containerW * 0.04; // wider at source
+    final dstHalfW = containerW * 0.02; // narrower at person
+
+    // Calculate perpendicular direction
+    final dx = dstX - srcX;
+    final dy = dstY - srcY;
+    final len = (dx * dx + dy * dy);
+    if (len < 1) return; // too close, skip
+    final sqrtDist = sqrt(len);
+    final perpX = -dy / sqrtDist;
+    final perpY = dx / sqrtDist;
+
+    // Build tapered corridor path
+    final path = Path()
+      ..moveTo(srcX + perpX * srcHalfW, srcY + perpY * srcHalfW)
+      ..lineTo(dstX + perpX * dstHalfW, dstY + perpY * dstHalfW)
+      ..lineTo(dstX - perpX * dstHalfW, dstY - perpY * dstHalfW)
+      ..lineTo(srcX - perpX * srcHalfW, srcY - perpY * srcHalfW)
+      ..close();
+
+    // Semi-transparent red fill
+    final fillPaint = Paint()
+      ..color = const Color(0x22E53935) // very light red, ~13% opacity
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    // Dashed-style border (solid thin line for simplicity)
+    final borderPaint = Paint()
+      ..color = const Color(0x55E53935) // ~33% opacity red border
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawPath(path, borderPaint);
+
+    // Small arrow indicator at the midpoint
+    final midX = (srcX + dstX) / 2;
+    final midY = (srcY + dstY) / 2;
+    final arrowLen = containerW * 0.025;
+    final normDx = dx / sqrtDist;
+    final normDy = dy / sqrtDist;
+
+    final arrowPath = Path()
+      ..moveTo(midX + normDx * arrowLen, midY + normDy * arrowLen)
+      ..lineTo(midX - normDx * arrowLen + perpX * arrowLen * 0.6,
+               midY - normDy * arrowLen + perpY * arrowLen * 0.6)
+      ..lineTo(midX - normDx * arrowLen - perpX * arrowLen * 0.6,
+               midY - normDy * arrowLen - perpY * arrowLen * 0.6)
+      ..close();
+
+    final arrowPaint = Paint()
+      ..color = const Color(0x66E53935)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(arrowPath, arrowPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LofZonePainter old) =>
+      x1 != old.x1 || y1 != old.y1 || x2 != old.x2 || y2 != old.y2;
 }

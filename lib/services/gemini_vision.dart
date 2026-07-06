@@ -482,10 +482,15 @@ Return ONLY a JSON object (no markdown, no explanation):
       "severity": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
       "regulation": "<exact section e.g. FA 1948 S21, IS 14489 Cl.4>",
       "correctiveAction": "<starts with action verb, specific steps>",
-      "type": "Unsafe Act" or "Unsafe Condition" or "Line of Fire"
+      "type": "Unsafe Act" or "Unsafe Condition" or "Line of Fire",
+      "lofZone": {"x1": 0.2, "y1": 0.3, "x2": 0.5, "y2": 0.7}
     }
   ]
-}''';
+}
+
+IMPORTANT: "lofZone" is REQUIRED for hazards with type "Line of Fire" only.
+It defines the danger path: (x1,y1) = center of energy source/hazard origin, (x2,y2) = center of exposed person.
+Coordinates are normalized 0-1. Omit lofZone for non-LOF hazards.''';
   }
 
   // ── Offline fallback ─────────────────────────────────────────────────────

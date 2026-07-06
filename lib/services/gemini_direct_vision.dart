@@ -534,6 +534,13 @@ HAZARD CHECKLIST — Check EVERY applicable category
   POWER PLANT: Person near steam header flange, person below coal conveyor, person in turbine oil spray zone
   GAS NETWORK: Person downstream of bleeder without CO detector, person near valve under pressure
 
+── LOF ZONE (mandatory for type "Line of Fire") ──
+  For EVERY hazard with type "Line of Fire", include "lofZone" in the JSON.
+  lofZone defines the DANGER PATH from energy source to person:
+    "lofZone": {"x1": <source x 0-1>, "y1": <source y 0-1>, "x2": <person x 0-1>, "y2": <person y 0-1>}
+  (x1,y1) = center of energy source/hazard origin; (x2,y2) = center of exposed person.
+  This draws a shaded corridor showing the line of fire path on the image.
+
 ═══════════════════════════════════════════════════════
 GAS CYLINDER COLOUR CODES (IS 4379:1981)
 ═══════════════════════════════════════════════════════
@@ -600,7 +607,8 @@ OUTPUT FORMAT — valid JSON ONLY, no markdown, no preamble
       "correctiveAction": "starts with action verb; specific steps relevant to this section",
       "type": "Unsafe Act|Unsafe Condition|Line of Fire",
       "wsaCause": "number. description e.g. 5. Equipment failure",
-      "bbox": {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.4}
+      "bbox": {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.4},
+      "lofZone": {"x1": 0.2, "y1": 0.3, "x2": 0.5, "y2": 0.7}
     }
   ],
   "wsa": ["list of WSA causes ACTUALLY applicable"],

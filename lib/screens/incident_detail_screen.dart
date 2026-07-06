@@ -190,6 +190,9 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
           ]),
           const SizedBox(height: 12),
 
+          // ── EVIDENCE PHOTO (if available) ────────────────────
+          _buildEvidencePhoto(sl, bgColor),
+
           // ── COMPACT INFO ROWS (not giant grid) ───────────────
           _buildCompactInfo(sl, bgColor),
           const SizedBox(height: 12),
@@ -275,6 +278,36 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
                 : sl.border.withOpacity(0.4))),
         ]));
       }).toList()));
+
+  // ─── EVIDENCE PHOTO ──────────────────────────────────────────
+  Widget _buildEvidencePhoto(SL sl, Color bg) {
+    final imgB64 = _inc['imageBase64']?.toString() ?? '';
+    final thumbB64 = _inc['thumbnailBase64']?.toString() ?? '';
+    final b64 = imgB64.isNotEmpty ? imgB64 : thumbB64;
+    if (b64.isEmpty) return const SizedBox.shrink();
+
+    return Column(children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxHeight: 220),
+          decoration: BoxDecoration(
+            color: sl.isDark ? const Color(0xFF252840) : Colors.white,
+            border: Border.all(color: sl.isDark
+                ? Colors.white10 : Colors.black12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Image.memory(
+            base64Decode(b64),
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
+    ]);
+  }
 
   // ─── COMPACT INFO (replaces giant GridView) ──────────────────
   Widget _buildCompactInfo(SL sl, Color bg) {

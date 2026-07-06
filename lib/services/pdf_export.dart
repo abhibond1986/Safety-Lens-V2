@@ -461,6 +461,40 @@ class PdfExport {
               width: displayedW, height: displayedH,
               fit: pw.BoxFit.fill)),
 
+          // ✅ LOF Zone indicators (light shaded rectangles for Line of Fire hazards)
+          ...hazards.asMap().entries
+              .where((e) =>
+                  e.value['type']?.toString().toLowerCase() == 'line of fire' &&
+                  e.value['lofZone'] is Map)
+              .map((entry) {
+            final zone = entry.value['lofZone'] as Map;
+            final zx1 = _asDouble(zone['x1']).clamp(0.0, 1.0);
+            final zy1 = _asDouble(zone['y1']).clamp(0.0, 1.0);
+            final zx2 = _asDouble(zone['x2']).clamp(0.0, 1.0);
+            final zy2 = _asDouble(zone['y2']).clamp(0.0, 1.0);
+            // Draw a rectangle covering the LOF corridor
+            final left = (zx1 < zx2 ? zx1 : zx2);
+            final top  = (zy1 < zy2 ? zy1 : zy2);
+            final right  = (zx1 > zx2 ? zx1 : zx2);
+            final bottom = (zy1 > zy2 ? zy1 : zy2);
+            // Expand slightly for visibility
+            final zoneW = ((right - left) * displayedW).clamp(20.0, displayedW);
+            final zoneH = ((bottom - top) * displayedH).clamp(20.0, displayedH);
+            return pw.Positioned(
+              left: offsetX + left * displayedW,
+              top: offsetY + top * displayedH,
+              child: pw.Container(
+                width: zoneW,
+                height: zoneH,
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#E5393520'),
+                  border: pw.Border.all(
+                    color: PdfColor.fromHex('#E5393560'), width: 0.8),
+                ),
+              ),
+            );
+          }),
+
           ...bboxed.map((i) {
             final h     = hazards[i];
             final bbMap = h['bbox'] as Map;

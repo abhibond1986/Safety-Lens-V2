@@ -1,3 +1,4 @@
+import 'dart:convert' show base64Decode;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -585,6 +586,9 @@ class _OverviewTabState extends State<OverviewTab> {
             ),
           ),
           child: Row(children: [
+            // ✅ Thumbnail
+            _buildSheetThumbnail(inc, sevColor),
+            const SizedBox(width: 10),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(inc['title']?.toString() ?? 'Untitled',
                   style: TextStyle(color: sl.text1, fontSize: 12, fontWeight: FontWeight.w600),
@@ -607,6 +611,34 @@ class _OverviewTabState extends State<OverviewTab> {
           ]),
         ),
       ),
+    );
+  }
+
+  /// Thumbnail widget for overview incident cards
+  Widget _buildSheetThumbnail(Map<String, dynamic> inc, Color sevColor) {
+    final thumbnail = inc['thumbnailBase64']?.toString() ?? '';
+    final isAiScan = (inc['type']?.toString().toUpperCase() ?? '') == 'AI_SCAN';
+    return Container(
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        color: sevColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: sevColor.withOpacity(0.2)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: thumbnail.isNotEmpty
+          ? Image.memory(
+              base64Decode(thumbnail),
+              fit: BoxFit.cover,
+              width: 42, height: 42,
+              errorBuilder: (_, __, ___) => Icon(
+                isAiScan ? Icons.image_search_rounded : Icons.warning_amber_rounded,
+                color: sevColor, size: 20),
+            )
+          : Icon(
+              isAiScan ? Icons.image_search_rounded : Icons.warning_amber_rounded,
+              color: sevColor, size: 20),
     );
   }
 }
