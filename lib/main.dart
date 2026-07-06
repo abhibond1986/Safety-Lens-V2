@@ -148,20 +148,31 @@ class SafetyLensApp extends StatefulWidget {
   State<SafetyLensApp> createState() => _SafetyLensAppState();
 }
 
-class _SafetyLensAppState extends State<SafetyLensApp> {
+class _SafetyLensAppState extends State<SafetyLensApp> with WidgetsBindingObserver {
   // ✅ FIX: Default to LIGHT mode instead of dark
   ThemeMode _mode = ThemeMode.light;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     I18n.instance.addListener(_onLocaleChanged);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     I18n.instance.removeListener(_onLocaleChanged);
+    AppUpdater.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Check for updates every time app comes to foreground
+      AppUpdater.onAppResumed();
+    }
   }
 
   void _onLocaleChanged() {

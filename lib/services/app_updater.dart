@@ -8,6 +8,7 @@
 //   4. Triggers install via PackageInstaller (silent if same signing key)
 //      OR falls back to ACTION_VIEW intent (shows one-tap install prompt)
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
@@ -23,13 +24,16 @@ class AppUpdater {
   static const String _repo = 'Safety-Lens-V2';
 
   /// Fallback version if native query fails — should match pubspec.yaml
-  static const String _fallbackVersion = '1.0.48';
+  static const String _fallbackVersion = '1.0.97';
 
-  /// How often to check for updates (in hours)
-  static const int _checkIntervalHours = 1;
+  /// How often to check for updates (in minutes) — aggressive for enterprise deployment
+  static const int _checkIntervalMinutes = 15;
 
   /// How many times to retry offering the same version before giving up
-  static const int _maxAttempts = 5;
+  static const int _maxAttempts = 10;
+
+  /// Periodic check timer
+  static Timer? _periodicTimer;
 
   static const String _lastCheckKey = 'app_updater_last_check';
   static const String _lastVersionKey = 'app_updater_last_installed';
@@ -55,37 +59,54 @@ class AppUpdater {
     return _currentVersion!;
   }
 
-  /// Initialize — check for updates and install if available.
+  /// Initialize — check for updates immediately and start periodic checks.
   /// Call this from main.dart after app startup.
   static Future<void> init() async {
     if (kIsWeb) return;
     if (!Platform.isAndroid) return;
 
+    // Run initial check
+    await _performCheck();
+
+    // Start periodic background checks every _checkIntervalMinutes
+    _periodicTimer?.cancel();
+    _periodicTimer = Timer.periodic(
+      Duration(minutes: _checkIntervalMinutes),
+      (_) => _performCheck(),
+    );
+    debugPrint('[AppUpdater] Periodic check started (every ${_checkIntervalMinutes}min)');
+  }
+
+  /// Stop periodic checks (call on app dispose if needed)
+  static void dispose() {
+    _periodicTimer?.cancel();
+    _periodicTimer = null;
+  }
+
+  /// Internal: perform one update check cycle
+  static Future<void> _performCheck() async {
     final prefs = await SharedPreferences.getInstance();
     final lastCheck = prefs.getInt(_lastCheckKey) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final hoursSinceLastCheck = (now - lastCheck) / (1000 * 60 * 60);
+    final minsSinceLastCheck = (now - lastCheck) / (1000 * 60);
 
-    if (hoursSinceLastCheck < _checkIntervalHours) {
-      debugPrint('[AppUpdater] Skipping — last check ${hoursSinceLastCheck.toStringAsFixed(1)}h ago');
+    // Rate limit: don't check more than once per 5 minutes (safety net)
+    if (minsSinceLastCheck < 5) {
+      debugPrint('[AppUpdater] Skipping — last check ${minsSinceLastCheck.toStringAsFixed(0)}min ago');
       return;
     }
 
     await prefs.setInt(_lastCheckKey, now);
 
-    // Reset attempt counter if a previous install never actually completed
-    // (user is still on an older version than what was "attempted")
     final currentVer = await getCurrentVersion();
     final lastAttemptedVer = prefs.getString(_lastVersionKey) ?? '';
     if (lastAttemptedVer.isNotEmpty && _isNewerVersion(lastAttemptedVer, currentVer)) {
-      // Install was offered but never completed — keep retrying
       debugPrint('[AppUpdater] v$lastAttemptedVer was attempted but not installed (still on v$currentVer)');
     }
 
     try {
       final updateInfo = await _checkForUpdate();
       if (updateInfo != null) {
-        // Allow retrying same version up to _maxAttempts times
         final lastAttempted = prefs.getString(_lastVersionKey) ?? '';
         final attemptCount = prefs.getInt(_attemptCountKey) ?? 0;
         if (lastAttempted == updateInfo.version && attemptCount >= _maxAttempts) {
@@ -93,17 +114,16 @@ class AppUpdater {
           return;
         }
 
-        // Track attempt count (reset if it's a new version)
         if (lastAttempted != updateInfo.version) {
           await prefs.setInt(_attemptCountKey, 1);
         } else {
           await prefs.setInt(_attemptCountKey, attemptCount + 1);
         }
 
-        debugPrint('[AppUpdater] Update available: v${updateInfo.version} (current: ${await getCurrentVersion()}, attempt: ${attemptCount + 1})');
+        debugPrint('[AppUpdater] Update available: v${updateInfo.version} (current: $currentVer, attempt: ${attemptCount + 1})');
         await _downloadAndInstall(updateInfo);
       } else {
-        debugPrint('[AppUpdater] App is up to date (v${await getCurrentVersion()})');
+        debugPrint('[AppUpdater] App is up to date (v$currentVer)');
       }
     } catch (e) {
       debugPrint('[AppUpdater] Check failed: $e');
@@ -268,6 +288,13 @@ class AppUpdater {
     } catch (e) {
       return 'Check failed: $e';
     }
+  }
+
+  /// Call this when app resumes from background to check immediately
+  static Future<void> onAppResumed() async {
+    if (kIsWeb || !Platform.isAndroid) return;
+    // Check immediately on resume (rate-limited internally)
+    await _performCheck();
   }
 }
 
