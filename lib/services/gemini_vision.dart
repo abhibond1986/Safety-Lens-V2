@@ -455,18 +455,41 @@ PROFESSIONAL STANDARDS:
 - 4-7 specific, well-described hazards are better than 10 vague ones.
 - Every corrective action must be SPECIFIC (not generic "ensure safety").
 
+CORRECT STATUTORY REFERENCES — USE THESE EXACTLY:
+• Gas cylinder storage/handling → SMPV Rules 2016 Rule 14
+• Gas cylinder identification/colour → IS 4379:1981
+• Gas cylinder handling safety → IS 15222:2011
+• Dangerous fumes/gases in workspace → FA 1948 S36
+• Explosive/inflammable gas/dust → FA 1948 S37
+• Fire safety/extinguishers → FA 1948 S38
+• Fencing of machinery → FA 1948 S21
+• Work at height/fall protection → FA 1948 S33, IS 3521:1999
+• Floors, stairs, access routes → FA 1948 S32
+• Hoists, lifts, cranes → FA 1948 S28, S29
+• Pressure vessels → FA 1948 S31
+• Excessive weight carrying → FA 1948 S34
+• Eye protection → FA 1948 S35
+• PPE general → IS 14489:2018 Cl.8.3
+• Hazard identification & risk assessment → IS 14489:2018 Cl.5
+• OHS management system → IS 14489:2018 Cl.4
+• Electrical safety → CEA Regulations 2010 Reg 36
+• Confined space → FA 1948 S36, IS 14489:2018 Cl.7.4
+• Housekeeping → FA 1948 S32(b)
+NEVER cite S21 for gas cylinders. S21 = machinery fencing ONLY.
+NEVER cite generic "Cl.4" — be specific about clause sub-section.
+
 LINE OF FIRE (LOF) — MANDATORY CHECK:
 "Line of Fire" = person positioned where energy release, object movement, or material flow could strike them. Identify 1-2 LOFs if visible:
-• Person in path of crane/suspended load → "LOF: Suspended Load"
-• Person near moving conveyor/roller table → "LOF: Moving Equipment"
-• Person near hot metal/slag/ladle → "LOF: Molten Metal Path"
-• Person in swing radius of vehicle/excavator → "LOF: Vehicle Movement"
-• Person below work at height → "LOF: Falling Objects"
-• Person near pressurized lines (steam/hydraulic/gas) → "LOF: Pressurized System"
-• Person near rotating equipment without guards → "LOF: Rotating Parts"
-• Person in path of railway wagon/loco → "LOF: Rail Movement"
-• Person near gas lines/cylinders → "LOF: Gas Release"
-• Person near electrical panel during switching → "LOF: Arc Flash"
+• Person in path of crane/suspended load → "LOF: Suspended Load" (FA 1948 S29)
+• Person near moving conveyor/roller table → "LOF: Moving Equipment" (FA 1948 S21)
+• Person near hot metal/slag/ladle → "LOF: Molten Metal Path" (IS 14489:2018 Cl.7.6)
+• Person in swing radius of vehicle/excavator → "LOF: Vehicle Movement" (IS 14489:2018 Cl.7.9)
+• Person below work at height → "LOF: Falling Objects" (FA 1948 S33)
+• Person near pressurized lines (steam/hydraulic/gas) → "LOF: Pressurized System" (FA 1948 S31)
+• Person near rotating equipment without guards → "LOF: Rotating Parts" (FA 1948 S21)
+• Person in path of railway wagon/loco → "LOF: Rail Movement" (IS 14489:2018 Cl.7.9)
+• Person near gas cylinders → "LOF: Gas Release" (SMPV Rules 2016 Rule 14)
+• Person near electrical panel during switching → "LOF: Arc Flash" (CEA Reg 36)
 
 Return ONLY a JSON object (no markdown, no explanation):
 {
@@ -480,17 +503,19 @@ Return ONLY a JSON object (no markdown, no explanation):
       "name": "<max 5 words, specific>",
       "description": "<what is visible, why dangerous, consequence>",
       "severity": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
-      "regulation": "<exact section e.g. FA 1948 S21, IS 14489 Cl.4>",
+      "regulation": "<EXACT section from list above — NEVER invent>",
       "correctiveAction": "<starts with action verb, specific steps>",
       "type": "Unsafe Act" or "Unsafe Condition" or "Line of Fire",
-      "lofZone": {"x1": 0.2, "y1": 0.3, "x2": 0.5, "y2": 0.7}
+      "lofZone": {"x1": 0.2, "y1": 0.3, "x2": 0.8, "y2": 0.7}
     }
   ]
 }
 
 IMPORTANT: "lofZone" is REQUIRED for hazards with type "Line of Fire" only.
-It defines the danger path: (x1,y1) = center of energy source/hazard origin, (x2,y2) = center of exposed person.
-Coordinates are normalized 0-1. Omit lofZone for non-LOF hazards.''';
+It defines the approximate danger zone as a rectangle covering the energy source to the exposed person.
+x1,y1 = top-left corner of danger zone, x2,y2 = bottom-right corner. Coordinates normalized 0.0–1.0.
+Make the zone generous — cover the full path where energy/material could travel.
+Omit lofZone for non-LOF hazards.''';
   }
 
   // ── Offline fallback ─────────────────────────────────────────────────────

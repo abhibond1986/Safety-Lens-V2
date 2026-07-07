@@ -5,7 +5,7 @@
 // Each hazard's `bbox` is expected as [yMin, xMin, yMax, xMax] normalized 0–1000
 // (Gemini Vision format) OR as [x, y, w, h] normalized 0–1.
 
-import 'dart:math' show sqrt;
+// No additional imports needed — LinearGradient comes from material.dart
 import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/material.dart';
 
@@ -306,8 +306,10 @@ class _BboxOverlay extends StatelessWidget {
   }
 }
 
-/// ✅ Custom painter for Line of Fire shaded zone corridor
-/// Draws a semi-transparent tapered path from source (x1,y1) to person (x2,y2)
+/// ✅ Custom painter for Line of Fire shaded danger zone
+/// Draws a semi-transparent red/orange shaded rectangular region covering
+/// the approximate area where energy/material could strike a person.
+/// (x1,y1) = top-left of zone, (x2,y2) = bottom-right of zone (normalized 0-1)
 class _LofZonePainter extends CustomPainter {
   final double x1, y1, x2, y2;
   final double containerW, containerH;
@@ -320,64 +322,91 @@ class _LofZonePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final srcX = x1 * containerW;
-    final srcY = y1 * containerH;
-    final dstX = x2 * containerW;
-    final dstY = y2 * containerH;
+    // Convert normalized coords to pixel coords
+    final left   = x1 * containerW;
+    final top    = y1 * containerH;
+    final right  = x2 * containerW;
+    final bottom = y2 * containerH;
 
-    // Corridor half-width (tapers from source to person)
-    final srcHalfW = containerW * 0.04; // wider at source
-    final dstHalfW = containerW * 0.02; // narrower at person
+    final zoneRect = Rect.fromLTRB(
+      left.clamp(0, containerW),
+      top.clamp(0, containerH),
+      right.clamp(0, containerW),
+      bottom.clamp(0, containerH),
+    );
 
-    // Calculate perpendicular direction
-    final dx = dstX - srcX;
-    final dy = dstY - srcY;
-    final len = (dx * dx + dy * dy);
-    if (len < 1) return; // too close, skip
-    final sqrtDist = sqrt(len);
-    final perpX = -dy / sqrtDist;
-    final perpY = dx / sqrtDist;
+    if (zoneRect.width < 5 || zoneRect.height < 5) return;
 
-    // Build tapered corridor path
-    final path = Path()
-      ..moveTo(srcX + perpX * srcHalfW, srcY + perpY * srcHalfW)
-      ..lineTo(dstX + perpX * dstHalfW, dstY + perpY * dstHalfW)
-      ..lineTo(dstX - perpX * dstHalfW, dstY - perpY * dstHalfW)
-      ..lineTo(srcX - perpX * srcHalfW, srcY - perpY * srcHalfW)
-      ..close();
-
-    // Semi-transparent red fill
+    // Gradient fill: red-orange, ~20% opacity (visible but not obscuring)
     final fillPaint = Paint()
-      ..color = const Color(0x22E53935) // very light red, ~13% opacity
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          Color(0x30FF5722), // orange-red ~19% opacity
+          Color(0x28E53935), // red ~16% opacity
+        ],
+      ).createShader(zoneRect)
       ..style = PaintingStyle.fill;
-    canvas.drawPath(path, fillPaint);
 
-    // Dashed-style border (solid thin line for simplicity)
+    final rrect = RRect.fromRectAndRadius(zoneRect, const Radius.circular(6));
+    canvas.drawRRect(rrect, fillPaint);
+
+    // Dashed-style border (hatched pattern feel)
     final borderPaint = Paint()
-      ..color = const Color(0x55E53935) // ~33% opacity red border
+      ..color = const Color(0x88E53935) // ~53% opacity red border
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawPath(path, borderPaint);
+      ..strokeWidth = 2.0;
+    canvas.drawRRect(rrect, borderPaint);
 
-    // Small arrow indicator at the midpoint
-    final midX = (srcX + dstX) / 2;
-    final midY = (srcY + dstY) / 2;
-    final arrowLen = containerW * 0.025;
-    final normDx = dx / sqrtDist;
-    final normDy = dy / sqrtDist;
+    // Diagonal hatch lines for "danger zone" feel
+    canvas.save();
+    canvas.clipRRect(rrect);
+    final hatchPaint = Paint()
+      ..color = const Color(0x18E53935) // very subtle hatch
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+    const spacing = 12.0;
+    for (double d = -zoneRect.height; d < zoneRect.width + zoneRect.height; d += spacing) {
+      canvas.drawLine(
+        Offset(zoneRect.left + d, zoneRect.top),
+        Offset(zoneRect.left + d - zoneRect.height, zoneRect.bottom),
+        hatchPaint,
+      );
+    }
+    canvas.restore();
 
-    final arrowPath = Path()
-      ..moveTo(midX + normDx * arrowLen, midY + normDy * arrowLen)
-      ..lineTo(midX - normDx * arrowLen + perpX * arrowLen * 0.6,
-               midY - normDy * arrowLen + perpY * arrowLen * 0.6)
-      ..lineTo(midX - normDx * arrowLen - perpX * arrowLen * 0.6,
-               midY - normDy * arrowLen - perpY * arrowLen * 0.6)
-      ..close();
+    // "LOF" label in the zone
+    final textPainter = TextPainter(
+      text: const TextSpan(
+        text: '⚠ LINE OF FIRE',
+        style: TextStyle(
+          color: Color(0xBBD32F2F),
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
 
-    final arrowPaint = Paint()
+    // Position label at top-center of zone
+    final labelX = zoneRect.center.dx - textPainter.width / 2;
+    final labelY = zoneRect.top + 4;
+
+    // Label background
+    final labelRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(labelX - 4, labelY - 2,
+          textPainter.width + 8, textPainter.height + 4),
+      const Radius.circular(3),
+    );
+    canvas.drawRRect(labelRect, Paint()..color = const Color(0xCCFFFFFF));
+    canvas.drawRRect(labelRect, Paint()
       ..color = const Color(0x66E53935)
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(arrowPath, arrowPaint);
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5);
+
+    textPainter.paint(canvas, Offset(labelX, labelY));
   }
 
   @override
