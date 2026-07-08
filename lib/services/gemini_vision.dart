@@ -21,6 +21,7 @@ import 'network_checker.dart';
 import 'gemini_direct_vision.dart';
 import 'groq_service.dart';
 import 'admin_master_data.dart';
+import 'knowledge_service.dart';
 
 class GeminiVision {
   static const String _backendUrl =
@@ -94,13 +95,31 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
+      // FETCH KB CONTEXT — inject regulation knowledge from uploaded docs
+      // ══════════════════════════════════════════════════════════════════════
+      String kbContext = '';
+      try {
+        // Get all regulation-related KB docs for maximum accuracy
+        kbContext = await KnowledgeService.getContextForPrompt(
+          'safety regulation statutory reference factories act IS standard',
+          maxKbDocs: 5,
+          includeExpertPrompt: false,
+        ).timeout(const Duration(seconds: 3), onTimeout: () => '');
+        if (kbContext.isNotEmpty) {
+          print('GeminiVision: ✓ KB context loaded (${kbContext.length} chars)');
+        }
+      } catch (_) {
+        print('GeminiVision: KB context fetch failed — continuing without');
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
       // STEP 1: GEMINI DIRECT — fastest path, no server round-trip
       // Fast-bails on 429 (doesn't waste 30s trying other models)
       // ══════════════════════════════════════════════════════════════════════
       if (await GeminiDirectVision.isConfigured) {
         print('GeminiVision: ▶ [1/4] Gemini Direct...');
         try {
-          final directResult = await GeminiDirectVision.analyzeImage(bytes);
+          final directResult = await GeminiDirectVision.analyzeImage(bytes, kbContext: kbContext);
           if (_isValidResult(directResult)) {
             print('GeminiVision: ✓ [1/4] Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             directResult!['_source'] = directResult['_source'] ?? 'gemini_direct';
@@ -123,7 +142,7 @@ class GeminiVision {
       if (await GroqService.isConfigured) {
         print('GeminiVision: ▶ [2/4] Groq Vision...');
         try {
-          final groqResult = await _callGroqVision(bytes);
+          final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
           if (_isValidResult(groqResult)) {
             print('GeminiVision: ✓ [2/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             groqResult!['_source'] = 'groq_vision';
@@ -148,7 +167,7 @@ class GeminiVision {
       if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
         print('GeminiVision: ▶ [3/4] OpenRouter (client)...');
         try {
-          final orResult = await _callOpenRouterVision(bytes, orKey);
+          final orResult = await _callOpenRouterVision(bytes, orKey, kbContext: kbContext);
           if (_isValidResult(orResult)) {
             print('GeminiVision: ✓ [3/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             orResult!['_source'] = 'openrouter_client';
@@ -225,7 +244,7 @@ class GeminiVision {
   // ══════════════════════════════════════════════════════════════════════════
   //  GROQ VISION — llama-4-scout (free, fast, independent)
   // ══════════════════════════════════════════════════════════════════════════
-  static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes) async {
+  static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
     final prefs = await SharedPreferences.getInstance();
     final apiKey = prefs.getString('groq_api_key') ?? '';
     if (apiKey.isEmpty || !apiKey.startsWith('gsk_')) return null;
@@ -235,13 +254,24 @@ class GeminiVision {
 
     const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
+    // Build prompt with KB context if available
+    String prompt = _getHazardPrompt();
+    if (kbContext != null && kbContext.isNotEmpty) {
+      prompt += '\n\n═══════════════════════════════════════════════════════\n'
+          'ADDITIONAL REFERENCE MATERIAL FROM KNOWLEDGE BANK\n'
+          '═══════════════════════════════════════════════════════\n'
+          'Use the following uploaded reference documents for ACCURATE regulation citations.\n'
+          'If a specific clause/section is mentioned below, cite it EXACTLY as written:\n\n'
+          '$kbContext';
+    }
+
     final requestBody = {
       'model': model,
       'messages': [
         {
           'role': 'user',
           'content': [
-            {'type': 'text', 'text': _getHazardPrompt()},
+            {'type': 'text', 'text': prompt},
             {'type': 'image_url', 'image_url': {'url': dataUrl}},
           ]
         }
@@ -279,12 +309,23 @@ class GeminiVision {
   // ══════════════════════════════════════════════════════════════════════════
   //  OPENROUTER (client) — NVIDIA free vision model
   // ══════════════════════════════════════════════════════════════════════════
-  static Future<Map<String, dynamic>?> _callOpenRouterVision(Uint8List bytes, String apiKey) async {
+  static Future<Map<String, dynamic>?> _callOpenRouterVision(Uint8List bytes, String apiKey, {String? kbContext}) async {
     final base64Image = base64Encode(bytes);
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
 
     // NVIDIA free vision model — completely independent from Google
     const model = 'nvidia/nemotron-nano-12b-v2-vl:free';
+
+    // Build prompt with KB context if available
+    String prompt = _getHazardPrompt();
+    if (kbContext != null && kbContext.isNotEmpty) {
+      prompt += '\n\n═══════════════════════════════════════════════════════\n'
+          'ADDITIONAL REFERENCE MATERIAL FROM KNOWLEDGE BANK\n'
+          '═══════════════════════════════════════════════════════\n'
+          'Use the following uploaded reference documents for ACCURATE regulation citations.\n'
+          'If a specific clause/section is mentioned below, cite it EXACTLY as written:\n\n'
+          '$kbContext';
+    }
 
     final requestBody = {
       'model': model,
@@ -292,7 +333,7 @@ class GeminiVision {
         {
           'role': 'user',
           'content': [
-            {'type': 'text', 'text': _getHazardPrompt()},
+            {'type': 'text', 'text': prompt},
             {'type': 'image_url', 'image_url': {'url': dataUrl}},
           ]
         }

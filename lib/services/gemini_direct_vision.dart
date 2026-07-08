@@ -83,8 +83,9 @@ class GeminiDirectVision {
 
   /// Analyze image for safety hazards
   /// Returns structured hazard data or null on failure
+  /// [kbContext] — optional knowledge bank content to inject into prompt for accurate regulations
   /// ★ v25: FAST BAIL on 429 — all models share same key/quota, no point trying others
-  static Future<Map<String, dynamic>?> analyzeImage(Uint8List imageBytes) async {
+  static Future<Map<String, dynamic>?> analyzeImage(Uint8List imageBytes, {String? kbContext}) async {
     if (!await isConfigured) return null;
 
     // If quota was exhausted recently (within 60s), skip entirely
@@ -101,7 +102,7 @@ class GeminiDirectVision {
 
     // ── Try primary model only — BAIL FAST on 429 ──
     print('GeminiDirectVision: ▶ Model: $model');
-    final result = await _callModel(model, apiKey, base64Image);
+    final result = await _callModel(model, apiKey, base64Image, kbContext: kbContext);
 
     // 429 detected — don't try any other model
     if (_quotaExhausted) {
@@ -118,7 +119,7 @@ class GeminiDirectVision {
     // Only try ONE more fallback (not the whole chain) — and only if NOT quota issue
     final fallback = model == 'gemini-2.0-flash' ? 'gemini-2.0-flash-lite' : 'gemini-2.0-flash';
     print('GeminiDirectVision: ▶ Quick fallback: $fallback');
-    final fbResult = await _callModel(fallback, apiKey, base64Image);
+    final fbResult = await _callModel(fallback, apiKey, base64Image, kbContext: kbContext);
 
     if (_quotaExhausted) {
       print('GeminiDirectVision: ⚡ QUOTA EXHAUSTED — bailing');
@@ -137,15 +138,26 @@ class GeminiDirectVision {
   }
 
   /// Call a specific Gemini model for image analysis
-  static Future<Map<String, dynamic>?> _callModel(String model, String apiKey, String base64Image) async {
+  static Future<Map<String, dynamic>?> _callModel(String model, String apiKey, String base64Image, {String? kbContext}) async {
     final url = 'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey';
+
+    // Build prompt with KB context if available
+    String prompt = _getComprehensivePrompt();
+    if (kbContext != null && kbContext.isNotEmpty) {
+      prompt += '\n\n═══════════════════════════════════════════════════════\n'
+          'ADDITIONAL REFERENCE MATERIAL FROM KNOWLEDGE BANK\n'
+          '═══════════════════════════════════════════════════════\n'
+          'Use the following uploaded reference documents for ACCURATE regulation citations.\n'
+          'If a specific clause/section is mentioned below, cite it EXACTLY as written:\n\n'
+          '$kbContext';
+    }
 
     final requestBody = {
       'contents': [
         {
           'parts': [
             {
-              'text': _getComprehensivePrompt()
+              'text': prompt
             },
             {
               'inline_data': {
