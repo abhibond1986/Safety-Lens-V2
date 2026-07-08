@@ -578,6 +578,27 @@ class _AIScanTabState extends State<AIScanTab> {
                                           : AppColors.accent,
                                       fontSize: 9,
                                       fontWeight: FontWeight.w700)))),
+                              const SizedBox(width: 6),
+                              GestureDetector(
+                                onTap: () => setLocal(() {
+                                  editableHazards.removeAt(i);
+                                  editControllers.remove(i);
+                                  editingIndex.remove(i);
+                                  _result!['hazards'] = editableHazards;
+                                }),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.red.withOpacity(0.1),
+                                    borderRadius:
+                                        BorderRadius.circular(7)),
+                                  child: const Text(
+                                    '🗑 Delete',
+                                    style: TextStyle(
+                                      color: AppColors.red,
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w700)))),
                             ]),
                             const SizedBox(height: 8),
 

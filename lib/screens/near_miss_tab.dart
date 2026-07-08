@@ -63,6 +63,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   final _location        = TextEditingController();
   final _description     = TextEditingController();
   final _immediateAction = TextEditingController();
+  // ★ Multiple corrective actions
+  final List<TextEditingController> _additionalActions = [];
 
   String _plant   = 'SAIL Safety Organisation';
   String _selectedDept = '';          // Currently selected department from dropdown
@@ -78,6 +80,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   // ★ v24: AI Description Refinement
   bool _aiRefining = false;
   Map<String, dynamic>? _aiSuggestion; // {refined, isNearMiss, reason, confidence}
+  String? _aiSummary; // ★ Summary of Near Miss shown above description
   // ★ v29: Proper Timer-based debounce (replaces pile-up Future.delayed)
   Timer? _descDebounce;
   Timer? _locationDebounce;
@@ -641,13 +644,27 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     if (_aiSuggestion == null) return;
     final refined = _aiSuggestion!['refined']?.toString() ?? '';
     if (refined.isNotEmpty) {
+      // Generate a 1-2 line summary from the refined text
+      final summary = _generateSummary(refined);
       setState(() {
         _description.text = refined;
         _description.selection = TextSelection.fromPosition(
             TextPosition(offset: refined.length));
+        _aiSummary = summary;
         _aiSuggestion = null;
       });
     }
+  }
+
+  /// Generate a concise 1-line summary from description text
+  String _generateSummary(String text) {
+    // Take first sentence or first 100 chars as summary
+    final sentences = text.split(RegExp(r'[.।]'));
+    if (sentences.isNotEmpty && sentences[0].trim().length > 10) {
+      final first = sentences[0].trim();
+      return first.length > 120 ? '${first.substring(0, 117)}...' : first;
+    }
+    return text.length > 120 ? '${text.substring(0, 117)}...' : text;
   }
 
   void _dismissAiSuggestion() {
@@ -697,6 +714,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     _speech.cancel();
     _brief.dispose(); _deptOther.dispose(); _location.dispose();
     _description.dispose(); _immediateAction.dispose();
+    for (final c in _additionalActions) { c.dispose(); }
     super.dispose();
   }
 
@@ -729,13 +747,44 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     final bytes = await picked.readAsBytes();
     setState(() {
       _pickedFile = picked; _imageBytes = bytes;
-      _analyzing = true; _aiBrief = null;
+      _aiBrief = null;
     });
 
     // Capture GPS in background and auto-fill location with place name
     _captureGpsInBackground();
 
-    await _analyzeImage();
+    // Ask user: scan with AI or just upload?
+    if (!mounted) return;
+    final shouldScan = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Image Captured', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+        content: const Text('Do you want AI to scan this image for hazards, or just attach it?',
+            style: TextStyle(fontSize: 12)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Just Attach', style: TextStyle(fontSize: 12)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.auto_fix_high, size: 14),
+            label: const Text('AI Scan', style: TextStyle(fontSize: 12)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldScan == true) {
+      setState(() => _analyzing = true);
+      await _analyzeImage();
+    }
   }
 
   /// Captures GPS location silently and fills location field with place name
@@ -1009,8 +1058,8 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
 📝 Description:
 ${_description.text.trim()}
 
-🔧 Immediate Action:
-${_immediateAction.text.trim()}
+🔧 Corrective Actions:
+${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim()).where((t) => t.isNotEmpty)].asMap().entries.map((e) => '${e.key + 1}. ${e.value}').join('\n')}
 
 📅 Date: ${DateTime.now().toString().split('.').first}
 👷 Reported via Safety Lens App''';
@@ -1061,7 +1110,10 @@ ${_immediateAction.text.trim()}
         'wsaCategory':     _wsaCause,
         'obsType':         _obsType,
         'desc':            '${_brief.text}\n\n${_description.text}'.trim(),
-        'immediateAction': _immediateAction.text.trim(),
+        'immediateAction': [
+          _immediateAction.text.trim(),
+          ..._additionalActions.map((c) => c.text.trim()).where((t) => t.isNotEmpty),
+        ].join(' | '),
         'type':            'NEAR_MISS',
         'status':          'OPEN',
         'reportedBy':      user?['name'] ?? 'Unknown',
@@ -1109,6 +1161,9 @@ ${_immediateAction.text.trim()}
           _pickedFile = null; _imageBytes = null; _aiBrief = null;
           _brief.clear(); _deptOther.clear(); _selectedDept = ''; _showOtherDept = false; _location.clear();
           _description.clear(); _immediateAction.clear();
+          for (final c in _additionalActions) { c.dispose(); }
+          _additionalActions.clear();
+          _aiSummary = null;
         });
         _showSaveSuccessDialog(incident, synced, exportAfter);
       }
@@ -1653,6 +1708,38 @@ ${_immediateAction.text.trim()}
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
+          // ★ AI Summary of Near Miss (shown after AI processes voice/text input)
+          if (_aiSummary != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.accent.withOpacity(0.06), AppColors.accent.withOpacity(0.02)]),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.accent.withOpacity(0.3))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(Icons.summarize_rounded, size: 13, color: AppColors.accent),
+                      const SizedBox(width: 6),
+                      Text('Summary of Near Miss',
+                        style: TextStyle(color: AppColors.accent, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.3)),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => setState(() => _aiSummary = null),
+                        child: Icon(Icons.close, size: 13, color: sl.text4)),
+                    ]),
+                    const SizedBox(height: 6),
+                    Text(_aiSummary!,
+                      style: TextStyle(color: sl.text1, fontSize: 11.5, height: 1.4, fontWeight: FontWeight.w500)),
+                  ],
+                ),
+              ),
+            ),
           // ★ v25: Voice language selector chips
           _buildVoiceLangChips(sl),
           _buildTextField('Tap mic → speak in ${_selectedVoiceLang == "hi" ? "Hindi" : "English"} → AI frames it', _description, Icons.description_outlined, sl, maxLines: 3,
@@ -1662,8 +1749,55 @@ ${_immediateAction.text.trim()}
             _buildAiRefiningIndicator(sl),
           if (_aiSuggestion != null)
             _buildAiSuggestionCard(sl),
-          _buildTextField('Immediate Corrective Action', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
+          _buildTextField('Corrective Action 1', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
             suffix: _micButton(_immediateAction), onChanged: _onActionChanged),
+          // ★ Additional corrective actions
+          ..._additionalActions.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final ctrl = entry.value;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 0),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: _buildTextField(
+                      'Corrective Action ${idx + 2}', ctrl, Icons.flash_on_outlined, sl, maxLines: 2),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _additionalActions[idx].dispose();
+                      _additionalActions.removeAt(idx);
+                    }),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 14, left: 4),
+                      child: Icon(Icons.remove_circle_outline, size: 20, color: AppColors.red.withOpacity(0.7)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          // ★ Add more corrective actions button
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: GestureDetector(
+              onTap: () => setState(() => _additionalActions.add(TextEditingController())),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(8),
+                  color: AppColors.accent.withOpacity(0.04)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add_circle_outline, size: 15, color: AppColors.accent),
+                  const SizedBox(width: 6),
+                  Text('Add Corrective Action',
+                    style: TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.w600)),
+                ]),
+              ),
+            ),
+          ),
         ],
       ),
     );
