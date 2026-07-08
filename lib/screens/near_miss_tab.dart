@@ -198,13 +198,11 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
             _voiceSessionEnded = true;
             final field = _activeMicField;
             setState(() { _isListening = false; _activeMicField = null; });
-            // ★ v29: Auto-trigger AI for ALL fields after voice input stops
+            // ★ Auto-trigger AI for description & location only (not corrective action)
             if (field == _description && _description.text.trim().length >= 10) {
               _refineWithAI(_description.text.trim());
             } else if (field == _location && _location.text.trim().length >= 5) {
               _refineFieldWithAI(_location, 'Exact Location of Incident');
-            } else if (field == _immediateAction && _immediateAction.text.trim().length >= 5) {
-              _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
             }
           } else if (s == 'notListening' && mounted) {
             setState(() => _isListening = false);
@@ -261,13 +259,11 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       _voiceSessionEnded = true; // prevent double AI from onStatus
       await _speech.stop();
       setState(() { _isListening = false; _activeMicField = null; });
-      // ★ v28: AI correction for all fields on voice stop
+      // ★ v28: AI correction for description & location only (not corrective action)
       if (targetField == _description && _description.text.trim().length >= 10) {
         _refineWithAI(_description.text.trim());
       } else if (targetField == _location && _location.text.trim().length >= 5) {
         _refineFieldWithAI(_location, 'Exact Location of Incident');
-      } else if (targetField == _immediateAction && _immediateAction.text.trim().length >= 5) {
-        _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
       }
       return;
     }
@@ -413,16 +409,8 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   }
 
   void _onActionChanged(String text) {
+    // ★ No auto-AI correction for corrective action — user writes their own actions
     _detectLanguageFromText(text);
-    _actionDebounce?.cancel();
-    if (text.trim().length >= 5) {
-      _actionDebounce = Timer(_aiRefineDelay, () {
-        if (!mounted) return;
-        if (_immediateAction.text.trim() == text.trim()) {
-          _refineFieldWithAI(_immediateAction, 'Immediate Corrective Action Taken');
-        }
-      });
-    }
   }
 
   /// ★ v28/v29: AI correction for any text field (location, immediate action)
@@ -1708,6 +1696,37 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
+          // ★ Reference image preview (when image attached without AI scan)
+          if (_imageBytes != null && _aiBrief == null && !_analyzing)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: sl.border.withOpacity(0.4))),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
+                      child: Row(children: [
+                        Icon(Icons.image_outlined, size: 13, color: sl.text4),
+                        const SizedBox(width: 6),
+                        Text('Reference Image',
+                          style: TextStyle(color: sl.text4, fontSize: 10, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: () => setState(() { _imageBytes = null; _pickedFile = null; }),
+                          child: Icon(Icons.close, size: 14, color: sl.text4)),
+                      ])),
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        bottomLeft: Radius.circular(9), bottomRight: Radius.circular(9)),
+                      child: Image.memory(_imageBytes!, height: 150, width: double.infinity, fit: BoxFit.cover)),
+                  ],
+                ),
+              ),
+            ),
           // ★ AI Summary of Near Miss (shown after AI processes voice/text input)
           if (_aiSummary != null)
             Padding(
@@ -1750,7 +1769,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           if (_aiSuggestion != null)
             _buildAiSuggestionCard(sl),
           _buildTextField('Corrective Action 1', _immediateAction, Icons.flash_on_outlined, sl, maxLines: 2,
-            suffix: _micButton(_immediateAction), onChanged: _onActionChanged),
+            suffix: _micButton(_immediateAction)),
           // ★ Additional corrective actions
           ..._additionalActions.asMap().entries.map((entry) {
             final idx = entry.key;
