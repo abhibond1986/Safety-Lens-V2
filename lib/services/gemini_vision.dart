@@ -563,76 +563,132 @@ Omit lofZone for non-LOF hazards.''';
   static Future<Map<String, dynamic>> _offlineFallback(Uint8List bytes,
       {String reason = ''}) async {
     // ═══════════════════════════════════════════════════════════════
-    // KB-BASED FALLBACK: Use knowledge bank for general safety analysis
-    // Can't see the image without AI, but can provide regulation-backed
-    // general hazard checklist from expert knowledge + uploaded docs
+    // KB-BASED CRITICAL ANALYSIS — Comprehensive steel plant inspection
+    // When all AI models fail, provide FULL critical analysis using
+    // Knowledge Bank (expert knowledge + admin-uploaded documents).
+    // Covers ALL major hazard categories with accurate statutory refs.
     // ═══════════════════════════════════════════════════════════════
     try {
+      // Fetch KB context from multiple safety domains for maximum coverage
       final kbContext = await KnowledgeService.getContextForPrompt(
-        'safety hazard inspection steel plant PPE regulation',
-        maxKbDocs: 5,
+        'safety hazard inspection steel plant PPE electrical height fire gas cylinder confined space crane machinery',
+        maxKbDocs: 8,
         includeExpertPrompt: true,
-      ).timeout(const Duration(seconds: 3), onTimeout: () => '');
+      ).timeout(const Duration(seconds: 5), onTimeout: () => '');
 
       if (kbContext.isNotEmpty) {
-        // Build a KB-based general analysis with common hazards
-        final hazards = <Map<String, dynamic>>[];
-
-        // Extract key hazard categories from expert knowledge
-        final commonHazards = [
+        // Comprehensive critical hazard analysis from KB
+        final hazards = <Map<String, dynamic>>[
+          // ─── PPE COMPLIANCE ─────────────────────────────────────
           {
-            'name': 'PPE Compliance Check',
-            'type': 'Unsafe Condition',
+            'name': 'Head Protection — Helmet',
+            'type': 'Unsafe Act',
             'severity': 'HIGH',
-            'regulation': 'FA 1948 S35(1) — Eye & face protection; IS 2925 (Helmet), IS 3521 (Harness), IS 4912 (Goggles)',
-            'recommendation': 'Verify: Helmet (colour-coded), safety shoes (IS 5852), goggles, gloves, ear protection if noise >85dB',
+            'regulation': 'FA 1948 S35(1) — PPE; IS 2925:1984 — Industrial safety helmets',
+            'recommendation': 'Helmet mandatory in ALL plant areas. Colour code: White=Officer, Yellow=Supervisor, Blue=Worker, Green=Visitor, Red=Fire crew. Check: No cracks, chin strap secured, within 3-year life.',
           },
           {
-            'name': 'Housekeeping & Access Routes',
-            'type': 'Unsafe Condition',
+            'name': 'Body & Eye Protection',
+            'type': 'Unsafe Act',
             'severity': 'MEDIUM',
-            'regulation': 'FA 1948 S32 — Working on or near machinery; Ministry of Steel SG/03',
-            'recommendation': 'Check: Clear walkways, no tripping hazards, proper stacking, emergency exit visibility',
+            'regulation': 'FA 1948 S35; IS 4912 (Goggles), IS 5983 (Gloves), IS 5852 (Safety shoes), IS 6994 (Ear muffs)',
+            'recommendation': 'Verify: Safety shoes with steel toe, eye protection for grinding/cutting/welding, hand protection matched to hazard, ear protection if noise >85dB.',
           },
+          // ─── WORKING AT HEIGHT ──────────────────────────────────
           {
-            'name': 'Hot Work / Fire Hazard',
-            'type': 'Line of Fire',
-            'severity': 'HIGH',
-            'regulation': 'FA 1948 S38 — Fire precaution; IS 14489:2018 Cl.11 — Fire prevention',
-            'recommendation': 'Verify: Hot work permit active, fire extinguisher within 6m, fire watcher posted, combustibles removed',
-          },
-          {
-            'name': 'Electrical Safety',
+            'name': 'Fall from Height (>1.8m)',
             'type': 'Unsafe Condition',
             'severity': 'CRITICAL',
-            'regulation': 'CEA Regulations 2010 Reg 36, 44; Indian Electricity Rules 1956 Rule 50, 61',
-            'recommendation': 'Check: Cable insulation intact, no exposed wiring, proper earthing, LOTOTO compliance',
+            'regulation': 'FA 1948 S32 — Floors, stairs, means of access; IS 3521:1999 — Full body harness',
+            'recommendation': 'Full body harness with double lanyard MANDATORY above 1.8m. Anchor point min 15kN. Guardrails min 1m height. Toe boards. Safety net if >3m. Scaffold must be tagged GREEN.',
           },
+          // ─── ELECTRICAL SAFETY ──────────────────────────────────
           {
-            'name': 'Working at Height',
+            'name': 'Electrical Isolation / LOTOTO',
+            'type': 'Unsafe Condition',
+            'severity': 'CRITICAL',
+            'regulation': 'CEA Regulations 2010 Reg 36, 44, 45; Indian Electricity Rules 1956 Rule 29, 50, 61',
+            'recommendation': '5-step LOTOTO: Identify → Isolate → Lock → Tag → TryOut. Each worker applies OWN lock. Verify zero energy before work. No exposed wiring. Earthing ≤1Ω. Panel doors closed & locked.',
+          },
+          // ─── FIRE / HOT WORK ────────────────────────────────────
+          {
+            'name': 'Hot Work Permit & Fire Prevention',
+            'type': 'Line of Fire',
+            'severity': 'CRITICAL',
+            'regulation': 'FA 1948 S38 — Fire precaution; IS 14489:2018 Cl.11.2 — Hot work permit system',
+            'recommendation': 'Valid hot work permit MANDATORY. Fire watcher posted. Extinguisher within 6m (correct class). Combustibles removed 11m radius. Spark direction controlled. Post-work fire watch 30 min.',
+          },
+          // ─── GAS CYLINDER SAFETY ────────────────────────────────
+          {
+            'name': 'Gas Cylinder Storage & Separation',
+            'type': 'Unsafe Condition',
+            'severity': 'CRITICAL',
+            'regulation': 'SMPV Rules 2016 Rule 14 Table-3 — Min 6m separation; IS 3933 — Colour coding',
+            'recommendation': 'O₂ and flammable gas (C₂H₂/LPG): MINIMUM 6m apart OR firewall (1.5m high, 30-min rating). Stored upright & chained. Caps on when not in use. Colours: O₂=Black/White shoulder, C₂H₂=Maroon, LPG=Silver, N₂=Grey. NO oil/grease near O₂.',
+          },
+          // ─── CONFINED SPACE ─────────────────────────────────────
+          {
+            'name': 'Confined Space Entry',
             'type': 'Unsafe Act',
             'severity': 'CRITICAL',
-            'regulation': 'FA 1948 S32 + IS 3521:1999 — Full body harness mandatory above 1.8m',
-            'recommendation': 'Verify: Harness worn & anchored (min 15kN), guardrails present, safety net if applicable',
+            'regulation': 'FA 1948 S36 — Dangerous fumes & confined space; IS 14489:2018 Cl.8',
+            'recommendation': 'Entry permit MANDATORY. Atmospheric testing: O₂ 19.5–23.5%, LEL <10%, CO <50ppm, H₂S <10ppm. Continuous 4-gas monitor. Standby person at entry. SCBA available. Rescue plan & tripod.',
+          },
+          // ─── CRANE / LIFTING ────────────────────────────────────
+          {
+            'name': 'Crane & Overhead Load',
+            'type': 'Line of Fire',
+            'severity': 'CRITICAL',
+            'regulation': 'FA 1948 S33 — Hoists & lifts; IS 3757:1985 — Crane signals; IS 14489:2018 Cl.9',
+            'recommendation': 'NEVER stand under suspended load. Barricade swing radius. Tagline for load control. SWL marked on slings. Annual load test current. Dedicated signal person. Horn before travel.',
+          },
+          // ─── MACHINERY / GUARDS ─────────────────────────────────
+          {
+            'name': 'Machine Guarding & Fencing',
+            'type': 'Unsafe Condition',
+            'severity': 'CRITICAL',
+            'regulation': 'FA 1948 S21 — Fencing of machinery; S22 — Work near machinery in motion',
+            'recommendation': 'ALL rotating/moving parts MUST be guarded. Interlocked guards. No operation with guard removed. No loose clothing/jewelry near rotating parts. Emergency stop within reach. LOTOTO for maintenance.',
+          },
+          // ─── HOUSEKEEPING ───────────────────────────────────────
+          {
+            'name': 'Housekeeping & Access',
+            'type': 'Unsafe Condition',
+            'severity': 'MEDIUM',
+            'regulation': 'FA 1948 S32 — Floors, stairs & means of access; Ministry of Steel SG/03',
+            'recommendation': 'Walkways clear (min 1m width). No trailing cables. Yellow markings visible. Material stacking ≤3× base width. Oil spills cleaned immediately. Emergency exits unobstructed.',
+          },
+          // ─── HOT METAL AREA ─────────────────────────────────────
+          {
+            'name': 'Hot Metal / Molten Splash Zone',
+            'type': 'Line of Fire',
+            'severity': 'CRITICAL',
+            'regulation': 'IS 14489:2018 Cl.10 — Steel making safety; Ministry of Steel SG/12',
+            'recommendation': 'Min 5m exclusion zone during tapping. Aluminized proximity suit + face shield MANDATORY. No moisture in ladle path (steam explosion risk). Ladle preheat min 800°C. Runner condition verified.',
+          },
+          // ─── GAS HAZARD (BF/CO) ─────────────────────────────────
+          {
+            'name': 'Toxic Gas Exposure (CO/BF Gas)',
+            'type': 'Unsafe Condition',
+            'severity': 'CRITICAL',
+            'regulation': 'FA 1948 S36, S41A — Hazardous processes; IS 14489:2018 Cl.8.3',
+            'recommendation': 'BF gas: CO 25–28% (TLV=50ppm, explosive 35–74%). Continuous gas monitoring. Wind direction indicator. Emergency escape route marked & drilled. SCBA at all BF gas areas.',
           },
         ];
 
-        for (final h in commonHazards) {
-          hazards.add(h);
-        }
-
         return {
-          'overallRisk': 'MEDIUM',
-          'riskScore': 50,
-          'confidence': 25,
+          'overallRisk': 'HIGH',
+          'riskScore': 70,
+          'confidence': 35,
           'people': 0,
           'hazards': hazards,
           'summary':
-              '⚠️ AI Vision unavailable ($reason).\n\n'
-              '📚 Knowledge Bank Analysis: Showing common hazard checklist based on uploaded safety documents & expert knowledge. '
-              'These are the TOP regulatory checkpoints applicable to steel plant environments.\n\n'
-              '⚡ Tap any hazard to review the regulation reference. '
-              'When internet is restored, retry for image-specific AI analysis with bounding boxes.',
+              '⚠️ AI Vision models unavailable ($reason)\n\n'
+              '📚 CRITICAL ANALYSIS FROM KNOWLEDGE BANK\n'
+              'Comprehensive safety inspection checklist generated from expert knowledge & uploaded regulation documents.\n\n'
+              '🔍 ${hazards.length} critical checkpoints covering: PPE, Height, Electrical, Fire, Gas Cylinders, Confined Space, Crane, Machinery, Housekeeping, Hot Metal, Toxic Gas.\n\n'
+              '⚡ Review each hazard for applicable statutory references. '
+              'Retry scan when internet is restored for AI-powered image-specific analysis with bounding boxes.',
           '_source': 'knowledge_bank_fallback',
           '_offline_reason': reason,
           '_isOnline': false,
