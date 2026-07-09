@@ -533,22 +533,23 @@ class _ChatTabState extends State<ChatTab> {
   }
 
   void _showPdfHelpDialog(String filename) {
+    final sl = SL.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: SL.of(context).card,
+        backgroundColor: sl.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(children: [
-          Icon(Icons.info_outline, color: AppColors.amber, size: 20),
-          SizedBox(width: 8),
+        title: Row(children: [
+          const Icon(Icons.info_outline, color: AppColors.amber, size: 20),
+          const SizedBox(width: 8),
           Text('Could not read file', style: TextStyle(
-              color: SL.of(context).text1, fontSize: 15, fontWeight: FontWeight.w700)),
+              color: sl.text1, fontSize: 15, fontWeight: FontWeight.w700)),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('"$filename" appears to be image-based or binary-encoded.',
-                style: TextStyle(color: SL.of(context).text2, fontSize: 13)),
+                style: TextStyle(color: sl.text2, fontSize: 13)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(10),
@@ -556,16 +557,16 @@ class _ChatTabState extends State<ChatTab> {
                 color: AppColors.accent.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppColors.accent.withOpacity(0.3))),
-              child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('✅  Better options:', style: TextStyle(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('✅  Better options:', style: TextStyle(
                     color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w700)),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text('1. Copy text → paste via Admin Panel → Add Text Entry',
-                    style: TextStyle(color: SL.of(context).text2, fontSize: 12, height: 1.4)),
+                    style: TextStyle(color: sl.text2, fontSize: 12, height: 1.4)),
                 Text('2. Save as .txt and upload that instead',
-                    style: TextStyle(color: SL.of(context).text2, fontSize: 12, height: 1.4)),
+                    style: TextStyle(color: sl.text2, fontSize: 12, height: 1.4)),
                 Text('3. Use a text-based PDF (not scanned/image PDF)',
-                    style: TextStyle(color: SL.of(context).text2, fontSize: 12, height: 1.4)),
+                    style: TextStyle(color: sl.text2, fontSize: 12, height: 1.4)),
               ])),
           ]),
         actions: [
@@ -581,9 +582,10 @@ class _ChatTabState extends State<ChatTab> {
   Future<void> _showKnowledgeManager() async {
     final docs = await LocalDB.getKnowledgeDocs();
     if (!mounted) return;
+    final sl = SL.of(context);
     await showModalBottomSheet(
       context: context,
-      backgroundColor: SL.of(context).card,
+      backgroundColor: sl.card,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
@@ -599,13 +601,13 @@ class _ChatTabState extends State<ChatTab> {
                     color: AppColors.amber, size: 20),
                 const SizedBox(width: 8),
                 Expanded(child: Text('Knowledge Base (Admin)',
-                    style: TextStyle(color: SL.of(context).text1,
+                    style: TextStyle(color: sl.text1,
                         fontSize: 15, fontWeight: FontWeight.w700))),
-                IconButton(icon: Icon(Icons.close, color: SL.of(context).text3),
+                IconButton(icon: Icon(Icons.close, color: sl.text3),
                     onPressed: () => Navigator.pop(ctx)),
               ]),
-              const Text('💡 Best results with .txt files or Admin Panel text entries.',
-                  style: TextStyle(color: SL.of(context).text3, fontSize: 11, height: 1.4)),
+              Text('💡 Best results with .txt files or Admin Panel text entries.',
+                  style: TextStyle(color: sl.text3, fontSize: 11, height: 1.4)),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: () async {
@@ -624,15 +626,15 @@ class _ChatTabState extends State<ChatTab> {
               ),
               const SizedBox(height: 14),
               Text('UPLOADED (${docs.length})',
-                  style: TextStyle(color: SL.of(context).text4, fontSize: 9,
+                  style: TextStyle(color: sl.text4, fontSize: 9,
                       letterSpacing: 0.8, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               docs.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.all(20),
+                ? Padding(
+                    padding: const EdgeInsets.all(20),
                     child: Center(child: Text(
                         'No documents yet. Upload reference material to enhance the chatbot.',
-                        style: TextStyle(color: SL.of(context).text4, fontSize: 11),
+                        style: TextStyle(color: sl.text4, fontSize: 11),
                         textAlign: TextAlign.center)))
                 : ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 240),
@@ -645,20 +647,20 @@ class _ChatTabState extends State<ChatTab> {
                           margin: const EdgeInsets.only(bottom: 6),
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: SL.of(context).card2,
+                            color: sl.card2,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: SL.of(context).border)),
+                            border: Border.all(color: sl.border)),
                           child: Row(children: [
                             const Icon(Icons.description_outlined,
                                 color: AppColors.amber, size: 16),
                             const SizedBox(width: 8),
                             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Text(d['title']?.toString() ?? '',
-                                  style: TextStyle(color: SL.of(context).text1,
+                                  style: TextStyle(color: sl.text1,
                                       fontSize: 11, fontWeight: FontWeight.w600),
                                   overflow: TextOverflow.ellipsis),
                               Text('$charCount chars · ${d['uploadedBy'] ?? '—'}',
-                                  style: TextStyle(color: SL.of(context).text4, fontSize: 9)),
+                                  style: TextStyle(color: sl.text4, fontSize: 9)),
                             ])),
                             IconButton(
                               icon: const Icon(Icons.delete_outline,
