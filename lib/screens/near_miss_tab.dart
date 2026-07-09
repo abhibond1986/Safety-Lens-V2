@@ -1119,7 +1119,11 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
       final user = await LocalDB.getCurrentUser();
       final incident = {
         'id':              DateTime.now().millisecondsSinceEpoch.toString(),
-        'title':           _aiBrief?['identified']?.toString() ?? _brief.text.split('.').first.trim(),
+        'title':           _aiBrief?['identified']?.toString().isNotEmpty == true
+                               ? _aiBrief!['identified'].toString()
+                               : _brief.text.trim().isNotEmpty
+                                   ? _brief.text.split('.').first.trim()
+                                   : _description.text.trim().split('.').first.trim(),
         'plant':           _plant,
         'dept':            _effectiveDept,
         'location':        loc,
