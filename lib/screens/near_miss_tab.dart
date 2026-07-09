@@ -9,7 +9,8 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show File;
+import 'dart:io' show File, Directory;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:image/image.dart' as img;
 import 'package:flutter/material.dart';
@@ -1031,7 +1032,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
     _submit(exportAfter: false);
   }
 
-  /// ★ v25/v29: Share Report — captures data BEFORE submit clears form
+  /// ★ v25/v29/v30: Share Report — captures data + image BEFORE submit clears form
   void _handleShareReport() async {
     _submittingAction = 'share';
     // ★ v29 FIX: Build share text BEFORE _submit clears the form fields
@@ -1052,10 +1053,32 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
 📅 Date: ${DateTime.now().toString().split('.').first}
 👷 Reported via Safety Lens App''';
 
+    // ★ v30: Save image to temp file BEFORE _submit clears _imageBytes
+    XFile? shareImageFile;
+    if (_imageBytes != null && !kIsWeb) {
+      try {
+        final tempDir = await getTemporaryDirectory();
+        final imgFile = File('${tempDir.path}/near_miss_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await imgFile.writeAsBytes(_imageBytes!);
+        shareImageFile = XFile(imgFile.path, mimeType: 'image/jpeg');
+      } catch (_) {
+        // If temp file creation fails, share without image
+      }
+    }
+
     final success = await _submit(exportAfter: false);
     if (success && mounted) {
       try {
-        await Share.share(shareText, subject: 'Near Miss Report — $_plant');
+        if (shareImageFile != null) {
+          // Share with image attached (works on WhatsApp, Telegram, etc.)
+          await Share.shareXFiles(
+            [shareImageFile],
+            text: shareText,
+            subject: 'Near Miss Report — $_plant',
+          );
+        } else {
+          await Share.share(shareText, subject: 'Near Miss Report — $_plant');
+        }
       } catch (_) {}
     }
   }
@@ -1071,6 +1094,12 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
     final loc = _location.text.trim();
     if (loc.isEmpty || loc == 'To be confirmed (edit if needed)') {
       _snack('Please enter the actual location', AppColors.red);
+      return false;
+    }
+    // ★ Validate description — must not be empty
+    final desc = _description.text.trim();
+    if (desc.isEmpty && _brief.text.trim().isEmpty) {
+      _snack('Please describe the near miss incident', AppColors.red);
       return false;
     }
     if (await _checkDuplicate()) return false;
@@ -1491,8 +1520,53 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
         if (_imageBytes == null && !_analyzing) _emptyImage(sl),
         if (_analyzing) _analyzingImage(),
         if (_imageBytes != null && !_analyzing && _aiBrief != null) _imageWithBrief(sl),
+        if (_imageBytes != null && !_analyzing && _aiBrief == null) _imageAttachedOnly(sl),
       ]));
   }
+
+  /// Shows image with correct aspect ratio when user chose "Just Attach" (no AI scan)
+  Widget _imageAttachedOnly(SL sl) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(
+          _imageBytes!,
+          width: double.infinity,
+          fit: BoxFit.contain, // ★ Preserves full aspect ratio — no cropping
+        ),
+      ),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: AppColors.green.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(8)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            const Icon(Icons.check_circle, size: 13, color: AppColors.green),
+            const SizedBox(width: 6),
+            Text('Image attached', style: TextStyle(color: sl.text2, fontSize: 11, fontWeight: FontWeight.w600)),
+          ]),
+        )),
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: () => setState(() { _pickedFile = null; _imageBytes = null; }),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.red.withOpacity(0.5)),
+              borderRadius: BorderRadius.circular(8)),
+            child: Row(children: [
+              const Icon(Icons.delete_outline_rounded, size: 13, color: AppColors.red),
+              const SizedBox(width: 4),
+              const Text('Remove', style: TextStyle(color: AppColors.red, fontSize: 11, fontWeight: FontWeight.w600)),
+            ]),
+          ),
+        ),
+      ]),
+    ],
+  );
 
   Widget _emptyImage(SL sl) => Column(children: [
     GestureDetector(
@@ -1585,9 +1659,9 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
   Widget _imageWithBrief(SL sl) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 220),
-        child: ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(_imageBytes!, fit: BoxFit.cover, width: double.infinity)),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.memory(_imageBytes!, fit: BoxFit.contain, width: double.infinity),
       ),
       const SizedBox(height: 12),
       Container(
@@ -1696,37 +1770,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
-          // ★ Reference image preview (when image attached without AI scan)
-          if (_imageBytes != null && _aiBrief == null && !_analyzing)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: sl.border.withOpacity(0.4))),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 8, 10, 4),
-                      child: Row(children: [
-                        Icon(Icons.image_outlined, size: 13, color: sl.text4),
-                        const SizedBox(width: 6),
-                        Text('Reference Image',
-                          style: TextStyle(color: sl.text4, fontSize: 10, fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        GestureDetector(
-                          onTap: () => setState(() { _imageBytes = null; _pickedFile = null; }),
-                          child: Icon(Icons.close, size: 14, color: sl.text4)),
-                      ])),
-                    ClipRRect(
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(9), bottomRight: Radius.circular(9)),
-                      child: Image.memory(_imageBytes!, height: 150, width: double.infinity, fit: BoxFit.cover)),
-                  ],
-                ),
-              ),
-            ),
+          // ★ Reference image now shown in _imageSection at top (via _imageAttachedOnly)
           // ★ AI Summary of Near Miss (shown after AI processes voice/text input)
           if (_aiSummary != null)
             Padding(

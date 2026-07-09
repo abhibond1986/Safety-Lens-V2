@@ -1,4 +1,224 @@
-<!DOCTYPE html>
+#!/usr/bin/env node
+/**
+ * build-preview.js
+ * ────────────────
+ * Reads the Flutter/Dart source files and auto-generates preview/index.html
+ * reflecting the current state of:
+ *   - AppColors (design tokens) from lib/main.dart
+ *   - Navigation items from lib/screens/home_screen.dart
+ *   - Safety quotes from lib/screens/home_tab.dart
+ *   - Form fields & categories from lib/screens/near_miss_tab.dart
+ *   - Chat system prompt & suggestions from lib/screens/chat_tab.dart
+ *   - Report sub-tabs from lib/screens/reports_tab.dart
+ *   - SAIL plants list from lib/screens/login_screen.dart
+ *
+ * Usage:
+ *   node preview/build-preview.js          (one-shot rebuild)
+ *   node preview/build-preview.js --watch  (live file watcher)
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const ROOT = path.resolve(__dirname, '..');
+const OUT = path.join(__dirname, 'index.html');
+
+// ─── HELPERS ──────────────────────────────────────────────────
+
+function readFile(rel) {
+  const full = path.join(ROOT, rel);
+  try { return fs.readFileSync(full, 'utf8'); } catch { return ''; }
+}
+
+function dartColorToCSS(hex8) {
+  // Dart Color(0xFFRRGGBB) → #RRGGBB
+  if (!hex8) return '#000000';
+  const clean = hex8.replace(/0x/i, '').replace(/^FF/i, '');
+  return '#' + clean.padStart(6, '0');
+}
+
+function extractColors(src) {
+  const colors = {};
+  const re = /static\s+const\s+(\w+)\s*=\s*Color\(0x([0-9A-Fa-f]+)\)/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    colors[m[1]] = dartColorToCSS(m[2]);
+  }
+  return colors;
+}
+
+function extractNavItems(src) {
+  const items = [];
+  // Match: _NavItem(Icons.xxx_outlined, Icons.xxx_rounded, 'Label'),
+  const re = /_NavItem\(\s*Icons\.(\w+),\s*Icons\.(\w+),\s*'([^']+)'\)/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    // Convert flutter icon name to Material Icons name
+    const iconName = m[1].replace('_outlined', '').replace('_rounded', '').replace(/_/g, '_');
+    const activeIcon = m[2].replace('_outlined', '').replace('_rounded', '').replace(/_/g, '_');
+    items.push({ icon: iconName, activeIcon, label: m[3] });
+  }
+  return items.length ? items : [
+    { icon: 'home', activeIcon: 'home', label: 'Home' },
+    { icon: 'document_scanner', activeIcon: 'document_scanner', label: 'AI Scan' },
+    { icon: 'warning_amber', activeIcon: 'warning_amber', label: 'Near Miss' },
+    { icon: 'chat_bubble', activeIcon: 'chat_bubble', label: 'Ask AI' },
+    { icon: 'bar_chart', activeIcon: 'bar_chart', label: 'Reports' },
+  ];
+}
+
+function extractQuotes(src) {
+  const quotes = [];
+  // Match single-quoted strings within _safetyQuotes list
+  const blockMatch = src.match(/_safetyQuotes\s*=\s*\[([\s\S]*?)\];/);
+  if (blockMatch) {
+    const re = /'((?:[^'\\]|\\.)*)'/g;
+    let m;
+    while ((m = re.exec(blockMatch[1])) !== null) {
+      quotes.push(m[1].replace(/\\'/g, "'"));
+    }
+  }
+  return quotes.length ? quotes : ["Safety isn't expensive, it's priceless."];
+}
+
+function extractPlants(src) {
+  const plants = [];
+  // Match plant strings in _sailPlants list
+  const blockMatch = src.match(/_sailPlants\s*=\s*\[([\s\S]*?)\];/);
+  if (blockMatch) {
+    const re = /'((?:[^'\\]|\\.)*)'/g;
+    let m;
+    while ((m = re.exec(blockMatch[1])) !== null) {
+      if (m[1] !== 'Others') plants.push(m[1].replace(/\\'/g, "'"));
+    }
+  }
+  return plants.length ? plants : ['BSP — Bhilai Steel Plant', 'DSP — Durgapur Steel Plant'];
+}
+
+function extractReportTabs(src) {
+  // Look for TabController length
+  const lenMatch = src.match(/TabController\(\s*length:\s*(\d+)/);
+  const count = lenMatch ? parseInt(lenMatch[1]) : 4;
+  // Try to find tab labels from imports or widget references
+  const tabs = [];
+  if (src.includes('overview_tab')) tabs.push('Overview');
+  if (src.includes('incident_log_tab')) tabs.push('Incidents');
+  if (src.includes('data_analysis_tab')) tabs.push('Analysis');
+  if (src.includes('plant_wise_tab')) tabs.push('Plant-wise');
+  while (tabs.length < count) tabs.push(`Tab ${tabs.length + 1}`);
+  return tabs;
+}
+
+function extractChatSuggestions(src) {
+  // Try to find suggestion chip text - look for common patterns
+  const suggestions = [];
+  // Look for quoted strings that look like safety topics in suggestion chips area
+  const chipMatch = src.match(/suggestion[Cc]hips?|_suggestions\s*=\s*\[([\s\S]*?)\]/);
+  // Fallback: extract from known patterns
+  if (src.includes('PPE')) suggestions.push('PPE in BF area');
+  if (src.includes('SG/01')) suggestions.push('SG/01 Rules');
+  if (src.includes('Hot work') || src.includes('hot work')) suggestions.push('Hot Work Permit');
+  if (src.includes('Crane') || src.includes('crane')) suggestions.push('Crane Safety');
+  if (src.includes('Gas') || src.includes('gas')) suggestions.push('Gas Testing');
+  if (src.includes('Confined') || src.includes('confined')) suggestions.push('Confined Space');
+  return suggestions.length ? suggestions : ['PPE Requirements', 'Safety Rules', 'Work Permit'];
+}
+
+function extractNearMissCategories(src) {
+  const cats = [];
+  // Look for DropdownMenuItem or category-related strings
+  const blockMatch = src.match(/categor(?:y|ies)[\s\S]{0,500}?\[([\s\S]*?)\]/i);
+  if (blockMatch) {
+    const re = /'((?:[^'\\]|\\.)*)'/g;
+    let m;
+    while ((m = re.exec(blockMatch[1])) !== null) {
+      cats.push(m[1]);
+    }
+  }
+  // Fallback: scan for known categories
+  if (!cats.length) {
+    const patterns = ['Slip/Trip/Fall', 'Electrical', 'Fire', 'Chemical', 'Crane', 'Vehicle', 'PPE'];
+    patterns.forEach(p => { if (src.includes(p)) cats.push(p); });
+  }
+  return cats.length ? cats : ['Electrical', 'Fire', 'Chemical', 'Crane', 'PPE', 'Other'];
+}
+
+function flutterIconToMaterial(name) {
+  // Convert Flutter icon constant names to Material Icon ligature names
+  return name
+    .replace(/_outlined$/, '')
+    .replace(/_rounded$/, '')
+    .replace(/_sharp$/, '')
+    .replace(/^Icons\./, '');
+}
+
+// ─── MAIN BUILD ───────────────────────────────────────────────
+
+function build() {
+  console.log(`[build-preview] Rebuilding at ${new Date().toLocaleTimeString()}...`);
+
+  // Read source files
+  const mainSrc = readFile('lib/main.dart');
+  const homeSrc = readFile('lib/screens/home_screen.dart');
+  const homeTabSrc = readFile('lib/screens/home_tab.dart');
+  const loginSrc = readFile('lib/screens/login_screen.dart');
+  const nearMissSrc = readFile('lib/screens/near_miss_tab.dart');
+  const chatSrc = readFile('lib/screens/chat_tab.dart');
+  const reportsSrc = readFile('lib/screens/reports_tab.dart');
+  const aiScanSrc = readFile('lib/screens/ai_scan_tab.dart');
+
+  // Extract data
+  const colors = extractColors(mainSrc);
+  const navItems = extractNavItems(homeSrc);
+  const quotes = extractQuotes(homeTabSrc);
+  const plants = extractPlants(loginSrc);
+  const reportTabs = extractReportTabs(reportsSrc);
+  const chatSuggestions = extractChatSuggestions(chatSrc);
+  const nearMissCategories = extractNearMissCategories(nearMissSrc);
+
+  // Determine step count from AI scan (step chips)
+  const stepMatch = aiScanSrc.match(/currentStep.*?[<>=]+\s*(\d+)/g);
+  const aiScanSteps = aiScanSrc.includes('step') ? 5 : 5; // default 5
+
+  // Build color CSS variables
+  const c = {
+    accent: colors.accent || '#7C4DFF',
+    accentDark: colors.accentDark || '#6534E0',
+    accentGlow: colors.accentGlow || '#9B6BFF',
+    cyan: colors.cyan || '#00BCD4',
+    purple: colors.purple || '#E040FB',
+    pink: colors.pink || '#FF4081',
+    crit: colors.crit || '#FF1744',
+    red: colors.red || '#FF5252',
+    amber: colors.amber || '#FFAB00',
+    green: colors.green || '#00E676',
+    darkBg: colors.darkBg || '#0F0C29',
+    darkBg2: colors.darkBg2 || '#1A1735',
+    darkCard: colors.darkCard || '#1E1B3A',
+    darkCard2: colors.darkCard2 || '#272450',
+    darkCard3: colors.darkCard3 || '#302B63',
+    darkBorder: colors.darkBorder || '#3D3870',
+    lightBg: colors.lightBg || '#F8F8F8',
+    lightBg2: colors.lightBg2 || '#EFEFEF',
+    lightCard: colors.lightCard || '#FFFFFF',
+    lightCard2: colors.lightCard2 || '#F3F3F3',
+    lightBorder: colors.lightBorder || '#E0E0E0',
+  };
+
+  // Generate HTML
+  const html = generateHTML(c, navItems, quotes, plants, reportTabs, chatSuggestions, nearMissCategories, aiScanSteps);
+
+  fs.writeFileSync(OUT, html, 'utf8');
+  console.log(`[build-preview] Written: ${OUT}`);
+  console.log(`[build-preview]   Colors: ${Object.keys(colors).length} tokens extracted`);
+  console.log(`[build-preview]   Nav: ${navItems.length} items`);
+  console.log(`[build-preview]   Quotes: ${quotes.length}`);
+  console.log(`[build-preview]   Plants: ${plants.length}`);
+  console.log(`[build-preview]   Report tabs: ${reportTabs.join(', ')}`);
+}
+
+function generateHTML(c, navItems, quotes, plants, reportTabs, chatSuggestions, nearMissCategories, aiScanSteps) {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -8,27 +228,27 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
 <!-- AUTO-GENERATED by build-preview.js — Do not edit manually -->
-<!-- Last built: 2026-07-09T05:14:12.705Z -->
+<!-- Last built: ${new Date().toISOString()} -->
 <style>
 :root {
-  --accent: #7C4DFF;
-  --accent-dark: #6534E0;
-  --accent-glow: #9B6BFF;
-  --cyan: #00BCD4;
-  --purple: #E040FB;
-  --pink: #FF4081;
-  --crit: #FF1744;
-  --red: #FF5252;
-  --amber: #FFAB00;
-  --green: #00E676;
+  --accent: ${c.accent};
+  --accent-dark: ${c.accentDark};
+  --accent-glow: ${c.accentGlow};
+  --cyan: ${c.cyan};
+  --purple: ${c.purple};
+  --pink: ${c.pink};
+  --crit: ${c.crit};
+  --red: ${c.red};
+  --amber: ${c.amber};
+  --green: ${c.green};
 }
 [data-theme="dark"] {
-  --bg: #0F0C29;
-  --bg2: #1A1735;
-  --card: #1E1B3A;
-  --card2: #272450;
-  --card3: #302B63;
-  --border: #3D3870;
+  --bg: ${c.darkBg};
+  --bg2: ${c.darkBg2};
+  --card: ${c.darkCard};
+  --card2: ${c.darkCard2};
+  --card3: ${c.darkCard3};
+  --border: ${c.darkBorder};
   --text1: #F1F5F9;
   --text2: #CBD5E1;
   --text3: #94A3B8;
@@ -38,12 +258,12 @@
   --nav-bg: rgba(30,27,58,0.95);
 }
 [data-theme="light"] {
-  --bg: #F8F8F8;
-  --bg2: #EFEFEF;
-  --card: #FFFFFF;
-  --card2: #F3F3F3;
+  --bg: ${c.lightBg};
+  --bg2: ${c.lightBg2};
+  --card: ${c.lightCard};
+  --card2: ${c.lightCard2};
   --card3: #ECEBFF;
-  --border: #E0E0E0;
+  --border: ${c.lightBorder};
   --text1: #111111;
   --text2: #333333;
   --text3: #555555;
@@ -251,7 +471,7 @@ select.form-input { appearance: none; cursor: pointer; }
 </style>
 </head>
 <body data-theme="dark">
-<div class="build-info">Auto-built: 7/9/2026, 10:44:12 AM</div>
+<div class="build-info">Auto-built: ${new Date().toLocaleString()}</div>
 <div class="theme-toggle">
   <button class="active" onclick="setTheme('dark')">Dark</button>
   <button onclick="setTheme('light')">Light</button>
@@ -267,38 +487,22 @@ select.form-input { appearance: none; cursor: pointer; }
   </div>
   <div class="tab-content" id="tab-content"></div>
   <div class="bottom-nav">
-    
-    <div class="nav-item active" onclick="switchTab(0)">
-      <div class="nav-icon"><span class="material-icons-round">home</span></div>
-      <div class="nav-label">Home</div>
-    </div>
-    <div class="nav-item" onclick="switchTab(1)">
-      <div class="nav-icon"><span class="material-icons-round">document_scanner</span></div>
-      <div class="nav-label">AI Scan</div>
-    </div>
-    <div class="nav-item" onclick="switchTab(2)">
-      <div class="nav-icon"><span class="material-icons-round">warning_amber</span></div>
-      <div class="nav-label">Near Miss</div>
-    </div>
-    <div class="nav-item" onclick="switchTab(3)">
-      <div class="nav-icon"><span class="material-icons-round">chat_bubble_outline</span></div>
-      <div class="nav-label">Ask AI</div>
-    </div>
-    <div class="nav-item" onclick="switchTab(4)">
-      <div class="nav-icon"><span class="material-icons-round">bar_chart</span></div>
-      <div class="nav-label">Reports</div>
-    </div>
+    ${navItems.map((item, i) => `
+    <div class="nav-item${i===0?' active':''}" onclick="switchTab(${i})">
+      <div class="nav-icon"><span class="material-icons-round">${item.icon}</span></div>
+      <div class="nav-label">${item.label}</div>
+    </div>`).join('')}
   </div>
 </div>
 <script>
 // ═══ AUTO-GENERATED DATA FROM DART SOURCE ═══
-const NAV_ITEMS = [{"icon":"home","activeIcon":"home","label":"Home"},{"icon":"document_scanner","activeIcon":"document_scanner","label":"AI Scan"},{"icon":"warning_amber","activeIcon":"warning_amber","label":"Near Miss"},{"icon":"chat_bubble_outline","activeIcon":"chat_bubble","label":"Ask AI"},{"icon":"bar_chart","activeIcon":"bar_chart","label":"Reports"}];
-const QUOTES = ["Safety isn't expensive, it's priceless.","सुरक्षा सबकी ज़िम्मेदारी, लापरवाही सबकी हानि।","A safe worker is a smart worker. Take a moment, save a life.","जो जागे, सो सुरक्षित। चूके, तो दुर्घटना।","Zero harm is not a goal — it is the only acceptable result.","Stop. Think. Act. Every shift, every task, every time.","सुरक्षा पहले — कार्य बाद में।","The best safety device is a careful worker who follows the procedure.","सावधानी हटी, दुर्घटना घटी।","Your family is waiting at home. Come back safe."];
-const PLANTS = ["BSP — Bhilai Steel Plant","DSP — Durgapur Steel Plant","RSP — Rourkela Steel Plant","BSL — Bokaro Steel Plant","ISP — IISCO Steel Plant, Burnpur","ASP — Alloy Steels Plant, Durgapur","SSP — Salem Steel Plant","CFP — Chandrapur Ferro Alloy Plant","CMO — Central Marketing Organisation","JGOM — Jharkhand Group of Mines","OGOM — Odisha Group of Mines","BSP(M) — BSP Mines","Collieries — SAIL Collieries","SRU Kulti — Steel Refractory Unit, Kulti"];
-const REPORT_TABS = ["Overview","Incidents","Analysis","Plant-wise"];
-const CHAT_SUGGESTIONS = ["PPE in BF area","SG/01 Rules","Hot Work Permit","Crane Safety","Gas Testing","Confined Space"];
-const NEAR_MISS_CATEGORIES = ["severity"];
-const AI_SCAN_STEPS = 5;
+const NAV_ITEMS = ${JSON.stringify(navItems)};
+const QUOTES = ${JSON.stringify(quotes)};
+const PLANTS = ${JSON.stringify(plants)};
+const REPORT_TABS = ${JSON.stringify(reportTabs)};
+const CHAT_SUGGESTIONS = ${JSON.stringify(chatSuggestions)};
+const NEAR_MISS_CATEGORIES = ${JSON.stringify(nearMissCategories)};
+const AI_SCAN_STEPS = ${aiScanSteps};
 
 // ═══ STATE ═══
 let currentTab = 0;
@@ -361,26 +565,26 @@ function renderHome() {
   sampleIncidents.forEach(i => { plants[i.plant] = (plants[i.plant]||0)+1; });
   const plantEntries = Object.entries(plants).sort((a,b)=>b[1]-a[1]);
   const plantMax = plantEntries[0]?.[1] || 1;
-  const pColors = ['#FF1744','#FF5252','#FFAB00','#00BCD4','#00E676'];
+  const pColors = ['${c.crit}','${c.red}','${c.amber}','${c.cyan}','${c.green}'];
 
-  return `
-    <div class="quote-bar"><p>"${getTodayQuote()}"</p></div>
+  return \`
+    <div class="quote-bar"><p>"\${getTodayQuote()}"</p></div>
     <div class="glass-card" style="text-align:center">
       <div class="score-ring">
         <svg viewBox="0 0 100 100">
           <circle cx="50" cy="50" r="42" fill="none" stroke="var(--border)" stroke-width="8"/>
-          <circle cx="50" cy="50" r="42" fill="none" stroke="${safetyScore>70?'#00E676':safetyScore>40?'#FFAB00':'#FF1744'}"
-            stroke-width="8" stroke-linecap="round" stroke-dasharray="${safetyScore*2.64} 264"/>
+          <circle cx="50" cy="50" r="42" fill="none" stroke="\${safetyScore>70?'${c.green}':safetyScore>40?'${c.amber}':'${c.crit}'}"
+            stroke-width="8" stroke-linecap="round" stroke-dasharray="\${safetyScore*2.64} 264"/>
         </svg>
-        <div class="score-value">${safetyScore}</div>
+        <div class="score-value">\${safetyScore}</div>
       </div>
       <div style="font-size:12px;color:var(--text3);font-weight:600">Safety Score</div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--cyan)">assignment</span><div class="stat-value" style="color:var(--cyan)">${total}</div><div class="stat-label">Total Incidents</div></div>
-      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--amber)">pending_actions</span><div class="stat-value" style="color:var(--amber)">${open}</div><div class="stat-label">Open Cases</div></div>
-      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--green)">check_circle</span><div class="stat-value" style="color:var(--green)">${closed}</div><div class="stat-label">Resolved</div></div>
-      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--crit)">local_fire_department</span><div class="stat-value" style="color:var(--crit)">${critical}</div><div class="stat-label">Critical</div></div>
+      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--cyan)">assignment</span><div class="stat-value" style="color:var(--cyan)">\${total}</div><div class="stat-label">Total Incidents</div></div>
+      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--amber)">pending_actions</span><div class="stat-value" style="color:var(--amber)">\${open}</div><div class="stat-label">Open Cases</div></div>
+      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--green)">check_circle</span><div class="stat-value" style="color:var(--green)">\${closed}</div><div class="stat-label">Resolved</div></div>
+      <div class="stat-card"><span class="stat-icon material-icons-round" style="color:var(--crit)">local_fire_department</span><div class="stat-value" style="color:var(--crit)">\${critical}</div><div class="stat-label">Critical</div></div>
     </div>
     <div class="quick-actions">
       <div class="action-btn" onclick="switchTab(1)"><div class="action-icon" style="color:var(--accent)"><span class="material-icons-round">photo_camera</span></div><div class="action-label">AI Scan</div></div>
@@ -388,8 +592,8 @@ function renderHome() {
       <div class="action-btn" onclick="switchTab(4)"><div class="action-icon" style="color:var(--cyan)"><span class="material-icons-round">analytics</span></div><div class="action-label">Reports</div></div>
     </div>
     <div class="chart-card">
-      <div class="chart-title"><span class="material-icons-round" style="color:var(--accent);font-size:16px">trending_up</span> Weekly Trend <span style="margin-left:auto;font-size:10px;color:var(--text4)">${weekData.reduce((a,b)=>a+b,0)} this week</span></div>
-      <div class="bar-chart">${weekData.map((v,i) => {
+      <div class="chart-title"><span class="material-icons-round" style="color:var(--accent);font-size:16px">trending_up</span> Weekly Trend <span style="margin-left:auto;font-size:10px;color:var(--text4)">\${weekData.reduce((a,b)=>a+b,0)} this week</span></div>
+      <div class="bar-chart">\${weekData.map((v,i) => {
         const h = maxVal===0?4:(v/maxVal)*70+4; const isToday = i===6;
         return '<div class="bar" style="height:'+h+'px;background:'+(isToday?'var(--accent)':'var(--cyan)')+';opacity:'+(isToday?1:0.6)+'">'
           +(v>0?'<span style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--text3);font-weight:700">'+v+'</span>':'')
@@ -398,22 +602,22 @@ function renderHome() {
     </div>
     <div class="chart-card">
       <div class="chart-title"><span class="material-icons-round" style="color:var(--accent);font-size:16px">factory</span> Incidents by Plant</div>
-      ${plantEntries.map(([plant,count],i) => '<div class="h-bar-row"><div class="h-bar-label">'+plant+'</div><div class="h-bar-track"><div class="h-bar-fill" style="width:'+(count/plantMax*100)+'%;background:'+pColors[i%5]+'"></div></div><div class="h-bar-count">'+count+'</div></div>').join('')}
+      \${plantEntries.map(([plant,count],i) => '<div class="h-bar-row"><div class="h-bar-label">'+plant+'</div><div class="h-bar-track"><div class="h-bar-fill" style="width:'+(count/plantMax*100)+'%;background:'+pColors[i%5]+'"></div></div><div class="h-bar-count">'+count+'</div></div>').join('')}
     </div>
     <div class="chart-card">
       <div class="chart-title"><span class="material-icons-round" style="color:var(--accent);font-size:16px">assessment</span> WSA-13 Compliance</div>
-      <div class="wsa-chart">${['Housekeep','PPE','Electrical','Fire','Guard','Chemical'].map((item,i) => {
+      <div class="wsa-chart">\${['Housekeep','PPE','Electrical','Fire','Guard','Chemical'].map((item,i) => {
         const val = [85,92,78,88,71,95][i];
-        const color = val>85?'#00E676':val>75?'#FFAB00':'#FF5252';
+        const color = val>85?'${c.green}':val>75?'${c.amber}':'${c.red}';
         return '<div class="wsa-row"><div class="wsa-label">'+item+'</div><div class="wsa-bar-bg"><div class="wsa-bar-fill" style="width:'+val+'%;background:'+color+'"></div></div><div class="wsa-value">'+val+'%</div></div>';
       }).join('')}</div>
-    </div>`;
+    </div>\`;
 }
 
 // ═══ AI SCAN ═══
 function renderAIScan() {
-  return `
-    <div class="step-chips">${Array.from({length:AI_SCAN_STEPS},(_,i)=>'<div class="step-chip'+(i===0?' active':'')+'">'+(i+1)+'</div>').join('')}</div>
+  return \`
+    <div class="step-chips">\${Array.from({length:AI_SCAN_STEPS},(_,i)=>'<div class="step-chip'+(i===0?' active':'')+'">'\+(i+1)+'</div>').join('')}</div>
     <div class="scan-zone" onclick="document.getElementById('file-input').click()">
       <span class="material-icons-round" style="font-size:48px;color:var(--accent)">add_a_photo</span>
       <p><strong>Tap to capture or upload</strong></p>
@@ -433,7 +637,7 @@ function renderAIScan() {
       <ol style="font-size:11px;color:var(--text3);padding-left:16px;line-height:1.8">
         <li>Capture/upload a workplace photo</li><li>AI analyzes for safety hazards</li><li>Review & edit AI findings</li><li>Add mitigation actions</li><li>Save & sync to Google Sheets</li>
       </ol>
-    </div>`;
+    </div>\`;
 }
 function handleScanUpload(input) {
   if (input.files && input.files[0]) {
@@ -447,7 +651,7 @@ function handleScanUpload(input) {
 
 // ═══ NEAR MISS ═══
 function renderNearMiss() {
-  return `
+  return \`
     <div class="glass-card" style="border-left:3px solid var(--amber)">
       <div style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <span class="material-icons-round" style="font-size:14px;color:var(--amber)">lightbulb</span> Report a Near Miss
@@ -458,25 +662,25 @@ function renderNearMiss() {
     <div class="form-group"><label>Location / Area *</label><input class="form-input" placeholder="e.g. SMS-II, Crane Bay, BF Control Room"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div class="form-group"><label>Severity</label><select class="form-input"><option>Low</option><option>Medium</option><option selected>High</option><option>Critical</option></select></div>
-      <div class="form-group"><label>Category</label><select class="form-input">${NEAR_MISS_CATEGORIES.map(c=>'<option>'+c+'</option>').join('')}</select></div>
+      <div class="form-group"><label>Category</label><select class="form-input">\${NEAR_MISS_CATEGORIES.map(c=>'<option>'+c+'</option>').join('')}</select></div>
     </div>
-    <div class="form-group"><label>Plant</label><select class="form-input">${PLANTS.map(p=>'<option>'+p+'</option>').join('')}</select></div>
+    <div class="form-group"><label>Plant</label><select class="form-input">\${PLANTS.map(p=>'<option>'+p+'</option>').join('')}</select></div>
     <div class="form-group"><label>Attach Photo (optional)</label><div class="scan-zone" style="padding:20px"><span class="material-icons-round" style="font-size:28px;color:var(--text4)">add_photo_alternate</span><p style="font-size:11px;margin-top:6px">Tap to add photo evidence</p></div></div>
     <div class="form-group"><label>Suggested Actions (AI auto-fill)</label><textarea class="form-input" placeholder="AI will suggest corrective actions..." style="min-height:60px"></textarea></div>
-    <button class="submit-btn"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:6px">send</span> Submit Near Miss Report</button>`;
+    <button class="submit-btn"><span class="material-icons-round" style="font-size:16px;vertical-align:middle;margin-right:6px">send</span> Submit Near Miss Report</button>\`;
 }
 
 // ═══ CHAT ═══
 function renderChat() {
-  return `
+  return \`
     <div class="chat-messages" style="height:calc(100vh - 260px);overflow-y:auto">
       <div class="chat-bubble bot"><strong>🛡️ Suraksha Saathi</strong><br><br>Namaste! I'm your AI safety assistant for SAIL plants.<br>Ask me about safety regulations, PPE, permits, and more!</div>
-      <div class="suggestion-chips">${CHAT_SUGGESTIONS.map(s=>'<div class="suggestion-chip" onclick="addUserMsg(\''+s.replace(/'/g,"\\'")+'\')">'+s+'</div>').join('')}</div>
+      <div class="suggestion-chips">\${CHAT_SUGGESTIONS.map(s=>'<div class="suggestion-chip" onclick="addUserMsg(\\''+s.replace(/'/g,"\\\\'")+'\\')">'+s+'</div>').join('')}</div>
     </div>
     <div class="chat-input-bar">
       <input class="chat-input" placeholder="Ask Suraksha Saathi..." id="chat-input" onkeypress="if(event.key==='Enter')sendChat()">
       <button class="chat-send" onclick="sendChat()"><span class="material-icons-round" style="font-size:18px">send</span></button>
-    </div>`;
+    </div>\`;
 }
 function addUserMsg(text) {
   const msgs = document.querySelector('.chat-messages');
@@ -489,12 +693,12 @@ function sendChat() {
 
 // ═══ REPORTS ═══
 function renderReports() {
-  return `
-    <div class="report-tabs">${REPORT_TABS.map((t,i)=>'<div class="report-tab '+(activeReportTab===i?'active':'')+'" onclick="activeReportTab='+i+';renderTab()">'+t+'</div>').join('')}</div>
-    ${activeReportTab===0?renderOverview():''}
-    ${activeReportTab===1?renderIncidentLog():''}
-    ${activeReportTab===2?renderAnalysis():''}
-    ${activeReportTab===3?renderPlantWise():''}`;
+  return \`
+    <div class="report-tabs">\${REPORT_TABS.map((t,i)=>'<div class="report-tab '+(activeReportTab===i?'active':'')+'" onclick="activeReportTab='+i+';renderTab()">'+t+'</div>').join('')}</div>
+    \${activeReportTab===0?renderOverview():''}
+    \${activeReportTab===1?renderIncidentLog():''}
+    \${activeReportTab===2?renderAnalysis():''}
+    \${activeReportTab===3?renderPlantWise():''}\`;
 }
 function renderOverview() {
   const total=sampleIncidents.length,open=sampleIncidents.filter(i=>i.status!=='CLOSED').length,closed=total-open;
@@ -504,11 +708,11 @@ function renderIncidentLog() {
   return sampleIncidents.map(inc => '<div class="incident-card"><div class="incident-header"><span style="font-size:11px;color:var(--text4);font-weight:600">'+inc.id+'</span><span class="severity-badge severity-'+inc.severity.toLowerCase()+'">'+inc.severity+'</span></div><div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text1)">'+inc.title+'</div><div style="display:flex;gap:12px;font-size:10px;color:var(--text4)"><span>'+inc.plant+'</span><span>'+inc.date+'</span><span style="margin-left:auto;padding:2px 8px;border-radius:4px;background:'+(inc.status==='CLOSED'?'rgba(0,230,118,0.1)':'rgba(255,171,0,0.1)')+';color:'+(inc.status==='CLOSED'?'var(--green)':'var(--amber)')+'">'+inc.status+'</span></div></div>').join('');
 }
 function renderAnalysis() {
-  const pColors=['#FF1744','#FF5252','#FFAB00','#00BCD4','#00E676'];
+  const pColors=['${c.crit}','${c.red}','${c.amber}','${c.cyan}','${c.green}'];
   return '<div class="chart-card"><div class="chart-title"><span class="material-icons-round" style="font-size:16px;color:var(--accent)">insights</span> Monthly Trend</div><div class="bar-chart" style="height:100px">'+[3,5,2,7,4,6].map((v,i)=>{const months=['Feb','Mar','Apr','May','Jun','Jul'];return '<div class="bar" style="height:'+(v/7*90)+'px;background:var(--accent);opacity:'+(i===5?1:0.5)+'"><span style="position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--text3)">'+v+'</span><span class="bar-label">'+months[i]+'</span></div>';}).join('')+'</div></div><div class="chart-card"><div class="chart-title"><span class="material-icons-round" style="font-size:16px;color:var(--cyan)">category</span> By Category</div>'+['Electrical','Fall/Slip','Fire','Crane','PPE','Chemical'].map((cat,i)=>{const vals=[3,2,2,1,1,1];return '<div class="h-bar-row"><div class="h-bar-label">'+cat+'</div><div class="h-bar-track"><div class="h-bar-fill" style="width:'+(vals[i]/3*100)+'%;background:'+pColors[i%5]+'"></div></div><div class="h-bar-count">'+vals[i]+'</div></div>';}).join('')+'</div>';
 }
 function renderPlantWise() {
-  const pColors=['#FF1744','#FF5252','#FFAB00','#00BCD4','#00E676'];
+  const pColors=['${c.crit}','${c.red}','${c.amber}','${c.cyan}','${c.green}'];
   const plants={};sampleIncidents.forEach(i=>{plants[i.plant]=(plants[i.plant]||0)+1;});
   const entries=Object.entries(plants).sort((a,b)=>b[1]-a[1]);const max=entries[0]?.[1]||1;
   return '<div class="chart-card"><div class="chart-title"><span class="material-icons-round" style="font-size:16px;color:var(--accent)">domain</span> Plant-wise</div>'+entries.map(([p,c],i)=>'<div class="h-bar-row"><div class="h-bar-label">'+p+'</div><div class="h-bar-track"><div class="h-bar-fill" style="width:'+(c/max*100)+'%;background:'+pColors[i%5]+'"></div></div><div class="h-bar-count">'+c+'</div></div>').join('')+'</div>';
@@ -518,4 +722,46 @@ function renderPlantWise() {
 renderTab();
 </script>
 </body>
-</html>
+</html>`;
+}
+
+// ─── WATCH MODE ───────────────────────────────────────────────
+
+function watch() {
+  const dirs = [
+    path.join(ROOT, 'lib'),
+    path.join(ROOT, 'lib', 'screens'),
+    path.join(ROOT, 'lib', 'widgets'),
+    path.join(ROOT, 'lib', 'services'),
+  ];
+
+  console.log('[build-preview] Watching for changes...');
+  console.log('[build-preview] Press Ctrl+C to stop\n');
+
+  let debounce = null;
+  const rebuild = (eventType, filename) => {
+    if (filename && !filename.endsWith('.dart')) return;
+    if (debounce) clearTimeout(debounce);
+    debounce = setTimeout(() => {
+      console.log(`[build-preview] Change detected: ${filename || 'unknown'}`);
+      try { build(); } catch (e) { console.error('[build-preview] Error:', e.message); }
+    }, 300);
+  };
+
+  dirs.forEach(dir => {
+    try { fs.watch(dir, { recursive: false }, rebuild); }
+    catch (e) { /* dir may not exist */ }
+  });
+
+  // Also watch lib/ recursively if supported
+  try { fs.watch(path.join(ROOT, 'lib'), { recursive: true }, rebuild); }
+  catch (e) { /* fallback to individual dirs above */ }
+}
+
+// ─── ENTRY ────────────────────────────────────────────────────
+
+build();
+
+if (process.argv.includes('--watch') || process.argv.includes('-w')) {
+  watch();
+}
