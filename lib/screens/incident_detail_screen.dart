@@ -112,11 +112,15 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     );
   }
 
-  // ★ v31: Get image bytes from incident (thumbnailBase64 or imageBase64 fallback)
+  // ★ v31: Get image bytes from incident — prefer shareImageBase64 (medium-res)
+  // Fallback chain: imageBase64 > shareImageBase64 > thumbnailBase64
   Uint8List? _getImageBytes() {
     final imgB64 = _inc['imageBase64']?.toString() ?? '';
+    final shareB64 = _inc['shareImageBase64']?.toString() ?? '';
     final thumbB64 = _inc['thumbnailBase64']?.toString() ?? '';
-    final b64 = imgB64.isNotEmpty ? imgB64 : thumbB64;
+    final b64 = imgB64.isNotEmpty ? imgB64
+        : shareB64.isNotEmpty ? shareB64
+        : thumbB64;
     if (b64.isEmpty) return null;
     try { return base64Decode(b64); } catch (_) { return null; }
   }
