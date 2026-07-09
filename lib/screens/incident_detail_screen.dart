@@ -261,15 +261,8 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
         await Share.shareXFiles(files, text: text,
           subject: 'Near Miss Report — ${_inc['plant'] ?? ''}');
       } else {
-        final encoded = Uri.encodeComponent(text);
-        final url = Uri.parse('https://wa.me/?text=$encoded');
-        try {
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-          } else {
-            await Share.share(text);
-          }
-        } catch (_) { await Share.share(text); }
+        // Native share — no wa.me URLs (they open new browser tabs)
+        await Share.share(text, subject: 'Near Miss Report — ${_inc['plant'] ?? ''}');
       }
     } catch (e) {
       _snack('Share failed: $e', AppColors.red);
@@ -313,6 +306,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
 
   // ★ v31: Direct WhatsApp share (text + image, no PDF)
   Future<void> _shareWhatsAppDirect() async {
+    // ★ v32: Use native share intent — never wa.me URLs (those open new tabs)
     try {
       final text = _buildShareText();
       final imageBytes = _getImageBytes();
@@ -326,13 +320,8 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
           text: text,
           subject: 'Near Miss Report — ${_inc['plant'] ?? ''}');
       } else {
-        final encoded = Uri.encodeComponent(text);
-        final url = Uri.parse('https://wa.me/?text=$encoded');
-        try {
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-          } else { await Share.share(text); }
-        } catch (_) { await Share.share(text); }
+        // Native share — user picks WhatsApp from share sheet
+        await Share.share(text, subject: 'Near Miss Report — ${_inc['plant'] ?? ''}');
       }
     } catch (e) { _snack('Share failed: $e', AppColors.red); }
   }

@@ -1084,17 +1084,8 @@ class _AIScanTabState extends State<AIScanTab> {
       text = _buildShareText(incident);
     }
 
-    final encoded = Uri.encodeComponent(text);
-    final url = Uri.parse('https://wa.me/?text=$encoded');
-    try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        await Share.share(text);
-      }
-    } catch (_) {
-      await Share.share(text);
-    }
+    // ★ v32: Use native share — wa.me opens new browser tabs every time
+    await Share.share(text, subject: 'Safety Lens Report — ${incident['plant'] ?? ''}');
   }
 
   Future<void> _shareViaEmail(Map<String, dynamic> incident) async {
@@ -1755,18 +1746,8 @@ class _AIScanTabState extends State<AIScanTab> {
       text = _buildResultShareText();
     }
 
-    final encoded = Uri.encodeComponent(text);
-    final whatsappUrl = 'https://wa.me/?text=$encoded';
-    try {
-      final uri = Uri.parse(whatsappUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        await Share.share(text, subject: 'SAIL Safety Lens - Hazard Report');
-      }
-    } catch (e) {
-      _snack('Could not open WhatsApp: $e', AppColors.red);
-    }
+    // ★ v32: Use native share — wa.me opens new browser tabs every time
+    await Share.share(text, subject: 'SAIL Safety Lens - Hazard Report');
   }
 
   Future<void> _shareResultEmail() async {

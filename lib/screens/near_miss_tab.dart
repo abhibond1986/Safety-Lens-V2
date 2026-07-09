@@ -1370,7 +1370,8 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
   }
 
   Future<void> _shareViaWhatsApp(Map<String, dynamic> incident, [Uint8List? savedImageBytes]) async {
-    // ★ v32: Share IMAGE with caption via WhatsApp — image shows inline in chat
+    // ★ v32: Always use Share.shareXFiles / Share.share — never use wa.me URLs
+    // wa.me opens a new browser tab every time; native share intent reuses existing WhatsApp
     try {
       final text = _buildShareText(incident);
 
@@ -1385,18 +1386,8 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           subject: 'Near Miss Report — ${incident['plant'] ?? ''}',
         );
       } else {
-        // No image available — share text only via wa.me link
-        final encoded = Uri.encodeComponent(text);
-        final url = Uri.parse('https://wa.me/?text=$encoded');
-        try {
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-          } else {
-            await Share.share(text);
-          }
-        } catch (_) {
-          await Share.share(text);
-        }
+        // No image — use native share (opens share sheet, user picks WhatsApp)
+        await Share.share(text, subject: 'Near Miss Report — ${incident['plant'] ?? ''}');
       }
     } catch (e) {
       final text = _buildShareText(incident);
