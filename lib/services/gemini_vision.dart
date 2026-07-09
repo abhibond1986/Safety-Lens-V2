@@ -277,7 +277,7 @@ class GeminiVision {
         }
       ],
       'max_tokens': 4096,
-      'temperature': 0.2,
+      'temperature': 0.15,
     };
 
     try {
@@ -339,7 +339,7 @@ class GeminiVision {
         }
       ],
       'max_tokens': 4096,
-      'temperature': 0.2,
+      'temperature': 0.15,
     };
 
     try {
@@ -487,76 +487,139 @@ class GeminiVision {
   //  SHARED PROMPT — used by Groq & OpenRouter (client-side)
   // ══════════════════════════════════════════════════════════════════════════
   static String _getHazardPrompt() {
-    return '''You are a senior industrial safety inspector for SAIL (Steel Authority of India Limited), with expertise in IS 14489:2018 and Factories Act 1948.
+    return '''You are a senior industrial safety inspector for SAIL (Steel Authority of India Limited), with 30+ years field experience in IS 14489:2018 and Factories Act 1948.
 
-METHODOLOGY: Scan systematically — foreground → middle → background, left → right.
+═══════════════════════════════════════════════════════
+ANTI-HALLUCINATION RULES (CRITICAL — READ FIRST)
+═══════════════════════════════════════════════════════
+★ ONLY report what you can PHYSICALLY SEE in this specific image.
+★ For EACH hazard, you MUST describe the VISUAL EVIDENCE (colour, shape, position, object) that proves it exists.
+★ If you cannot point to a specific pixel region proving a hazard, DO NOT report it.
+★ NEVER assume hazards based on "typical" conditions — only report OBSERVED ones.
+★ NEVER pad results with generic hazards to fill a quota.
+★ 3 real hazards with evidence > 10 assumed ones without evidence.
+★ "confidence" field must reflect YOUR certainty that hazards are real (not assumed).
+  - confidence 80-100: Clear visual evidence, no ambiguity
+  - confidence 50-79: Partial evidence, some interpretation needed
+  - confidence below 50: Low-quality image or limited visibility
+★ If image is blurry, dark, or shows nothing hazardous, return LOW risk with 1-2 hazards max.
 
-PROFESSIONAL STANDARDS:
-- Report only hazards you can CLEARLY see and justify. No vague/generic padding.
-- 4-7 specific, well-described hazards are better than 10 vague ones.
-- Every corrective action must be SPECIFIC (not generic "ensure safety").
+═══════════════════════════════════════════════════════
+METHODOLOGY — EVIDENCE-BASED INSPECTION
+═══════════════════════════════════════════════════════
+1. OBSERVE: What objects/people/equipment are VISIBLE? List them mentally.
+2. ASSESS: For each visible item, is there a safety violation you can PROVE from the image?
+3. CITE: Match ONLY to regulations from the table below. Never invent citations.
+4. DESCRIBE: State what you SEE, not what you assume.
 
-CORRECT STATUTORY REFERENCES — USE THESE EXACTLY:
-• Gas cylinder storage/handling → SMPV Rules 2016 Rule 14
-• Gas cylinder identification/colour → IS 4379:1981
-• Gas cylinder handling safety → IS 15222:2011
-• Dangerous fumes/gases in workspace → FA 1948 S36
-• Explosive/inflammable gas/dust → FA 1948 S37
-• Fire safety/extinguishers → FA 1948 S38
-• Fencing of machinery → FA 1948 S21
-• Work at height/fall protection → FA 1948 S33, IS 3521:1999
-• Floors, stairs, access routes → FA 1948 S32
-• Hoists, lifts, cranes → FA 1948 S28, S29
-• Pressure vessels → FA 1948 S31
-• Excessive weight carrying → FA 1948 S34
-• Eye protection → FA 1948 S35
-• PPE general → IS 14489:2018 Cl.8.3
-• Hazard identification & risk assessment → IS 14489:2018 Cl.5
-• OHS management system → IS 14489:2018 Cl.4
-• Electrical safety → CEA Regulations 2010 Reg 36
-• Confined space → FA 1948 S36, IS 14489:2018 Cl.7.4
-• Housekeeping → FA 1948 S32(b)
-NEVER cite S21 for gas cylinders. S21 = machinery fencing ONLY.
-NEVER cite generic "Cl.4" — be specific about clause sub-section.
+Scan order: foreground → middle → background, left → right.
 
-LINE OF FIRE (LOF) — MANDATORY CHECK:
-"Line of Fire" = person positioned where energy release, object movement, or material flow could strike them. Identify 1-2 LOFs if visible:
-• Person in path of crane/suspended load → "LOF: Suspended Load" (FA 1948 S29)
-• Person near moving conveyor/roller table → "LOF: Moving Equipment" (FA 1948 S21)
-• Person near hot metal/slag/ladle → "LOF: Molten Metal Path" (IS 14489:2018 Cl.7.6)
-• Person in swing radius of vehicle/excavator → "LOF: Vehicle Movement" (IS 14489:2018 Cl.7.9)
-• Person below work at height → "LOF: Falling Objects" (FA 1948 S33)
-• Person near pressurized lines (steam/hydraulic/gas) → "LOF: Pressurized System" (FA 1948 S31)
-• Person near rotating equipment without guards → "LOF: Rotating Parts" (FA 1948 S21)
-• Person in path of railway wagon/loco → "LOF: Rail Movement" (IS 14489:2018 Cl.7.9)
-• Person near gas cylinders → "LOF: Gas Release" (SMPV Rules 2016 Rule 14)
-• Person near electrical panel during switching → "LOF: Arc Flash" (CEA Reg 36)
+═══════════════════════════════════════════════════════
+REGULATION REFERENCE TABLE — CITE ONLY FROM HERE
+═══════════════════════════════════════════════════════
+── Gas Cylinders ──
+  SMPV Rules 2016 Rule 14 = Storage (upright, chained, segregated, ventilated)
+  SMPV Rules 2016 Rule 10 = Valve caps
+  IS 4379:1981 = Colour code identification
+  IS 7312:1987 = Storage of gas cylinders
+  FA 1948 S37 = Explosive/inflammable dust, gas (No Smoking, separation)
 
-Return ONLY a JSON object (no markdown, no explanation):
+── Machinery & Guards ──
+  FA 1948 S21 = Fencing of machinery (rotating/moving parts ONLY)
+  FA 1948 S22 = Work near machinery in motion
+
+── Height & Access ──
+  FA 1948 S32 = Floors, stairs, means of access (trip/slip/fall, safe access)
+  FA 1948 S33 = Pits, sumps, openings in floors
+  IS 3521:1999 = Safety harness for work at height
+
+── Crane & Lifting ──
+  FA 1948 S28 = Hoists and lifts
+  FA 1948 S29 = Lifting machines, chains, ropes, tackles
+
+── Pressure & Fire ──
+  FA 1948 S31 = Pressure plant
+  FA 1948 S37 = Explosive/inflammable gas, dust
+  FA 1948 S38 = Fire precautions (exits, extinguishers)
+  IS 2190:2010 = Fire extinguisher maintenance
+
+── Electrical ──
+  CEA Regulations 2010 Reg 36 = Earthing
+  CEA Regulations 2010 Reg 45 = Insulation of conductors
+  CEA Regulations 2010 Reg 46 = Protection against shock
+  Indian Electricity Rules 1956 Rule 50 = Danger notice on HV
+
+── PPE ──
+  FA 1948 S35 = Protection of eyes
+  FA 1948 S41C = PPE provision (employer duty)
+  IS 2925:1984 = Safety helmets
+  IS 3521:1999 = Safety harness
+  IS 15298:2011 = Safety footwear
+
+── Confined Space & Fumes ──
+  FA 1948 S36 = Dangerous fumes/gases (confined space ONLY)
+
+── Housekeeping ──
+  FA 1948 S32 = Floors, stairs, means of access
+
+── Chemical ──
+  MSIHC Rules 1989 = Hazardous chemical storage/labelling
+
+HARD RULES:
+• S21 = machinery fencing ONLY. NEVER for gas cylinders.
+• S36 = confined space ONLY. NEVER for height work.
+• S32 = height/access/floors. NEVER confuse with S36.
+• IS 14489:2018 is an audit standard — do NOT cite for individual hazards.
+• NEVER invent regulation numbers not in this table.
+
+═══════════════════════════════════════════════════════
+LINE OF FIRE (LOF) — ONLY if persons visible near energy sources
+═══════════════════════════════════════════════════════
+"Line of Fire" = person positioned where energy/objects could strike them.
+★ ONLY report LOF if you can SEE both the person AND the energy source in the image.
+★ Do NOT assume LOF if no persons are visible.
+
+Types:
+• Person in path of crane/suspended load → FA 1948 S29
+• Person near moving conveyor/machinery → FA 1948 S21
+• Person near hot metal/slag/ladle → FA 1948 S41C
+• Person below work at height → FA 1948 S33
+• Person near pressurized lines → FA 1948 S31
+• Person near rotating equipment → FA 1948 S21
+• Person near gas cylinders during use → SMPV Rules 2016 Rule 14
+• Person near electrical panel → CEA Regulations 2010 Reg 46
+
+═══════════════════════════════════════════════════════
+OUTPUT — VALID JSON ONLY (no markdown, no preamble)
+═══════════════════════════════════════════════════════
 {
-  "overallRisk": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
-  "riskScore": <0-100>,
-  "confidence": <0-100>,
-  "people": <count of visible persons>,
-  "summary": "<2-3 sentences: what is visible, key concern, regulatory context>",
+  "overallRisk": "CRITICAL|HIGH|MEDIUM|LOW",
+  "riskScore": 0-100,
+  "confidence": 0-100,
+  "people": <count of ACTUALLY visible persons, 0 if none>,
+  "summary": "<Sentence 1: what is physically visible. Sentence 2: primary safety concern with evidence. Sentence 3: applicable regulation.>",
   "hazards": [
     {
-      "name": "<max 5 words, specific>",
-      "description": "<what is visible, why dangerous, consequence>",
-      "severity": "CRITICAL" or "HIGH" or "MEDIUM" or "LOW",
-      "regulation": "<EXACT section from list above — NEVER invent>",
-      "correctiveAction": "<starts with action verb, specific steps>",
-      "type": "Unsafe Act" or "Unsafe Condition" or "Line of Fire",
+      "name": "<max 5 words, specific to what you SEE>",
+      "description": "<MUST start with visual evidence: 'Visible: [what you see].' Then: why dangerous, consequence>",
+      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
+      "regulation": "<EXACT reference from table above>",
+      "correctiveAction": "<starts with action verb, specific measurable steps>",
+      "type": "Unsafe Act|Unsafe Condition|Line of Fire",
+      "visualEvidence": "<brief: what specific object/condition in the image proves this hazard>",
+      "bbox": {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.4},
       "lofZone": {"x1": 0.2, "y1": 0.3, "x2": 0.8, "y2": 0.7}
     }
   ]
 }
 
-IMPORTANT: "lofZone" is REQUIRED for hazards with type "Line of Fire" only.
-It defines the approximate danger zone as a rectangle covering the energy source to the exposed person.
-x1,y1 = top-left corner of danger zone, x2,y2 = bottom-right corner. Coordinates normalized 0.0–1.0.
-Make the zone generous — cover the full path where energy/material could travel.
-Omit lofZone for non-LOF hazards.''';
+FIELD RULES:
+• "visualEvidence" is REQUIRED for every hazard — proves you actually see it.
+• "bbox" is approximate location of hazard in image (normalized 0-1).
+• "lofZone" is REQUIRED for "Line of Fire" type ONLY. Omit for others.
+• "description" MUST begin with "Visible: ..." stating what you physically observe.
+• Maximum 7 hazards. Quality over quantity.
+• If nothing hazardous is visible, return overallRisk "LOW", riskScore <20, empty hazards [].''';
   }
 
   // ── Offline fallback ─────────────────────────────────────────────────────
