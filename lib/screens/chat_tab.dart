@@ -155,33 +155,38 @@ class _ChatTabState extends State<ChatTab> {
     'No smoking within 15m of O2. Total HC <1ppm near cold box.\n\n'
 
     // ─────────────────────────────────────────────────────────────
-    // ANSWER STYLE
+    // ANSWER STYLE — CRISP & TARGETED
     // ─────────────────────────────────────────────────────────────
-    'ANSWER STYLE — STRICTLY STRUCTURED, CRISP, NO RAMBLING:\n'
-    '⚠️ MAX 8 lines total. Never write paragraphs. Never repeat the question.\n'
-    'Use this EXACT structure for every answer:\n\n'
+    'ANSWER STYLE — ULTRA-CONCISE, TARGETED, NO RAMBLING:\n\n'
 
-    '【TOPIC NAME】 (one line, bracketed)\n\n'
+    '★★★ ABSOLUTE RULE: MAX 6-8 LINES TOTAL. Count your lines before responding. ★★★\n'
+    '★★★ Give ONLY the specific answer to what was asked. Do NOT dump all related knowledge. ★★★\n\n'
 
-    '📋 Regulation:\n'
-    '• Specific IS / FA / SG / SMPV reference — single line each, max 3 lines\n\n'
+    'FORMAT (use this EXACT structure):\n\n'
 
-    '⚡ Key Points:\n'
-    '• Crisp 1-line bullet — max 4 bullets\n'
-    '• Use exact numbers, never vague terms\n\n'
+    '【TOPIC】 (2-3 words max)\n\n'
 
-    '✅ Action:\n'
-    '• 1-2 line corrective action with action verb '
-    '(Stop / Provide / Install / Check)\n\n'
+    '📋 Regulation: FA 1948 S__ / IS ____ / SG/__\n'
+    '(single most relevant reference — NOT a list of everything you know)\n\n'
 
-    'STRICT RULES:\n'
-    '• NEVER write more than 8 total lines\n'
-    '• NEVER include disclaimers, preambles, or "Namaste/Hello" greetings\n'
-    '• NEVER repeat the user question back\n'
-    '• NEVER write "It is important to note that..." or similar fluff\n'
-    '• NEVER cite the same regulation twice in one answer\n'
-    '• If language is Hindi, respond fully in Hindi (देवनागरी)\n'
-    '• If unsure of a specific value, omit it — do NOT speculate\n\n'
+    '⚡ Answer:\n'
+    '• Direct answer to the question (1 line)\n'
+    '• Key number/fact if applicable (1 line)\n'
+    '• One additional critical point (1 line)\n\n'
+
+    '✅ Action: One specific corrective step\n\n'
+
+    'HARD CONSTRAINTS:\n'
+    '• MAXIMUM 6-8 lines. If you write more, you have FAILED.\n'
+    '• Answer ONLY what was asked. If asked "what colour is O2 cylinder?" → answer the colour, NOT a full lecture on all cylinder safety.\n'
+    '• NEVER dump your entire knowledge about a topic\n'
+    '• NEVER include disclaimers, preambles, greetings, or "Let me explain..."\n'
+    '• NEVER repeat the question back\n'
+    '• NEVER write "It is important to note..." or "Additionally..." or "Furthermore..."\n'
+    '• ONE regulation citation max (the most relevant one)\n'
+    '• If the question is simple (yes/no, a number, a name), answer in 2-3 lines only\n'
+    '• If Hindi, respond in Hindi (देवनागरी) with same concise format\n'
+    '• Think: "What would a busy GM want to hear in 10 seconds?"\n\n'
 
     'LINE OF FIRE (LOF) KNOWLEDGE:\n'
     '"Line of Fire" = person positioned where energy release, object movement, '
@@ -362,8 +367,9 @@ class _ChatTabState extends State<ChatTab> {
       final fullPrompt = '$_systemPrompt\n\n'
           '$kbContext$legacyKb\n\n'
           'QUESTION: $question\n\n'
-          'Answer using the EXACT structured format above. '
-          'Max 8 lines. No greetings, no fluff.';
+          'REMEMBER: Answer in MAX 6-8 lines using the structured format. '
+          'Give ONLY the specific answer to THIS question. '
+          'Do NOT dump all related knowledge. Be like a senior colleague giving a quick answer at site.';
 
       final body = jsonEncode({
         'action': 'gemini',
@@ -536,13 +542,13 @@ class _ChatTabState extends State<ChatTab> {
           Icon(Icons.info_outline, color: AppColors.amber, size: 20),
           SizedBox(width: 8),
           Text('Could not read file', style: TextStyle(
-              color: AppColors.text1, fontSize: 15, fontWeight: FontWeight.w700)),
+              color: SL.of(context).text1, fontSize: 15, fontWeight: FontWeight.w700)),
         ]),
         content: Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('"$filename" appears to be image-based or binary-encoded.',
-                style: const TextStyle(color: AppColors.text2, fontSize: 13)),
+                style: TextStyle(color: SL.of(context).text2, fontSize: 13)),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(10),
@@ -555,11 +561,11 @@ class _ChatTabState extends State<ChatTab> {
                     color: AppColors.accent, fontSize: 12, fontWeight: FontWeight.w700)),
                 SizedBox(height: 6),
                 Text('1. Copy text → paste via Admin Panel → Add Text Entry',
-                    style: TextStyle(color: AppColors.text2, fontSize: 12, height: 1.4)),
+                    style: TextStyle(color: SL.of(context).text2, fontSize: 12, height: 1.4)),
                 Text('2. Save as .txt and upload that instead',
-                    style: TextStyle(color: AppColors.text2, fontSize: 12, height: 1.4)),
+                    style: TextStyle(color: SL.of(context).text2, fontSize: 12, height: 1.4)),
                 Text('3. Use a text-based PDF (not scanned/image PDF)',
-                    style: TextStyle(color: AppColors.text2, fontSize: 12, height: 1.4)),
+                    style: TextStyle(color: SL.of(context).text2, fontSize: 12, height: 1.4)),
               ])),
           ]),
         actions: [
@@ -595,11 +601,11 @@ class _ChatTabState extends State<ChatTab> {
                 Expanded(child: Text('Knowledge Base (Admin)',
                     style: TextStyle(color: SL.of(context).text1,
                         fontSize: 15, fontWeight: FontWeight.w700))),
-                IconButton(icon: const Icon(Icons.close, color: AppColors.text3),
+                IconButton(icon: Icon(Icons.close, color: SL.of(context).text3),
                     onPressed: () => Navigator.pop(ctx)),
               ]),
               const Text('💡 Best results with .txt files or Admin Panel text entries.',
-                  style: TextStyle(color: AppColors.text3, fontSize: 11, height: 1.4)),
+                  style: TextStyle(color: SL.of(context).text3, fontSize: 11, height: 1.4)),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: () async {
@@ -618,7 +624,7 @@ class _ChatTabState extends State<ChatTab> {
               ),
               const SizedBox(height: 14),
               Text('UPLOADED (${docs.length})',
-                  style: const TextStyle(color: AppColors.text4, fontSize: 9,
+                  style: TextStyle(color: SL.of(context).text4, fontSize: 9,
                       letterSpacing: 0.8, fontWeight: FontWeight.w700)),
               const SizedBox(height: 6),
               docs.isEmpty
@@ -626,7 +632,7 @@ class _ChatTabState extends State<ChatTab> {
                     padding: EdgeInsets.all(20),
                     child: Center(child: Text(
                         'No documents yet. Upload reference material to enhance the chatbot.',
-                        style: TextStyle(color: AppColors.text4, fontSize: 11),
+                        style: TextStyle(color: SL.of(context).text4, fontSize: 11),
                         textAlign: TextAlign.center)))
                 : ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 240),
@@ -652,7 +658,7 @@ class _ChatTabState extends State<ChatTab> {
                                       fontSize: 11, fontWeight: FontWeight.w600),
                                   overflow: TextOverflow.ellipsis),
                               Text('$charCount chars · ${d['uploadedBy'] ?? '—'}',
-                                  style: const TextStyle(color: AppColors.text4, fontSize: 9)),
+                                  style: TextStyle(color: SL.of(context).text4, fontSize: 9)),
                             ])),
                             IconButton(
                               icon: const Icon(Icons.delete_outline,
@@ -815,9 +821,12 @@ class _ChatTabState extends State<ChatTab> {
                 border: Border.all(color: isUser
                     ? AppColors.accentDark : sl.border.withOpacity(0.5))),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(text, style: TextStyle(
-                    color: isUser ? Colors.white : sl.text1,
-                    fontSize: 12.5, height: 1.55)),
+                // ★ Colored rich text for AI responses
+                if (!isUser)
+                  _coloredAiText(text, sl)
+                else
+                  Text(text, style: const TextStyle(
+                      color: Colors.white, fontSize: 12.5, height: 1.55)),
                 if (sources != null && sources.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   Container(
@@ -835,6 +844,74 @@ class _ChatTabState extends State<ChatTab> {
             )),
           if (isUser) const SizedBox(width: 30),
         ]));
+  }
+
+  /// ★ Render AI response with colored sections for visual appeal
+  Widget _coloredAiText(String text, SL sl) {
+    final lines = text.split('\n');
+    final widgets = <Widget>[];
+
+    for (final line in lines) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty) {
+        widgets.add(const SizedBox(height: 4));
+        continue;
+      }
+
+      // 【TOPIC】 header — bold, accent colored
+      if (trimmed.startsWith('【') && trimmed.contains('】')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(bottom: 4, top: 2),
+          child: Text(trimmed, style: TextStyle(
+            color: AppColors.accent, fontSize: 13,
+            fontWeight: FontWeight.w800))));
+      }
+      // 📋 Regulation line — blue (dark-safe)
+      else if (trimmed.startsWith('📋')) {
+        widgets.add(Text(trimmed, style: TextStyle(
+          color: sl.isDark ? const Color(0xFF64B5F6) : const Color(0xFF1565C0),
+          fontSize: 12, fontWeight: FontWeight.w700, height: 1.5)));
+      }
+      // ⚡ Key Points header — amber
+      else if (trimmed.startsWith('⚡')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(trimmed, style: const TextStyle(
+            color: AppColors.amber, fontSize: 12,
+            fontWeight: FontWeight.w700, height: 1.5))));
+      }
+      // ✅ Action line — green (dark-safe)
+      else if (trimmed.startsWith('✅')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(trimmed, style: TextStyle(
+            color: sl.isDark ? const Color(0xFF69F0AE) : const Color(0xFF2E7D32),
+            fontSize: 12, fontWeight: FontWeight.w700, height: 1.5))));
+      }
+      // ⚠️ Warning lines — red/orange (dark-safe)
+      else if (trimmed.startsWith('⚠️') || trimmed.startsWith('🚨')) {
+        widgets.add(Text(trimmed, style: TextStyle(
+          color: sl.isDark ? const Color(0xFFFF8A65) : const Color(0xFFE65100),
+          fontSize: 12, fontWeight: FontWeight.w600, height: 1.5)));
+      }
+      // • Bullet points — slightly indented, normal color
+      else if (trimmed.startsWith('•') || trimmed.startsWith('-')) {
+        widgets.add(Padding(
+          padding: const EdgeInsets.only(left: 6),
+          child: Text(trimmed, style: TextStyle(
+            color: sl.text1, fontSize: 12, height: 1.5))));
+      }
+      // Normal text
+      else {
+        widgets.add(Text(trimmed, style: TextStyle(
+          color: sl.text1, fontSize: 12.5, height: 1.55)));
+      }
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
   }
 
   Widget _suggestionChips() {

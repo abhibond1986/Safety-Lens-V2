@@ -1,8 +1,10 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
+import '../../services/image_storage.dart';
 import '../incident_detail_screen.dart';
 
 class IncidentLogTab extends StatefulWidget {
@@ -329,8 +331,13 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
     final typeLabel = isAiScan ? 'AI Scan' : 'Near Miss';
     final typeIcon = isAiScan ? Icons.image_search_rounded : Icons.warning_amber_rounded;
 
-    // ★ Thumbnail — check for stored thumbnail or imageBase64
+    // ★ Thumbnail — multi-source fallback chain
     final thumbnail = inc['thumbnailBase64']?.toString() ?? '';
+    final imageBase64 = inc['imageBase64']?.toString() ?? '';
+    final hasInlineThumbnail = thumbnail.isNotEmpty && thumbnail != 'null';
+    final hasInlineImage = imageBase64.isNotEmpty && imageBase64 != 'null' && imageBase64 != '[image]' && imageBase64.length > 100;
+    final hasImageRef = (inc['imageRef']?.toString() ?? '').isNotEmpty &&
+        inc['imageRef'].toString() != 'null';
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -351,7 +358,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
           ),
           padding: const EdgeInsets.all(12),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            // ★ LEFT COLUMN: Thumbnail / Type icon
+            // ★ LEFT COLUMN: Thumbnail with multi-source fallback
             Container(
               width: 52,
               height: 52,
@@ -362,14 +369,23 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                 border: Border.all(color: typeColor.withOpacity(0.2)),
               ),
               clipBehavior: Clip.antiAlias,
-              child: thumbnail.isNotEmpty
+              child: hasInlineThumbnail
                   ? Image.memory(
                       base64Decode(thumbnail),
                       fit: BoxFit.cover,
                       width: 52, height: 52,
                       errorBuilder: (_, __, ___) => _typeIconWidget(typeIcon, typeColor),
                     )
-                  : _typeIconWidget(typeIcon, typeColor),
+                  : hasInlineImage
+                      ? Image.memory(
+                          base64Decode(imageBase64),
+                          fit: BoxFit.cover,
+                          width: 52, height: 52,
+                          errorBuilder: (_, __, ___) => _typeIconWidget(typeIcon, typeColor),
+                        )
+                      : hasImageRef
+                          ? _asyncThumbnail(inc, typeIcon, typeColor)
+                          : _typeIconWidget(typeIcon, typeColor),
             ),
             // ★ RIGHT COLUMN: Details
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -456,5 +472,44 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
 
   Widget _typeIconWidget(IconData icon, Color color) {
     return Center(child: Icon(icon, color: color.withOpacity(0.5), size: 24));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ASYNC THUMBNAIL — loads from ImageStorage file system
+  // ═══════════════════════════════════════════════════════════════
+  final Map<String, Uint8List?> _imageCache = {};
+
+  Widget _asyncThumbnail(Map<String, dynamic> inc, IconData typeIcon, Color typeColor) {
+    final imageRef = inc['imageRef']?.toString() ?? '';
+    final incId = inc['id']?.toString() ?? imageRef;
+
+    // Check cache first
+    if (_imageCache.containsKey(incId)) {
+      final cached = _imageCache[incId];
+      if (cached != null) {
+        return Image.memory(cached, fit: BoxFit.cover, width: 52, height: 52,
+            errorBuilder: (_, __, ___) => _typeIconWidget(typeIcon, typeColor));
+      }
+      return _typeIconWidget(typeIcon, typeColor);
+    }
+
+    // Load asynchronously
+    return FutureBuilder<Uint8List?>(
+      future: ImageStorage.getImageForIncident(inc),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
+          _imageCache[incId] = snapshot.data;
+          return Image.memory(snapshot.data!, fit: BoxFit.cover, width: 52, height: 52,
+              errorBuilder: (_, __, ___) => _typeIconWidget(typeIcon, typeColor));
+        }
+        if (snapshot.connectionState == ConnectionState.done) {
+          _imageCache[incId] = null; // Mark as "no image"
+          return _typeIconWidget(typeIcon, typeColor);
+        }
+        // Loading state
+        return Center(child: SizedBox(width: 16, height: 16,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: typeColor.withOpacity(0.5))));
+      },
+    );
   }
 }

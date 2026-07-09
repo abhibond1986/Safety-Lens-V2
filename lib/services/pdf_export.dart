@@ -706,7 +706,7 @@ class PdfExport {
     child: pw.Text(summary.isEmpty ? 'No summary provided.' : summary,
       style: pw.TextStyle(fontSize: 9, color: _textDark, lineSpacing: 1.6)));
 
-  // ✅ GPS LOCATION SECTION (if available)
+  // ✅ GPS LOCATION SECTION — Place name FIRST, coordinates as link only
   static pw.Widget? _gpsLocationSection(Map<String, dynamic> inc) {
     final lat = inc['latitude'];
     final lon = inc['longitude'];
@@ -716,41 +716,59 @@ class PdfExport {
     final acc = inc['locationAccuracy'];
     final addr = inc['locationAddress']?.toString() ?? '';
     final timestamp = inc['locationTimestamp']?.toString() ?? '';
+    final mapsUrl = 'https://www.google.com/maps?q=$lat,$lon';
+
+    // Determine display location — use address/place name prominently
+    final displayLocation = addr.isNotEmpty
+        ? addr
+        : '${_toDouble(lat).toStringAsFixed(4)}, ${_toDouble(lon).toStringAsFixed(4)}';
 
     return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
+      padding: const pw.EdgeInsets.all(12),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: _divider, width: 0.5),
+        border: pw.Border.all(color: PdfColor.fromHex('#00838F'), width: 0.8),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
         color: PdfColor.fromHex('#E0F7FA')),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
+          // Header row
           pw.Row(children: [
-            pw.Text('📍 GPS LOCATION', style: pw.TextStyle(
-              fontSize: 8.5, color: _textDark,
+            pw.Text('INCIDENT LOCATION', style: pw.TextStyle(
+              fontSize: 9, color: PdfColor.fromHex('#00695C'),
               fontWeight: pw.FontWeight.bold)),
+            pw.Spacer(),
+            if (timestamp.isNotEmpty)
+              pw.Text('Captured: ${_formatGpsTimestamp(timestamp)}',
+                style: pw.TextStyle(fontSize: 7, color: _textMed)),
           ]),
+          pw.SizedBox(height: 8),
+          // ★ PLACE NAME — large and prominent
+          pw.Text(displayLocation, style: pw.TextStyle(
+            fontSize: 10.5, color: _textDark,
+            fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 6),
-          pw.Text('Coordinates: ${lat.toStringAsFixed(6)}, ${lon.toStringAsFixed(6)}',
-            style: pw.TextStyle(fontSize: 8.5, color: _textDark)),
-          if (acc != null)
-            pw.Text('Accuracy: ±${acc.toStringAsFixed(1)}m',
-              style: pw.TextStyle(fontSize: 8, color: _textMed)),
-          if (addr.isNotEmpty) ...[
-            pw.SizedBox(height: 3),
-            pw.Text('Address: $addr',
-              style: pw.TextStyle(fontSize: 8, color: _textMed)),
-          ],
-          if (timestamp.isNotEmpty) ...[
-            pw.SizedBox(height: 3),
-            pw.Text('Captured: ${_formatGpsTimestamp(timestamp)}',
-              style: pw.TextStyle(fontSize: 7.5, color: _textLight)),
-          ],
-          pw.SizedBox(height: 4),
-          pw.Text('Google Maps: https://www.google.com/maps?q=$lat,$lon',
-            style: pw.TextStyle(fontSize: 7.5, color: PdfColor.fromHex('#0D47A1'),
-              decoration: pw.TextDecoration.underline)),
+          // Accuracy + Map link row
+          pw.Row(children: [
+            if (acc != null)
+              pw.Text('Accuracy: +/-${_toDouble(acc).toStringAsFixed(0)}m',
+                style: pw.TextStyle(fontSize: 7.5, color: _textMed)),
+            pw.Spacer(),
+            pw.Text('View on Google Maps',
+              style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#0D47A1'),
+                fontWeight: pw.FontWeight.bold,
+                decoration: pw.TextDecoration.underline)),
+          ]),
+          pw.SizedBox(height: 2),
+          pw.Text(mapsUrl,
+            style: pw.TextStyle(fontSize: 6.5, color: _textLight)),
         ]));
+  }
+
+  static double _toDouble(dynamic val) {
+    if (val is double) return val;
+    if (val is int) return val.toDouble();
+    return double.tryParse(val?.toString() ?? '0') ?? 0.0;
   }
 
   static String _formatGpsTimestamp(String iso) {

@@ -138,9 +138,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'The Admin Panel opens in your browser. Login with:',
-              style: TextStyle(color: AppColors.text2, fontSize: 12),
+              style: TextStyle(color: SL.of(context).text2, fontSize: 12),
             ),
             const SizedBox(height: 12),
             _infoRow('URL', _kAdminPanelUrl),
@@ -166,7 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.text3)),
+            child: Text('Cancel', style: TextStyle(color: SL.of(context).text3)),
           ),
           ElevatedButton(
             onPressed: () { Navigator.pop(context); _openAdminPanel(); },
@@ -178,17 +178,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _infoRow(String label, String value) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(label, style: const TextStyle(color: AppColors.text4, fontSize: 9,
-          fontWeight: FontWeight.w700, letterSpacing: 0.5)),
-      const SizedBox(height: 2),
-      SelectableText(value,
-          style: const TextStyle(color: AppColors.text1, fontSize: 11,
-              fontWeight: FontWeight.w600, fontFamily: 'monospace')),
-    ],
-  );
+  Widget _infoRow(String label, String value) {
+    final sl = SL.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: sl.text4, fontSize: 9,
+            fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+        const SizedBox(height: 2),
+        SelectableText(value,
+            style: TextStyle(color: sl.text1, fontSize: 11,
+                fontWeight: FontWeight.w600, fontFamily: 'monospace')),
+      ],
+    );
+  }
 
   void _showSnack(String msg, Color color) {
     if (!mounted) return;
@@ -208,6 +211,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final sl = SL.of(context);
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -220,7 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        iconTheme: const IconThemeData(color: AppColors.text1),
+        iconTheme: IconThemeData(color: sl.text1),
         actions: [
           // Language picker in app bar
           const Padding(
@@ -278,7 +282,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Text(
                                 'User & Access Management',
                                 style: TextStyle(
-                                  color: AppColors.text1,
+                                  color: sl.text1,
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                 ),
@@ -287,7 +291,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Text(
                                 'Manage users · Set roles · View plant-wise activity · Configure sync',
                                 style: TextStyle(
-                                  color: AppColors.text3,
+                                  color: sl.text3,
                                   fontSize: 10,
                                   height: 1.4,
                                 ),
@@ -377,7 +381,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
 
             const SizedBox(height: 24),
-            const Divider(color: AppColors.border),
+            Divider(color: sl.border),
             const SizedBox(height: 20),
 
             // ── BACKEND STATUS CARD ──────────────────────────────
@@ -419,13 +423,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? 'Reports will sync to Google Sheets automatically.'
                         : 'Reports save locally only. Add the Apps Script URL below to enable sync.',
                     style: const TextStyle(
-                      color: AppColors.text2, fontSize: 11, height: 1.4),
+                      color: sl.text2, fontSize: 11, height: 1.4),
                   ),
                   if (_lastSync != null) ...[
                     const SizedBox(height: 4),
                     Text(
                       'Last sync: ${_lastSync!.toLocal()}',
-                      style: const TextStyle(color: AppColors.text4, fontSize: 9),
+                      style: TextStyle(color: sl.text4, fontSize: 9),
                     ),
                   ],
                   if (_pendingCount > 0) ...[
@@ -450,7 +454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 6),
             const Text(
               'Paste the Web App URL from your Apps Script deployment.\nFormat: https://script.google.com/macros/s/.../exec',
-              style: TextStyle(color: AppColors.text3, fontSize: 10, height: 1.4),
+              style: TextStyle(color: sl.text3, fontSize: 10, height: 1.4),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -462,11 +466,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 filled: true,
                 fillColor: scheme.surface,
                 hintText: 'https://script.google.com/macros/s/.../exec',
-                hintStyle: const TextStyle(color: AppColors.text4, fontSize: 10),
+                hintStyle: TextStyle(color: sl.text4, fontSize: 10),
                 contentPadding: const EdgeInsets.all(10),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: AppColors.border),
+                  borderSide: BorderSide(color: sl.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
@@ -561,7 +565,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 decoration: BoxDecoration(
                   color: scheme.surface,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: sl.border),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,7 +596,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
 
             const SizedBox(height: 24),
-            const Divider(color: AppColors.border),
+            Divider(color: sl.border),
             const SizedBox(height: 16),
 
             // ── SETUP GUIDE ──────────────────────────────────────
@@ -645,8 +649,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _sectionLabel(String text) => Text(
     text,
-    style: const TextStyle(
-      color: AppColors.text4,
+    style: TextStyle(
+      color: SL.of(context).text4,
       fontSize: 10,
       fontWeight: FontWeight.w700,
       letterSpacing: 0.8,
@@ -693,7 +697,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             padding: const EdgeInsets.only(top: 2),
             child: Text(text,
                 style: const TextStyle(
-                    color: AppColors.text2, fontSize: 11, height: 1.4)),
+                    color: sl.text2, fontSize: 11, height: 1.4)),
           ),
         ),
       ]),

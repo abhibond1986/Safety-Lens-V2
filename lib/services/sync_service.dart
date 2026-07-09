@@ -373,21 +373,26 @@ class SyncService {
     try {
       final url = await getBackendUrl();
 
-      // Build body — strip imageBase64 (too large) and convert all values to strings
+      // Build body — strip large image data but KEEP thumbnails (they're only 2-4KB)
       final body = <String, dynamic>{'action': 'addIncident'};
       incident.forEach((k, v) {
         if (k == 'imageBase64') {
-          body[k] = '[image]'; // never send raw base64 to Sheets
+          body[k] = '[image]'; // never send raw base64 to Sheets (too large)
           return;
         }
+        if (k == 'shareImageBase64') {
+          body[k] = ''; // strip medium image too (50-80KB)
+          return;
+        }
+        // Keep thumbnailBase64 — it's only 2-4KB and needed for log display
         if (v == null) { body[k] = ''; return; }
         if (v is List || v is Map) {
           body[k] = jsonEncode(v); // serialize nested objects
           return;
         }
         final str = v.toString();
-        // Truncate any single field > 2000 chars
-        body[k] = str.length > 2000 ? str.substring(0, 2000) : str;
+        // Truncate any single field > 5000 chars (raised from 2000 to accommodate thumbnail base64)
+        body[k] = str.length > 5000 ? str.substring(0, 5000) : str;
       });
 
       // Use the shared helper that handles redirects + logging
