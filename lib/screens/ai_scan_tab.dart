@@ -136,12 +136,38 @@ class _AIScanTabState extends State<AIScanTab> {
     });
 
     // Step 4: Capture GPS silently in background (non-blocking)
-    _captureGpsInBackground(bytes);
+    // ★ v32: Try EXIF GPS for gallery photos first
+    _captureLocationSmart(bytes, source);
 
     await _analyze();
   }
 
   /// Captures GPS location silently in background without showing any UI to user
+  /// ★ v32: Try EXIF GPS for gallery, device GPS for camera
+  Future<void> _captureLocationSmart(Uint8List originalBytes, ImageSource source) async {
+    if (source == ImageSource.gallery) {
+      try {
+        final exifLocation = await GeoService.getLocationFromExif(originalBytes).timeout(
+          const Duration(seconds: 5), onTimeout: () => null);
+        if (!mounted) return;
+        if (exifLocation != null && exifLocation.isValid) {
+          setState(() {
+            _capturedLocation = exifLocation;
+            _locationController.text = GeoService.getDisplayAddress(exifLocation);
+          });
+          // Still watermark with EXIF location
+          final watermarked = await GeoService.addWatermarkToImage(originalBytes, exifLocation);
+          if (watermarked != null && mounted) {
+            setState(() => _imageBytes = watermarked);
+          }
+          return; // EXIF worked
+        }
+      } catch (_) {}
+    }
+    // Fallback to device GPS
+    _captureGpsInBackground(originalBytes);
+  }
+
   Future<void> _captureGpsInBackground(Uint8List originalBytes) async {
     LocationData? location;
     try {

@@ -1,7 +1,9 @@
 // lib/services/geo_service.dart
 // GPS location capture and image watermarking service
+// ★ v32: Added EXIF GPS extraction from uploaded images
 
 import 'dart:typed_data';
+import 'package:exif/exif.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:image/image.dart' as img;
@@ -77,6 +79,117 @@ class GeoService {
       return LocationData(
         error: 'Failed to get location: ${e.toString()}',
       );
+    }
+  }
+
+  /// ★ v32: Extract GPS coordinates from image EXIF metadata
+  /// Returns LocationData if GPS found in EXIF, null otherwise.
+  /// Works with JPEG/TIFF images that have GPS tags (original camera photos).
+  /// Will NOT work with screenshots, WhatsApp-forwarded images, or edited photos.
+  static Future<LocationData?> getLocationFromExif(Uint8List imageBytes) async {
+    try {
+      final tags = await readExifFromBytes(imageBytes);
+      if (tags.isEmpty) return null;
+
+      // Extract GPS latitude
+      final latTag = tags['GPS GPSLatitude'];
+      final latRef = tags['GPS GPSLatitudeRef'];
+      final lonTag = tags['GPS GPSLongitude'];
+      final lonRef = tags['GPS GPSLongitudeRef'];
+
+      if (latTag == null || lonTag == null) return null;
+
+      final lat = _exifGpsToDouble(latTag.values, latRef?.toString() ?? 'N');
+      final lon = _exifGpsToDouble(lonTag.values, lonRef?.toString() ?? 'E');
+
+      if (lat == null || lon == null) return null;
+      if (lat == 0.0 && lon == 0.0) return null; // Invalid/default coords
+
+      // Try to extract timestamp from EXIF
+      DateTime? photoTime;
+      final dateTag = tags['EXIF DateTimeOriginal'] ?? tags['Image DateTime'];
+      if (dateTag != null) {
+        try {
+          // EXIF date format: "2026:07:09 14:30:00"
+          final s = dateTag.toString().replaceFirst(':', '-').replaceFirst(':', '-');
+          photoTime = DateTime.tryParse(s.replaceFirst(' ', 'T'));
+        } catch (_) {}
+      }
+
+      // Reverse geocode to get address
+      String address = '';
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(lat, lon);
+        if (placemarks.isNotEmpty) {
+          Placemark place = placemarks[0];
+          address = [
+            place.street,
+            place.subLocality,
+            place.locality,
+            place.administrativeArea,
+            place.postalCode,
+          ].where((e) => e != null && e.isNotEmpty).join(', ');
+        }
+      } catch (_) {
+        // Reverse geocoding failed — return coords without address
+      }
+
+      return LocationData(
+        latitude: lat,
+        longitude: lon,
+        accuracy: null, // EXIF doesn't store accuracy
+        timestamp: photoTime ?? DateTime.now(),
+        address: address,
+      );
+    } catch (e) {
+      // EXIF parsing failed — image may not have EXIF or format unsupported
+      return null;
+    }
+  }
+
+  /// Convert EXIF GPS rational values to decimal degrees
+  static double? _exifGpsToDouble(dynamic values, String ref) {
+    try {
+      if (values == null) return null;
+      final rationals = values.toList();
+      if (rationals.length < 3) return null;
+
+      final deg = _rationalToDouble(rationals[0]);
+      final min = _rationalToDouble(rationals[1]);
+      final sec = _rationalToDouble(rationals[2]);
+
+      if (deg == null || min == null || sec == null) return null;
+
+      double result = deg + (min / 60.0) + (sec / 3600.0);
+      if (ref == 'S' || ref == 'W') result = -result;
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Convert a Rational EXIF value to double
+  /// The `exif` package returns Ratio objects with numerator/denominator
+  static double? _rationalToDouble(dynamic rational) {
+    try {
+      if (rational is Ratio) {
+        if (rational.denominator == 0) return null;
+        return rational.numerator.toDouble() / rational.denominator.toDouble();
+      }
+      // Fallback: try as num
+      if (rational is num) return rational.toDouble();
+      // Some EXIF implementations return string "23/1"
+      if (rational is String && rational.contains('/')) {
+        final parts = rational.split('/');
+        if (parts.length == 2) {
+          final n = double.tryParse(parts[0]);
+          final d = double.tryParse(parts[1]);
+          if (n != null && d != null && d != 0) return n / d;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
     }
   }
 

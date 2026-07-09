@@ -757,8 +757,9 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
       _aiBrief = null;
     });
 
-    // Capture GPS in background and auto-fill location with place name
-    _captureGpsInBackground();
+    // ★ v32: Try EXIF GPS first (more accurate for gallery photos — exact capture location)
+    // Then fall back to device GPS if EXIF has no location
+    _extractLocationFromImage(bytes, source);
 
     // Ask user: scan with AI or just upload?
     if (!mounted) return;
@@ -792,6 +793,38 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
       setState(() => _analyzing = true);
       await _analyzeImage();
     }
+  }
+
+  /// ★ v32: Extract location from EXIF or device GPS
+  /// For gallery photos: tries EXIF first (captures where photo was TAKEN)
+  /// For camera photos: uses device GPS (real-time location)
+  Future<void> _extractLocationFromImage(Uint8List imageBytes, ImageSource source) async {
+    if (source == ImageSource.gallery) {
+      // Gallery: try EXIF first — it tells us WHERE the photo was originally taken
+      try {
+        final exifLocation = await GeoService.getLocationFromExif(imageBytes).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => null,
+        );
+        if (!mounted) return;
+        if (exifLocation != null && exifLocation.isValid) {
+          _capturedLocation = exifLocation;
+          if (_location.text.isEmpty || _location.text == 'To be confirmed (edit if needed)') {
+            final address = GeoService.getDisplayAddress(exifLocation);
+            if (address.isNotEmpty) {
+              setState(() => _location.text = address);
+            } else {
+              // No address but have coords — show coords
+              setState(() => _location.text =
+                '${exifLocation.latitude!.toStringAsFixed(5)}, ${exifLocation.longitude!.toStringAsFixed(5)}');
+            }
+          }
+          return; // EXIF worked — don't need device GPS
+        }
+      } catch (_) {}
+    }
+    // Camera photos or EXIF extraction failed — use device GPS
+    _captureGpsInBackground();
   }
 
   /// Captures GPS location silently and fills location field with place name
@@ -1838,8 +1871,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           _buildDeptDropdown(sl),
           if (_showOtherDept)
             _buildTextField('Enter Department Name', _deptOther, Icons.edit_outlined, sl),
-          _buildTextField('Exact Location', _location, Icons.location_on_outlined, sl,
-            suffix: _micButton(_location), onChanged: _onLocationChanged),
+          _buildLocationField(sl),
           _buildDropdownField('Observation Category (WSA 13)', _wsaCause, _wsaCauses, (v) => setState(() => _wsaCause = v!), sl),
           _buildDropdownField('Observation Type', _obsType, const ['Unsafe Act', 'Unsafe Condition'], (v) => setState(() => _obsType = v!), sl),
           _buildDropdownField('Initial Risk Severity', _severity, const ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'], (v) => setState(() => _severity = v!), sl),
@@ -2230,6 +2262,63 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           ],
         ),
       ),
+    );
+  }
+
+  /// ★ v32: Location field with GPS indicator + edit hint
+  Widget _buildLocationField(SL sl) {
+    final hasGpsLocation = _capturedLocation != null && _capturedLocation!.isValid;
+    final isAutoFilled = hasGpsLocation &&
+        _location.text.isNotEmpty &&
+        _location.text != 'To be confirmed (edit if needed)';
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        TextField(
+          controller: _location,
+          onChanged: _onLocationChanged,
+          style: TextStyle(color: sl.text1, fontSize: 13),
+          decoration: InputDecoration(
+            labelText: 'Exact Location',
+            labelStyle: TextStyle(color: sl.text3, fontSize: 11.5),
+            prefixIcon: Padding(
+              padding: const EdgeInsets.only(left: 12, right: 8),
+              child: Icon(Icons.location_on_outlined, size: 18,
+                color: isAutoFilled ? AppColors.green : AppColors.accent.withOpacity(0.7))),
+            prefixIconConstraints: const BoxConstraints(minWidth: 40),
+            suffixIcon: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (isAutoFilled)
+                Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Icon(Icons.gps_fixed_rounded, size: 14,
+                    color: AppColors.green.withOpacity(0.7))),
+              _micButton(_location),
+            ]),
+            filled: true,
+            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: sl.border.withOpacity(0.5))),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(
+                color: isAutoFilled ? AppColors.green.withOpacity(0.4) : sl.border.withOpacity(0.5))),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.accent, width: 2)),
+          ),
+        ),
+        if (isAutoFilled)
+          Padding(
+            padding: const EdgeInsets.only(left: 14, top: 4),
+            child: Text(
+              '📍 Auto-detected from ${_location.text.contains(',') && _capturedLocation?.address == null ? "image EXIF" : "GPS"} — tap to edit if incorrect',
+              style: TextStyle(color: AppColors.green.withOpacity(0.8), fontSize: 10, fontStyle: FontStyle.italic),
+            ),
+          ),
+      ]),
     );
   }
 
