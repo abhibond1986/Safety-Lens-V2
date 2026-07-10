@@ -540,8 +540,9 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
   // ─── EVIDENCE PHOTO ──────────────────────────────────────────
   Widget _buildEvidencePhoto(SL sl, Color bg) {
     final imgB64 = _inc['imageBase64']?.toString() ?? '';
+    final shareB64 = _inc['shareImageBase64']?.toString() ?? '';
     final thumbB64 = _inc['thumbnailBase64']?.toString() ?? '';
-    final b64 = imgB64.isNotEmpty ? imgB64 : thumbB64;
+    final b64 = imgB64.isNotEmpty ? imgB64 : shareB64.isNotEmpty ? shareB64 : thumbB64;
     if (b64.isEmpty) return const SizedBox.shrink();
 
     return Column(children: [
@@ -559,6 +560,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
           child: Image.memory(
             base64Decode(b64),
             fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
             errorBuilder: (_, __, ___) => const SizedBox.shrink(),
           ),
         ),
