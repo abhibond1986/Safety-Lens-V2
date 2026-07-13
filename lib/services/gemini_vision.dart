@@ -318,7 +318,8 @@ class GeminiVision {
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
 
     // NVIDIA free vision model — completely independent from Google
-    const model = 'nvidia/nemotron-nano-12b-v2-vl:free';
+    // ★ v35: Upgraded to Nemotron 3 Nano Omni 30B — free, 256K context, multimodal vision
+    const model = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 
     // Build prompt with KB context if available
     String prompt = _getHazardPrompt();
