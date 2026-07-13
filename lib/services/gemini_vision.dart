@@ -242,7 +242,8 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION — llama-4-scout (free, fast, independent)
+  //  GROQ VISION — Llama 4 Maverick (replaces deprecated Scout 17B)
+  //  ★ v34: Scout decommissioned July 17, 2026 — switched to Maverick
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -252,7 +253,9 @@ class GeminiVision {
     final base64Image = base64Encode(bytes);
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
 
-    const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
+    // ★ v34: Llama 4 Scout deprecated July 17, 2026 — replaced with Maverick
+    // Maverick: 17B params, 128 experts, better vision quality than Scout
+    const model = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 
     // Build prompt with KB context if available
     String prompt = _getHazardPrompt();
@@ -276,7 +279,7 @@ class GeminiVision {
           ]
         }
       ],
-      'max_tokens': 4096,
+      'max_tokens': 8192,
       'temperature': 0.15,
     };
 
