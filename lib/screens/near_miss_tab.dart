@@ -662,6 +662,18 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   }
 
   /// ★ Generate a tiny thumbnail (60px wide) for the incident log card
+  /// ★ v34: Compute risk score from severity for manual entries
+  /// Ensures PDF report never shows 0 when severity is selected
+  int _computeRiskScore(String severity) {
+    switch (severity.toUpperCase()) {
+      case 'CRITICAL': return 90;
+      case 'HIGH':     return 70;
+      case 'MEDIUM':   return 50;
+      case 'LOW':      return 25;
+      default:         return 50;
+    }
+  }
+
   String? _generateThumbnail(Uint8List imageBytes) {
     try {
       final decoded = img.decodeImage(imageBytes);
@@ -1212,6 +1224,10 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
         'reportedBy':      user?['name'] ?? 'Unknown',
         'reportedByPno':   user?['pno']  ?? '',
         'date':            DateTime.now().toIso8601String(),
+        // ★ v34: Compute risk score from severity so PDF report is never 0
+        'riskScore':       _computeRiskScore(_severity),
+        'confidence':      _aiBrief != null ? (_aiBrief!['confidence'] ?? 75) : 100,
+        'overallRisk':     _severity,
         'imageBase64':     _imageBytes != null ? base64Encode(_imageBytes!) : null,
         'thumbnailBase64': _imageBytes != null ? _generateThumbnail(_imageBytes!) : null,
         'shareImageBase64': _imageBytes != null ? _generateShareImage(_imageBytes!) : null,
