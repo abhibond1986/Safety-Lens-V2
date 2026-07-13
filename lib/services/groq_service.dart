@@ -171,12 +171,12 @@ Rules:
     String? kbContext,
   }) async {
     final langInstruction = language == 'English'
-        ? 'Respond with "reason" and "refined" fields in English.'
-        : 'IMPORTANT: The worker spoke in $language. Write "reason" and "refined" in $language (native script). Do NOT translate to English.';
+        ? 'Respond with "reason", "refined", and "correctiveAction" fields in English.'
+        : 'IMPORTANT: The worker spoke in $language. Write "reason", "refined", and "correctiveAction" in $language (native script). Do NOT translate to English.';
 
     final prompt = '''${kbContext ?? ''}
 
-You are analyzing a potential near miss incident reported by a worker at SAIL.
+You are analyzing a potential near miss incident reported by a worker at SAIL (Steel Authority of India Limited).
 
 WORKER'S INPUT: "$text"
 
@@ -188,9 +188,16 @@ Respond in STRICT JSON format:
   "confidence": 0-100,
   "reason": "brief explanation (in worker's language)",
   "refined": "rewritten professional near-miss description with safety terminology (in worker's language)",
+  "correctiveAction": "specific corrective action to prevent recurrence — practical, actionable steps (in worker's language)",
   "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation",
   "detectedLanguage": "English/Hindi"
 }
+
+CORRECTIVE ACTION GUIDANCE:
+- Be specific and actionable (e.g., "Install guardrail at platform edge" not just "Fix the issue")
+- Reference applicable safety measures (barricading, signage, PPE, LOTO, PTW)
+- Include both immediate action AND preventive measure where applicable
+- Keep it concise (1-2 sentences)
 
 NEAR MISS DEFINITION: An unplanned event that DID NOT result in injury/illness/damage but HAD THE POTENTIAL to do so.
 

@@ -529,12 +529,12 @@ If the text is already fine, return it unchanged.''';
 
       // ★ FALLBACK: Apps Script (Gemini) if Groq fails
       final langInstruction = _detectedLang == 'en'
-          ? 'Respond with the "reason" and "refined" fields in English.'
-          : 'IMPORTANT: The worker spoke in $_detectedLangName. You MUST write the "reason" and "refined" fields in $_detectedLangName language (using native script). Do NOT translate to English.';
+          ? 'Respond with the "reason", "refined", and "correctiveAction" fields in English.'
+          : 'IMPORTANT: The worker spoke in $_detectedLangName. You MUST write the "reason", "refined", and "correctiveAction" fields in $_detectedLangName language (using native script). Do NOT translate to English.';
 
       final prompt = '''$kbContext
 
-You are analyzing a potential near miss incident reported by a worker.
+You are analyzing a potential near miss incident reported by a worker at SAIL (Steel Authority of India Limited).
 
 WORKER'S INPUT: "$rawText"
 
@@ -546,9 +546,16 @@ Analyze this and respond in STRICT JSON format:
   "confidence": 0-100,
   "reason": "brief explanation why this is or is not a near miss (in the same language as worker's input)",
   "refined": "rewritten professional near-miss description with proper safety terminology, clear grammar, and structured format (in the same language as worker's input)",
+  "correctiveAction": "specific corrective action to prevent recurrence — practical, actionable steps (in the same language as worker's input)",
   "category": "one of: Unsafe Act, Unsafe Condition, Near Miss, Equipment Failure, Process Deviation",
   "detectedLanguage": "the language the worker spoke in (English/Hindi)"
 }
+
+CORRECTIVE ACTION GUIDANCE:
+- Be specific and actionable (e.g., "Install guardrail at platform edge" not just "Fix the issue")
+- Reference applicable safety measures (barricading, signage, PPE, LOTO, PTW)
+- Include both immediate action AND preventive measure where applicable
+- Keep it concise (1-2 sentences)
 
 NEAR MISS DEFINITION: An unplanned event that DID NOT result in injury/illness/damage but HAD THE POTENTIAL to do so. It involves an unexpected hazardous exposure, a close call, or a condition that could lead to an accident.
 
@@ -633,6 +640,7 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
   void _acceptAiRefinement() {
     if (_aiSuggestion == null) return;
     final refined = _aiSuggestion!['refined']?.toString() ?? '';
+    final correctiveAction = _aiSuggestion!['correctiveAction']?.toString() ?? '';
     if (refined.isNotEmpty) {
       // Generate a 1-2 line summary from the refined text
       final summary = _generateSummary(refined);
@@ -641,6 +649,12 @@ Respond ONLY with the JSON — no explanations outside JSON.''';
         _description.selection = TextSelection.fromPosition(
             TextPosition(offset: refined.length));
         _aiSummary = summary;
+        // ★ v35: Also populate corrective action if AI suggested one
+        if (correctiveAction.isNotEmpty && _immediateAction.text.trim().isEmpty) {
+          _immediateAction.text = correctiveAction;
+          _immediateAction.selection = TextSelection.fromPosition(
+              TextPosition(offset: correctiveAction.length));
+        }
         _aiSuggestion = null;
       });
     }
@@ -2120,6 +2134,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
     final confidence = (_aiSuggestion!['confidence'] ?? 0) as num;
     final reason = _aiSuggestion!['reason']?.toString() ?? '';
     final refined = _aiSuggestion!['refined']?.toString() ?? '';
+    final correctiveAction = _aiSuggestion!['correctiveAction']?.toString() ?? '';
     final detectedLang = _aiSuggestion!['detectedLanguage']?.toString() ?? '';
 
     final cardColor = isNearMiss
@@ -2231,6 +2246,36 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
                     const SizedBox(height: 4),
                     Text(refined,
                       style: TextStyle(color: sl.text1, fontSize: 12, height: 1.4)),
+                  ],
+                ),
+              ),
+            ],
+            // ★ v35: Show AI-suggested corrective action
+            if (correctiveAction.isNotEmpty && isNearMiss) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: sl.isDark ? const Color(0xFF1A2A1A) : const Color(0xFFF1F8E9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF43A047).withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Icon(Icons.build_circle_outlined, size: 13, color: const Color(0xFF43A047)),
+                      const SizedBox(width: 6),
+                      Text('Suggested Corrective Action:',
+                        style: TextStyle(color: const Color(0xFF43A047), fontSize: 10, fontWeight: FontWeight.w600)),
+                    ]),
+                    const SizedBox(height: 4),
+                    Text(correctiveAction,
+                      style: TextStyle(color: sl.text1, fontSize: 12, height: 1.4)),
+                    const SizedBox(height: 4),
+                    Text('You can edit this after accepting',
+                      style: TextStyle(color: sl.text4, fontSize: 9, fontStyle: FontStyle.italic)),
                   ],
                 ),
               ),
