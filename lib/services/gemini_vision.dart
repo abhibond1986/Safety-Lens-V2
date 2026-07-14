@@ -113,41 +113,17 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 1: GEMINI DIRECT — fastest path, no server round-trip
-      // Fast-bails on 429 (doesn't waste 30s trying other models)
-      // ══════════════════════════════════════════════════════════════════════
-      if (await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: ▶ [1/4] Gemini Direct...');
-        try {
-          final directResult = await GeminiDirectVision.analyzeImage(bytes, kbContext: kbContext);
-          if (_isValidResult(directResult)) {
-            print('GeminiVision: ✓ [1/4] Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            directResult!['_source'] = directResult['_source'] ?? 'gemini_direct';
-            directResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return directResult;
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ Gemini Direct exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ [1/4] Gemini Direct skipped (no key)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // STEP 2: OPENROUTER (client-side) — Nemotron 30B (primary model)
-      // ★ v35: Promoted to position 2 — this is now the primary analysis model
-      // Free, 256K context, multimodal, 30B reasoning model
+      // STEP 1: OPENROUTER — Nemotron 30B (PRIMARY model)
+      // ★ v35: Free, 256K context, multimodal, 30B reasoning model
       // ══════════════════════════════════════════════════════════════════════
       final prefs = await SharedPreferences.getInstance();
       final orKey = prefs.getString('openrouter_api_key') ?? '';
       if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-        print('GeminiVision: ▶ [2/4] OpenRouter Nemotron 30B (primary)...');
+        print('GeminiVision: ▶ [1/4] OpenRouter Nemotron 30B (primary)...');
         try {
           final orResult = await _callOpenRouterVision(bytes, orKey, kbContext: kbContext);
           if (_isValidResult(orResult)) {
-            print('GeminiVision: ✓ [2/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            print('GeminiVision: ✓ [1/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             orResult!['_source'] = 'openrouter_client';
             orResult['_isOnline'] = true;
             _lastCallTime = DateTime.now();
@@ -158,19 +134,19 @@ class GeminiVision {
           print('GeminiVision: ✗ OpenRouter exception: $e');
         }
       } else {
-        print('GeminiVision: ⏭ [2/4] OpenRouter skipped (no key)');
+        print('GeminiVision: ⏭ [1/4] OpenRouter skipped (no key)');
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 3: GROQ VISION — fallback, llama-4-scout-17b (free, fast)
-      // ★ v35: Moved to position 3 — now used as fallback + audit model
+      // STEP 2: GROQ VISION — llama-4-scout-17b (fast, free)
+      // ★ v35: Second priority — also used as audit model for comparison
       // ══════════════════════════════════════════════════════════════════════
       if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [3/4] Groq Vision (fallback)...');
+        print('GeminiVision: ▶ [2/4] Groq Scout...');
         try {
           final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
           if (_isValidResult(groqResult)) {
-            print('GeminiVision: ✓ [3/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            print('GeminiVision: ✓ [2/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             groqResult!['_source'] = 'groq_vision';
             groqResult['_isOnline'] = true;
             _lastCallTime = DateTime.now();
@@ -181,7 +157,29 @@ class GeminiVision {
           print('GeminiVision: ✗ Groq Vision exception: $e');
         }
       } else {
-        print('GeminiVision: ⏭ [3/4] Groq Vision skipped (no key)');
+        print('GeminiVision: ⏭ [2/4] Groq Vision skipped (no key)');
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // STEP 3: GEMINI DIRECT — Google's model, fallback
+      // ══════════════════════════════════════════════════════════════════════
+      if (await GeminiDirectVision.isConfigured) {
+        print('GeminiVision: ▶ [3/4] Gemini Direct...');
+        try {
+          final directResult = await GeminiDirectVision.analyzeImage(bytes, kbContext: kbContext);
+          if (_isValidResult(directResult)) {
+            print('GeminiVision: ✓ [3/4] Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            directResult!['_source'] = directResult['_source'] ?? 'gemini_direct';
+            directResult['_isOnline'] = true;
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return directResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ Gemini Direct exception: $e');
+        }
+      } else {
+        print('GeminiVision: ⏭ [3/4] Gemini Direct skipped (no key)');
       }
 
       // ══════════════════════════════════════════════════════════════════════
