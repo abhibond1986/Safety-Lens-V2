@@ -94,6 +94,8 @@ class _AdminScreenState extends State<AdminScreen>
         Icons.verified_rounded,        Color(0xFF2E7D32), true),
     _AdminModule(13,'knowledge', 'Knowledge Base',     'Upload PDF/DOCX',
         Icons.auto_stories_rounded,    Color(0xFF1565C0), true),
+    _AdminModule(14,'ai_audit',  'AI Audit',           'Model comparison',
+        Icons.compare_arrows_rounded,  Color(0xFFD32F2F), true),
   ];
 
   // ── Login state ─────────────────────────────────────────────────
@@ -671,6 +673,7 @@ class _AdminScreenState extends State<AdminScreen>
       case 11: return _moduleBackupRestore(sl);
       case 12: return _moduleCompliance(sl);
       case 13: return _moduleKnowledgeBase(sl);
+      case 14: return _moduleAiAudit(sl);
       default: return _modulePlaceholder(m, sl);
     }
   }
@@ -5708,6 +5711,312 @@ class _AdminScreenState extends State<AdminScreen>
     final updatedDocs = await LocalDB.getKnowledgeDocs();
     setState(() => _kbDocs = updatedDocs);
     _toast('Entry removed', AppColors.amber);
+  }
+
+  // ══════════════════════════════════════════════════════════════════
+  //  MODULE 14: AI AUDIT — Cross-Model Comparison Dashboard
+  // ══════════════════════════════════════════════════════════════════
+  Widget _moduleAiAudit(SL sl) {
+    // Filter incidents that have audit data
+    final audited = _incidents
+        .where((i) => i['auditStatus'] != null && i['auditStatus'].toString().isNotEmpty)
+        .toList();
+    final needsReview = audited.where((i) => i['auditStatus'] == 'NEEDS_REVIEW').toList();
+    final verified = audited.where((i) => i['auditStatus'] == 'VERIFIED').toList();
+    final avgScore = audited.isNotEmpty
+        ? audited.map((i) => (i['auditScore'] as num?)?.toDouble() ?? 0).reduce((a, b) => a + b) / audited.length
+        : 0.0;
+
+    return ListView(padding: const EdgeInsets.all(16), children: [
+      // ── Summary Stats ──
+      Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: sl.glassColor,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: sl.glassBorder),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.compare_arrows_rounded, color: Color(0xFFD32F2F), size: 20),
+            const SizedBox(width: 8),
+            Text('AI Audit Overview', style: TextStyle(
+                color: sl.text1, fontSize: 15, fontWeight: FontWeight.w800)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1565C0).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(6)),
+              child: Text('Audit Model: Nemotron 30B',
+                  style: TextStyle(color: const Color(0xFF1565C0), fontSize: 9, fontWeight: FontWeight.w700)),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          Row(children: [
+            _auditStatCard(sl, 'Total Audited', '${audited.length}',
+                Icons.fact_check_outlined, const Color(0xFF1E88E5)),
+            const SizedBox(width: 10),
+            _auditStatCard(sl, 'Verified', '${verified.length}',
+                Icons.verified_outlined, const Color(0xFF43A047)),
+            const SizedBox(width: 10),
+            _auditStatCard(sl, 'Needs Review', '${needsReview.length}',
+                Icons.rate_review_outlined, const Color(0xFFD32F2F)),
+            const SizedBox(width: 10),
+            _auditStatCard(sl, 'Avg Match', '${avgScore.toStringAsFixed(0)}%',
+                Icons.percent_rounded, const Color(0xFF7E57C2)),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 16),
+
+      // ── Flagged Incidents (Needs Review) ──
+      if (needsReview.isNotEmpty) ...[
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFD32F2F).withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD32F2F).withOpacity(0.2)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.warning_amber_rounded, color: Color(0xFFD32F2F), size: 16),
+              const SizedBox(width: 6),
+              Text('Discrepancies Found (${needsReview.length})',
+                  style: const TextStyle(color: Color(0xFFD32F2F), fontSize: 13, fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 12),
+            ...needsReview.map((inc) => _auditComparisonCard(sl, inc, isDiscrepancy: true)),
+          ]),
+        ),
+        const SizedBox(height: 16),
+      ],
+
+      // ── All Audited Incidents ──
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: sl.glassColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: sl.glassBorder),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.list_alt_rounded, color: sl.text2, size: 16),
+            const SizedBox(width: 6),
+            Text('All Audited Scans (${audited.length})',
+                style: TextStyle(color: sl.text1, fontSize: 13, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 12),
+          if (audited.isEmpty)
+            Center(child: Padding(
+              padding: const EdgeInsets.all(30),
+              child: Column(children: [
+                Icon(Icons.pending_outlined, color: sl.text4, size: 40),
+                const SizedBox(height: 10),
+                Text('No audits yet', style: TextStyle(color: sl.text3, fontSize: 12)),
+                const SizedBox(height: 4),
+                Text('Audits run automatically after each AI scan save',
+                    style: TextStyle(color: sl.text4, fontSize: 10)),
+              ]),
+            ))
+          else
+            ...audited.map((inc) => _auditComparisonCard(sl, inc)),
+        ]),
+      ),
+    ]);
+  }
+
+  Widget _auditStatCard(SL sl, String label, String value, IconData icon, Color color) {
+    return Expanded(child: Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 6),
+        Text(value, style: TextStyle(
+            color: color, fontSize: 16, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 2),
+        Text(label, style: TextStyle(color: sl.text3, fontSize: 9),
+            textAlign: TextAlign.center),
+      ]),
+    ));
+  }
+
+  Widget _auditComparisonCard(SL sl, Map<String, dynamic> inc, {bool isDiscrepancy = false}) {
+    final title = inc['title']?.toString() ?? 'Untitled';
+    final score = (inc['auditScore'] as num?)?.toInt() ?? 0;
+    final status = inc['auditStatus']?.toString() ?? '';
+    final auditModel = inc['auditModel']?.toString() ?? 'Unknown';
+    final timestamp = inc['auditTimestamp']?.toString() ?? '';
+    final notes = inc['auditNotes']?.toString() ?? '';
+    final origCount = (inc['originalHazardCount'] as num?)?.toInt() ?? 0;
+    final auditCount = (inc['auditHazardCount'] as num?)?.toInt() ?? 0;
+
+    // Parse hazard name lists for detailed comparison
+    List<String> origNames = [];
+    List<String> auditNames = [];
+    try {
+      final origJson = inc['originalHazardNames']?.toString() ?? '[]';
+      final auditJson = inc['auditHazardNames']?.toString() ?? '[]';
+      origNames = (jsonDecode(origJson) as List).map((e) => e.toString()).toList();
+      auditNames = (jsonDecode(auditJson) as List).map((e) => e.toString()).toList();
+    } catch (_) {}
+
+    final Color scoreColor = score >= 95
+        ? const Color(0xFF43A047)
+        : score >= 70
+            ? AppColors.amber
+            : const Color(0xFFD32F2F);
+
+    final dateStr = timestamp.length >= 16 ? timestamp.substring(0, 16).replaceAll('T', ' ') : timestamp;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: sl.card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: isDiscrepancy
+            ? const Color(0xFFD32F2F).withOpacity(0.3)
+            : sl.glassBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Header: title + score
+        Row(children: [
+          Expanded(child: Text(title, style: TextStyle(
+              color: sl.text1, fontSize: 12, fontWeight: FontWeight.w700),
+              maxLines: 1, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: scoreColor.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: scoreColor.withOpacity(0.4)),
+            ),
+            child: Text('$score% match', style: TextStyle(
+                color: scoreColor, fontSize: 10, fontWeight: FontWeight.w800)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+
+        // Comparison: Original vs Audit
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Original model column
+          Expanded(child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E88E5).withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF1E88E5).withOpacity(0.15)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.psychology_outlined, color: Color(0xFF1E88E5), size: 12),
+                const SizedBox(width: 4),
+                Text('Primary Model', style: TextStyle(
+                    color: const Color(0xFF1E88E5), fontSize: 9, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 6),
+              Text('$origCount hazard${origCount != 1 ? 's' : ''} found',
+                  style: TextStyle(color: sl.text2, fontSize: 10, fontWeight: FontWeight.w600)),
+              if (origNames.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                ...origNames.take(5).map((n) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Row(children: [
+                    Container(width: 4, height: 4, decoration: const BoxDecoration(
+                        color: Color(0xFF1E88E5), shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(n, style: TextStyle(
+                        color: sl.text3, fontSize: 9), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]),
+                )),
+                if (origNames.length > 5)
+                  Text('+${origNames.length - 5} more', style: TextStyle(
+                      color: sl.text4, fontSize: 8, fontStyle: FontStyle.italic)),
+              ],
+            ]),
+          )),
+          const SizedBox(width: 8),
+          // Audit model column
+          Expanded(child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD32F2F).withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFD32F2F).withOpacity(0.15)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.compare_arrows_rounded, color: Color(0xFFD32F2F), size: 12),
+                const SizedBox(width: 4),
+                Text('Nemotron 30B', style: TextStyle(
+                    color: const Color(0xFFD32F2F), fontSize: 9, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 6),
+              Text('$auditCount hazard${auditCount != 1 ? 's' : ''} found',
+                  style: TextStyle(color: sl.text2, fontSize: 10, fontWeight: FontWeight.w600)),
+              if (auditNames.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                ...auditNames.take(5).map((n) => Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Row(children: [
+                    Container(width: 4, height: 4, decoration: const BoxDecoration(
+                        color: Color(0xFFD32F2F), shape: BoxShape.circle)),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(n, style: TextStyle(
+                        color: sl.text3, fontSize: 9), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ]),
+                )),
+                if (auditNames.length > 5)
+                  Text('+${auditNames.length - 5} more', style: TextStyle(
+                      color: sl.text4, fontSize: 8, fontStyle: FontStyle.italic)),
+              ],
+            ]),
+          )),
+        ]),
+        const SizedBox(height: 8),
+
+        // Notes (if discrepancy)
+        if (isDiscrepancy && notes.isNotEmpty) ...[
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.amber.withOpacity(0.06),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Row(children: [
+                Icon(Icons.info_outline_rounded, color: AppColors.amber, size: 11),
+                SizedBox(width: 4),
+                Text('Discrepancy Notes', style: TextStyle(
+                    color: AppColors.amber, fontSize: 9, fontWeight: FontWeight.w700)),
+              ]),
+              const SizedBox(height: 4),
+              Text(notes, style: TextStyle(color: sl.text3, fontSize: 9, height: 1.4),
+                  maxLines: 8, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          const SizedBox(height: 6),
+        ],
+
+        // Footer: timestamp + model
+        Row(children: [
+          Icon(Icons.access_time_rounded, color: sl.text4, size: 10),
+          const SizedBox(width: 3),
+          Text(dateStr, style: TextStyle(color: sl.text4, fontSize: 9)),
+          const Spacer(),
+          Text(auditModel, style: TextStyle(color: sl.text4, fontSize: 9)),
+        ]),
+      ]),
+    );
   }
 }
 

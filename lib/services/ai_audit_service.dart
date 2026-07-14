@@ -18,7 +18,6 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
-import 'groq_service.dart';
 
 class AiAuditService {
   static bool _isAuditing = false;
@@ -59,12 +58,16 @@ class AiAuditService {
       final matchScore = _calculateMatchScore(originalHazards, auditHazards);
       print('AiAudit: Match score = ${matchScore.toStringAsFixed(1)}%');
 
-      // Store audit result
-      final auditData = {
+      // Store audit result — full detail for admin comparison panel
+      final auditData = <String, dynamic>{
         'auditScore': matchScore.round(),
-        'auditModel': auditResult['_source'] ?? 'unknown',
+        'auditModel': 'OpenRouter Nemotron 30B',
         'auditHazardCount': auditHazards.length,
+        'originalHazardCount': originalHazards.length,
         'auditTimestamp': DateTime.now().toIso8601String(),
+        'auditHazards': jsonEncode(auditResult['hazards'] ?? []),
+        'originalHazardNames': jsonEncode(originalHazards),
+        'auditHazardNames': jsonEncode(auditHazards),
       };
 
       if (matchScore < 95) {
@@ -93,37 +96,19 @@ class AiAuditService {
     }
   }
 
-  /// Run analysis with a DIFFERENT model than the primary
+  /// Run audit analysis — ALWAYS uses OpenRouter Nemotron 30B
+  /// This gives a consistent second opinion from a single audit model.
   static Future<Map<String, dynamic>?> _runAuditAnalysis(
       Uint8List bytes, String primarySource) async {
-    // Strategy: use a different provider than what produced the original
-    // Priority for audit: OpenRouter (Nemotron 30B) → Groq → Gemini via Apps Script
-
     final prefs = await SharedPreferences.getInstance();
+    final orKey = prefs.getString('openrouter_api_key') ?? '';
 
-    // Try OpenRouter first (unless it was the primary)
-    if (primarySource != 'openrouter_client') {
-      final orKey = prefs.getString('openrouter_api_key') ?? '';
-      if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-        final result = await _callOpenRouterAudit(bytes, orKey);
-        if (result != null) return result;
-      }
+    if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
+      return await _callOpenRouterAudit(bytes, orKey);
     }
 
-    // Try Groq (unless it was the primary)
-    if (primarySource != 'groq_vision') {
-      if (await GroqService.isConfigured) {
-        final result = await _callGroqAudit(bytes);
-        if (result != null) return result;
-      }
-    }
-
-    // Try Apps Script as last resort (unless it was the primary)
-    if (primarySource != 'apps_script') {
-      final result = await _callAppsScriptAudit(bytes);
-      if (result != null) return result;
-    }
-
+    // Fallback: if OpenRouter key not configured, skip audit
+    print('AiAudit: OpenRouter key not configured — cannot run audit');
     return null;
   }
 
@@ -192,77 +177,6 @@ Respond ONLY with JSON.''';
     return null;
   }
 
-  static Future<Map<String, dynamic>?> _callGroqAudit(Uint8List bytes) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final apiKey = prefs.getString('groq_api_key') ?? '';
-      if (apiKey.isEmpty) return null;
-
-      final base64Image = base64Encode(bytes);
-      final dataUrl = 'data:image/jpeg;base64,$base64Image';
-      const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
-
-      final response = await http.post(
-        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode({
-          'model': model,
-          'messages': [{
-            'role': 'user',
-            'content': [
-              {'type': 'text', 'text': _getAuditPrompt()},
-              {'type': 'image_url', 'image_url': {'url': dataUrl}},
-            ]
-          }],
-          'max_tokens': 4096,
-          'temperature': 0.1,
-        }),
-      ).timeout(const Duration(seconds: 30));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        final content = data['choices']?[0]?['message']?['content']?.toString() ?? '';
-        final parsed = _parseJsonResponse(content);
-        if (parsed != null) {
-          parsed['_source'] = 'groq_audit';
-          return parsed;
-        }
-      }
-    } catch (e) {
-      print('AiAudit: Groq error: $e');
-    }
-    return null;
-  }
-
-  static Future<Map<String, dynamic>?> _callAppsScriptAudit(Uint8List bytes) async {
-    try {
-      const backendUrl = 'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
-      final base64Image = base64Encode(bytes);
-
-      final response = await http.post(
-        Uri.parse(backendUrl),
-        body: jsonEncode({
-          'action': 'analyzeImage',
-          'imageBase64': base64Image,
-        }),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(const Duration(seconds: 45));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
-        if (data is Map<String, dynamic> && data['hazards'] != null) {
-          data['_source'] = 'apps_script_audit';
-          return data;
-        }
-      }
-    } catch (e) {
-      print('AiAudit: Apps Script error: $e');
-    }
-    return null;
-  }
 
   // ═══════════════════════════════════════════════════════════════
   //  COMPARISON LOGIC
