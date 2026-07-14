@@ -5748,7 +5748,7 @@ class _AdminScreenState extends State<AdminScreen>
               decoration: BoxDecoration(
                 color: const Color(0xFF1565C0).withOpacity(0.12),
                 borderRadius: BorderRadius.circular(6)),
-              child: Text('Audit Model: Nemotron 30B',
+              child: Text('Primary: Nemotron 30B  |  Audit: Groq Scout',
                   style: TextStyle(color: const Color(0xFF1565C0), fontSize: 9, fontWeight: FontWeight.w700)),
             ),
           ]),
@@ -5920,7 +5920,7 @@ class _AdminScreenState extends State<AdminScreen>
               Row(children: [
                 const Icon(Icons.psychology_outlined, color: Color(0xFF1E88E5), size: 12),
                 const SizedBox(width: 4),
-                Text('Primary Model', style: TextStyle(
+                Text('Nemotron 30B (Primary)', style: TextStyle(
                     color: const Color(0xFF1E88E5), fontSize: 9, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 6),
@@ -5957,7 +5957,7 @@ class _AdminScreenState extends State<AdminScreen>
               Row(children: [
                 const Icon(Icons.compare_arrows_rounded, color: Color(0xFFD32F2F), size: 12),
                 const SizedBox(width: 4),
-                Text('Nemotron 30B', style: TextStyle(
+                Text('Groq Scout (Audit)', style: TextStyle(
                     color: const Color(0xFFD32F2F), fontSize: 9, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 6),

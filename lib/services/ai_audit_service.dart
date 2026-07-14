@@ -18,6 +18,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'local_db.dart';
+import 'groq_service.dart';
 
 class AiAuditService {
   static bool _isAuditing = false;
@@ -61,7 +62,7 @@ class AiAuditService {
       // Store audit result — full detail for admin comparison panel
       final auditData = <String, dynamic>{
         'auditScore': matchScore.round(),
-        'auditModel': 'OpenRouter Nemotron 30B',
+        'auditModel': 'Groq Scout (Llama 4)',
         'auditHazardCount': auditHazards.length,
         'originalHazardCount': originalHazards.length,
         'auditTimestamp': DateTime.now().toIso8601String(),
@@ -96,19 +97,17 @@ class AiAuditService {
     }
   }
 
-  /// Run audit analysis — ALWAYS uses OpenRouter Nemotron 30B
-  /// This gives a consistent second opinion from a single audit model.
+  /// Run audit analysis — ALWAYS uses Groq Scout (llama-4-scout-17b)
+  /// Primary model = OpenRouter Nemotron 30B, Audit model = Groq Scout
+  /// This gives a real two-model comparison in the admin panel.
   static Future<Map<String, dynamic>?> _runAuditAnalysis(
       Uint8List bytes, String primarySource) async {
-    final prefs = await SharedPreferences.getInstance();
-    final orKey = prefs.getString('openrouter_api_key') ?? '';
-
-    if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-      return await _callOpenRouterAudit(bytes, orKey);
+    if (await GroqService.isConfigured) {
+      return await _callGroqAudit(bytes);
     }
 
-    // Fallback: if OpenRouter key not configured, skip audit
-    print('AiAudit: OpenRouter key not configured — cannot run audit');
+    // Fallback: if Groq key not configured, skip audit
+    print('AiAudit: Groq key not configured — cannot run audit');
     return null;
   }
 
@@ -177,6 +176,50 @@ Respond ONLY with JSON.''';
     return null;
   }
 
+  static Future<Map<String, dynamic>?> _callGroqAudit(Uint8List bytes) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final apiKey = prefs.getString('groq_api_key') ?? '';
+      if (apiKey.isEmpty) return null;
+
+      final base64Image = base64Encode(bytes);
+      final dataUrl = 'data:image/jpeg;base64,$base64Image';
+      const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
+
+      final response = await http.post(
+        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': [{
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': _getAuditPrompt()},
+              {'type': 'image_url', 'image_url': {'url': dataUrl}},
+            ]
+          }],
+          'max_tokens': 4096,
+          'temperature': 0.1,
+        }),
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final content = data['choices']?[0]?['message']?['content']?.toString() ?? '';
+        final parsed = _parseJsonResponse(content);
+        if (parsed != null) {
+          parsed['_source'] = 'groq_audit';
+          return parsed;
+        }
+      }
+    } catch (e) {
+      print('AiAudit: Groq error: $e');
+    }
+    return null;
+  }
 
   // ═══════════════════════════════════════════════════════════════
   //  COMPARISON LOGIC

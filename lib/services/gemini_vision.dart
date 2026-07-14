@@ -136,40 +136,18 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 2: GROQ VISION — independent provider, very fast (~2-5s)
-      // Uses llama-4-scout-17b (free, vision-capable, separate quota)
-      // ══════════════════════════════════════════════════════════════════════
-      if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [2/4] Groq Vision...');
-        try {
-          final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
-          if (_isValidResult(groqResult)) {
-            print('GeminiVision: ✓ [2/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            groqResult!['_source'] = 'groq_vision';
-            groqResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return groqResult;
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ Groq Vision exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ [2/4] Groq Vision skipped (no key)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // STEP 3: OPENROUTER (client-side) — NVIDIA free vision models
-      // Completely independent from Google quota
+      // STEP 2: OPENROUTER (client-side) — Nemotron 30B (primary model)
+      // ★ v35: Promoted to position 2 — this is now the primary analysis model
+      // Free, 256K context, multimodal, 30B reasoning model
       // ══════════════════════════════════════════════════════════════════════
       final prefs = await SharedPreferences.getInstance();
       final orKey = prefs.getString('openrouter_api_key') ?? '';
       if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-        print('GeminiVision: ▶ [3/4] OpenRouter (client)...');
+        print('GeminiVision: ▶ [2/4] OpenRouter Nemotron 30B (primary)...');
         try {
           final orResult = await _callOpenRouterVision(bytes, orKey, kbContext: kbContext);
           if (_isValidResult(orResult)) {
-            print('GeminiVision: ✓ [3/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            print('GeminiVision: ✓ [2/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             orResult!['_source'] = 'openrouter_client';
             orResult['_isOnline'] = true;
             _lastCallTime = DateTime.now();
@@ -180,7 +158,30 @@ class GeminiVision {
           print('GeminiVision: ✗ OpenRouter exception: $e');
         }
       } else {
-        print('GeminiVision: ⏭ [3/4] OpenRouter skipped (no key)');
+        print('GeminiVision: ⏭ [2/4] OpenRouter skipped (no key)');
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // STEP 3: GROQ VISION — fallback, llama-4-scout-17b (free, fast)
+      // ★ v35: Moved to position 3 — now used as fallback + audit model
+      // ══════════════════════════════════════════════════════════════════════
+      if (await GroqService.isConfigured) {
+        print('GeminiVision: ▶ [3/4] Groq Vision (fallback)...');
+        try {
+          final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
+          if (_isValidResult(groqResult)) {
+            print('GeminiVision: ✓ [3/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            groqResult!['_source'] = 'groq_vision';
+            groqResult['_isOnline'] = true;
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return groqResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ Groq Vision exception: $e');
+        }
+      } else {
+        print('GeminiVision: ⏭ [3/4] Groq Vision skipped (no key)');
       }
 
       // ══════════════════════════════════════════════════════════════════════
