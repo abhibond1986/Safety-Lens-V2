@@ -491,6 +491,28 @@ class LocalDB {
   }
 
   // ═══════════════════════════════════════════════════════════════
+  //  ★ v35: UPDATE INCIDENT AUDIT DATA
+  //  Merges audit fields (auditStatus, auditScore, etc.) into
+  //  an existing incident record without touching other fields.
+  // ═══════════════════════════════════════════════════════════════
+  static Future<void> updateIncidentAudit(
+      String id, Map<String, dynamic> auditData) async {
+    final raw = _prefs.getString(_kIncidents);
+    if (raw == null) return;
+    final list = (jsonDecode(raw) as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final idx = list.indexWhere((i) => i['id']?.toString() == id);
+    if (idx < 0) return;
+
+    // Merge audit fields
+    for (final entry in auditData.entries) {
+      list[idx][entry.key] = entry.value;
+    }
+    await _prefs.setString(_kIncidents, jsonEncode(list));
+  }
+
+  // ═══════════════════════════════════════════════════════════════
   //  ✅ NEW (admin v5): BULK REPLACE — used by Backup & Restore
   //  Wipes the bucket and writes the supplied list verbatim.
   // ═══════════════════════════════════════════════════════════════

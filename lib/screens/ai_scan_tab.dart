@@ -25,6 +25,7 @@ import '../widgets/hazard_annotated_image.dart';
 import '../widgets/universal_app_bar.dart';
 import '../widgets/voice_text_field.dart';
 import '../services/i18n.dart';
+import '../services/ai_audit_service.dart';
 
 class AIScanTab extends StatefulWidget {
   final Map<String, dynamic>? user;
@@ -873,6 +874,21 @@ class _AIScanTabState extends State<AIScanTab> {
     await LocalDB.saveIncident(dbInc);
     SyncService.pushIncident(dbInc).catchError((_) => false);
     _uploadPdfBackground(dbInc, user);
+
+    // ★ v35: Trigger background AI audit (silently cross-verifies with another model)
+    if (_imageBytes != null && _result != null) {
+      final primarySource = _result!['_source']?.toString() ?? 'unknown';
+      // Build incident with parsed hazards for comparison
+      final auditIncident = Map<String, dynamic>.from(dbInc);
+      if (incident['hazards'] is List) {
+        auditIncident['hazards'] = incident['hazards'];
+      }
+      AiAuditService.auditIncident(
+        incident: auditIncident,
+        imageBytes: _imageBytes!,
+        primarySource: primarySource,
+      );  // Fire-and-forget — no await
+    }
 
     setState(() {
       _isSaved         = true;

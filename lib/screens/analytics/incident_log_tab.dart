@@ -527,6 +527,39 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                         color: typeColor, fontSize: 8, fontWeight: FontWeight.w700)),
                   ]),
                 ),
+                // ★ v35: Audit status badge
+                if (inc['auditStatus']?.toString() == 'NEEDS_REVIEW') ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDC2626).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFFDC2626).withOpacity(0.3)),
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.rate_review_outlined, color: Color(0xFFDC2626), size: 9),
+                      SizedBox(width: 2),
+                      Text('Review', style: TextStyle(
+                          color: Color(0xFFDC2626), fontSize: 7, fontWeight: FontWeight.w800)),
+                    ]),
+                  ),
+                ] else if (inc['auditStatus']?.toString() == 'VERIFIED') ...[
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.verified_outlined, color: Color(0xFF10B981), size: 9),
+                      SizedBox(width: 2),
+                      Text('Verified', style: TextStyle(
+                          color: Color(0xFF10B981), fontSize: 7, fontWeight: FontWeight.w800)),
+                    ]),
+                  ),
+                ],
                 const Spacer(),
                 if ((inc['reportedBy']?.toString() ?? '').isNotEmpty)
                   Text(inc['reportedBy'].toString(),
