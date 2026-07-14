@@ -2246,11 +2246,13 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   // ═══════════════════════════════════════════════════════════════
-  //  ★ v35: REDESIGNED HAZARD TABLE — Card-based layout
-  //  Professional, no overflow, severity below hazard name
+  //  ★ v35: HAZARD TABLE — 3-column professional layout
+  //  Columns: HAZARD OBSERVED | DESCRIPTION | CORRECTIVE ACTION
+  //  Severity + Type badge next to hazard name, regulation bold below
   // ═══════════════════════════════════════════════════════════════
   Widget _hazardTable(List hazards, SL sl) {
     final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
+    final headerBg = sl.isDark ? const Color(0xFF2A2D42) : const Color(0xFFF5F6FA);
     return Container(
       decoration: BoxDecoration(
         color: cardBg,
@@ -2262,12 +2264,11 @@ class _AIScanTabState extends State<AIScanTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-        // Header
+        // Title row
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
           child: Row(children: [
-            const Icon(Icons.table_view_outlined,
-                size: 14, color: AppColors.red),
+            const Icon(Icons.table_view_outlined, size: 14, color: AppColors.red),
             const SizedBox(width: 6),
             Text('HAZARD ANALYSIS', style: TextStyle(
               color: sl.text4, fontSize: 10,
@@ -2283,8 +2284,28 @@ class _AIScanTabState extends State<AIScanTab> {
                 style: const TextStyle(color: AppColors.red,
                     fontSize: 9, fontWeight: FontWeight.w700))),
           ])),
-        const Divider(height: 1, thickness: 0.5),
-        // Hazard cards
+        // Column headers
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: headerBg,
+            border: Border(
+              top: BorderSide(color: sl.border.withOpacity(0.3)),
+              bottom: BorderSide(color: sl.border.withOpacity(0.3)))),
+          child: Row(children: [
+            SizedBox(width: 28, child: Text('', style: TextStyle(fontSize: 1))),
+            Expanded(flex: 3, child: Text('HAZARD',
+              style: TextStyle(color: sl.text4, fontSize: 9,
+                fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+            Expanded(flex: 4, child: Text('DESCRIPTION',
+              style: TextStyle(color: sl.text4, fontSize: 9,
+                fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+            Expanded(flex: 3, child: Text('ACTION',
+              style: TextStyle(color: sl.text4, fontSize: 9,
+                fontWeight: FontWeight.w700, letterSpacing: 0.5))),
+          ]),
+        ),
+        // Hazard rows
         ...hazards.asMap().entries.map((entry) {
           final i   = entry.key;
           final h   = entry.value;
@@ -2292,74 +2313,75 @@ class _AIScanTabState extends State<AIScanTab> {
           final sev = (hm['severity'] ?? 'MEDIUM').toString();
           final isH = _highlightedRow == i;
           final color = _sevColor(sev);
+          final regText = hm['regulation']?.toString() ?? '';
           return Container(
             key: i < _hazardRowKeys.length ? _hazardRowKeys[i] : null,
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: BoxDecoration(
-              color: isH ? color.withOpacity(0.08) : Colors.transparent,
+              color: isH ? color.withOpacity(0.06) : Colors.transparent,
               border: Border(bottom: BorderSide(
-                color: sl.border.withOpacity(0.3), width: 0.5))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // Row 1: Number + Hazard name + Severity pill
-              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                Container(
-                  width: 20, height: 20,
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                  child: Center(child: Text('${i+1}',
-                    style: const TextStyle(
-                      color: Colors.white, fontSize: 9,
-                      fontWeight: FontWeight.w900)))),
-                const SizedBox(width: 8),
-                Expanded(child: Text(
-                  hm['name']?.toString() ?? '',
-                  style: TextStyle(color: sl.text1, fontSize: 12,
-                    fontWeight: FontWeight.w700, height: 1.3))),
-                const SizedBox(width: 8),
-                _sevPill(sev, color),
-              ]),
-              // Row 2: Type badge
-              if (hm['type'] != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 28, top: 4),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _typeColor(hm['type'].toString()),
-                      borderRadius: BorderRadius.circular(4)),
-                    child: Text(hm['type'].toString(),
-                      style: TextStyle(
-                        color: _typeTextColor(hm['type'].toString()),
-                        fontSize: 8, fontWeight: FontWeight.w600)))),
-              // Row 3: Description
-              if ((hm['description']?.toString() ?? '').isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 28, top: 6),
-                  child: Text(hm['description'].toString(),
-                    style: TextStyle(color: sl.text2, fontSize: 11, height: 1.4))),
-              // Row 4: Regulation
-              if ((hm['regulation']?.toString() ?? '').isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 28, top: 5),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Icon(Icons.gavel_rounded, size: 11,
-                      color: sl.text4.withOpacity(0.7)),
-                    const SizedBox(width: 4),
-                    Expanded(child: Text(hm['regulation'].toString(),
-                      style: TextStyle(color: sl.text3, fontSize: 10,
-                        fontWeight: FontWeight.w600, height: 1.3))),
-                  ])),
-              // Row 5: Corrective Action
-              if ((hm['correctiveAction']?.toString() ?? '').isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 28, top: 5),
-                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Icon(Icons.build_circle_outlined, size: 11,
-                      color: AppColors.green.withOpacity(0.7)),
-                    const SizedBox(width: 4),
-                    Expanded(child: Text(hm['correctiveAction'].toString(),
-                      style: TextStyle(color: sl.text1, fontSize: 10.5,
-                        fontWeight: FontWeight.w500, height: 1.3))),
-                  ])),
+                color: sl.border.withOpacity(0.2), width: 0.5))),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Number badge
+              Container(
+                width: 22, height: 22,
+                margin: const EdgeInsets.only(right: 6, top: 1),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                child: Center(child: Text('${i+1}',
+                  style: const TextStyle(
+                    color: Colors.white, fontSize: 9,
+                    fontWeight: FontWeight.w900)))),
+              // Column 1: HAZARD (name + type/severity + regulation)
+              Expanded(flex: 3, child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(hm['name']?.toString() ?? '',
+                    style: TextStyle(color: sl.text1, fontSize: 11,
+                      fontWeight: FontWeight.w700, height: 1.3)),
+                  const SizedBox(height: 4),
+                  // Type badge + Severity pill in a row
+                  Wrap(spacing: 5, runSpacing: 4, children: [
+                    if (hm['type'] != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _typeColor(hm['type'].toString()),
+                          borderRadius: BorderRadius.circular(4)),
+                        child: Text(hm['type'].toString(),
+                          style: TextStyle(
+                            color: _typeTextColor(hm['type'].toString()),
+                            fontSize: 8, fontWeight: FontWeight.w600))),
+                    _sevPill(sev, color),
+                  ]),
+                  // Regulation — bold, light background
+                  if (regText.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 5),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: sl.isDark
+                            ? Colors.white.withOpacity(0.05)
+                            : const Color(0xFFF0F4FF),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: sl.border.withOpacity(0.3))),
+                        child: Text(regText,
+                          style: TextStyle(color: sl.text1, fontSize: 9.5,
+                            fontWeight: FontWeight.w700, height: 1.3)),
+                      )),
+                ],
+              )),
+              const SizedBox(width: 8),
+              // Column 2: DESCRIPTION
+              Expanded(flex: 4, child: Text(
+                hm['description']?.toString() ?? '',
+                style: TextStyle(color: sl.text2, fontSize: 10.5, height: 1.4))),
+              const SizedBox(width: 8),
+              // Column 3: CORRECTIVE ACTION
+              Expanded(flex: 3, child: Text(
+                hm['correctiveAction']?.toString() ?? '',
+                style: TextStyle(color: sl.text1, fontSize: 10.5,
+                  fontWeight: FontWeight.w500, height: 1.4))),
             ]),
           );
         }),
@@ -2367,14 +2389,14 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Widget _sevPill(String sev, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
     decoration: BoxDecoration(
       color: color.withOpacity(0.12),
       border: Border.all(color: color, width: 1),
-      borderRadius: BorderRadius.circular(6)),
+      borderRadius: BorderRadius.circular(4)),
     child: Text(sev,
-      style: TextStyle(color: color, fontSize: 9,
-          fontWeight: FontWeight.w800, letterSpacing: 0.3)));
+      style: TextStyle(color: color, fontSize: 8,
+          fontWeight: FontWeight.w800)));
 
   Color _sevColor(String sev) {
     switch (sev.toUpperCase()) {
