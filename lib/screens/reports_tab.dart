@@ -15,6 +15,9 @@ class ReportsTab extends StatefulWidget {
 
   static String? pendingStatusFilter;
   static String? pendingSeverityFilter;
+  static String? pendingTypeFilter;     // ★ v35: 'AI_SCAN' or 'NEAR_MISS'
+  static bool pendingMyReportsOnly = false; // ★ v35: filter to current user's reports
+  static bool pendingGoToLog = false;   // ★ v35: auto-switch to Log tab
 
   const ReportsTab({
     super.key,
@@ -36,6 +39,11 @@ class _ReportsTabState extends State<ReportsTab>
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
+    // ★ v35: Auto-switch to Log tab if pending filters from Home
+    if (ReportsTab.pendingGoToLog) {
+      _tabController.index = 1;
+      ReportsTab.pendingGoToLog = false;
+    }
   }
 
   @override

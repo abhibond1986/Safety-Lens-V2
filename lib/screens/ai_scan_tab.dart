@@ -2245,6 +2245,10 @@ class _AIScanTabState extends State<AIScanTab> {
     ]);
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  //  ★ v35: REDESIGNED HAZARD TABLE — Card-based layout
+  //  Professional, no overflow, severity below hazard name
+  // ═══════════════════════════════════════════════════════════════
   Widget _hazardTable(List hazards, SL sl) {
     final cardBg = sl.isDark ? const Color(0xFF252840) : Colors.white;
     return Container(
@@ -2258,6 +2262,7 @@ class _AIScanTabState extends State<AIScanTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+        // Header
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
           child: Row(children: [
@@ -2278,116 +2283,98 @@ class _AIScanTabState extends State<AIScanTab> {
                 style: const TextStyle(color: AppColors.red,
                     fontSize: 9, fontWeight: FontWeight.w700))),
           ])),
-        Table(
-          border: TableBorder(
-            horizontalInside: BorderSide(
-                color: sl.border.withOpacity(0.4), width: 0.5)),
-          columnWidths: const {
-            0: FlexColumnWidth(2.0),
-            1: FlexColumnWidth(2.8),
-            2: FlexColumnWidth(2.0),
-            3: FlexColumnWidth(1.2),
-            4: FlexColumnWidth(2.8),
-          },
-          children: [
-          TableRow(
+        const Divider(height: 1, thickness: 0.5),
+        // Hazard cards
+        ...hazards.asMap().entries.map((entry) {
+          final i   = entry.key;
+          final h   = entry.value;
+          final hm  = Map<String, dynamic>.from(h as Map);
+          final sev = (hm['severity'] ?? 'MEDIUM').toString();
+          final isH = _highlightedRow == i;
+          final color = _sevColor(sev);
+          return Container(
+            key: i < _hazardRowKeys.length ? _hazardRowKeys[i] : null,
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
             decoration: BoxDecoration(
-              color: sl.isDark
-                  ? const Color(0xFF2A2D42)
-                  : const Color(0xFFF0F1F5)),
-            children: [
-              _hth('HAZARD', sl), _hth('DESCRIPTION', sl),
-              _hth('REGULATION', sl),
-              _hth('SEVERITY', sl, center: true),
-              _hth('ACTION', sl),
-            ]),
-          ...hazards.asMap().entries.map((entry) {
-            final i   = entry.key;
-            final h   = entry.value;
-            final hm  = Map<String, dynamic>.from(h as Map);
-            final sev = (hm['severity'] ?? 'MEDIUM').toString();
-            final isH = _highlightedRow == i;
-            final color = _sevColor(sev);
-            return TableRow(
-              decoration: BoxDecoration(
-                color: isH ? color.withOpacity(0.1) : Colors.transparent),
-              children: [
+              color: isH ? color.withOpacity(0.08) : Colors.transparent,
+              border: Border(bottom: BorderSide(
+                color: sl.border.withOpacity(0.3), width: 0.5))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // Row 1: Number + Hazard name + Severity pill
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                Container(
+                  width: 20, height: 20,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                  child: Center(child: Text('${i+1}',
+                    style: const TextStyle(
+                      color: Colors.white, fontSize: 9,
+                      fontWeight: FontWeight.w900)))),
+                const SizedBox(width: 8),
+                Expanded(child: Text(
+                  hm['name']?.toString() ?? '',
+                  style: TextStyle(color: sl.text1, fontSize: 12,
+                    fontWeight: FontWeight.w700, height: 1.3))),
+                const SizedBox(width: 8),
+                _sevPill(sev, color),
+              ]),
+              // Row 2: Type badge
+              if (hm['type'] != null)
                 Padding(
-                  key: i < _hazardRowKeys.length
-                      ? _hazardRowKeys[i] : null,
-                  padding: const EdgeInsets.all(7),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                    Container(
-                      width: 16, height: 16,
-                      margin: const EdgeInsets.only(right: 5, top: 1),
-                      decoration: BoxDecoration(
-                          color: color, shape: BoxShape.circle),
-                      child: Center(child: Text('${i+1}',
-                        style: const TextStyle(
-                          color: Colors.white, fontSize: 8,
-                          fontWeight: FontWeight.w900)))),
-                    Expanded(child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                      Text(hm['name']?.toString() ?? '',
-                        style: TextStyle(color: sl.text1,
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w600,
-                          height: 1.4)),
-                      if (hm['type'] != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 3),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 5, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: _typeColor(hm['type'].toString()),
-                              borderRadius: BorderRadius.circular(4)),
-                            child: Text(
-                              hm['type'].toString(),
-                              style: TextStyle(
-                                  color: _typeTextColor(hm['type'].toString()),
-                                  fontSize: 7.5,
-                                  fontWeight: FontWeight.w600)))),
-                    ])),
+                  padding: const EdgeInsets.only(left: 28, top: 4),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _typeColor(hm['type'].toString()),
+                      borderRadius: BorderRadius.circular(4)),
+                    child: Text(hm['type'].toString(),
+                      style: TextStyle(
+                        color: _typeTextColor(hm['type'].toString()),
+                        fontSize: 8, fontWeight: FontWeight.w600)))),
+              // Row 3: Description
+              if ((hm['description']?.toString() ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 28, top: 6),
+                  child: Text(hm['description'].toString(),
+                    style: TextStyle(color: sl.text2, fontSize: 11, height: 1.4))),
+              // Row 4: Regulation
+              if ((hm['regulation']?.toString() ?? '').isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(left: 28, top: 5),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(Icons.gavel_rounded, size: 11,
+                      color: sl.text4.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(hm['regulation'].toString(),
+                      style: TextStyle(color: sl.text3, fontSize: 10,
+                        fontWeight: FontWeight.w600, height: 1.3))),
                   ])),
-                _htd(hm['description']?.toString() ?? '', sl),
-                _htd(hm['regulation']?.toString()  ?? '', sl),
+              // Row 5: Corrective Action
+              if ((hm['correctiveAction']?.toString() ?? '').isNotEmpty)
                 Padding(
-                  padding: const EdgeInsets.all(7),
-                  child: Center(child: _sevPill(sev, color))),
-                _htd(hm['correctiveAction']?.toString() ?? '', sl),
-              ]);
-          }).toList(),
-        ]),
+                  padding: const EdgeInsets.only(left: 28, top: 5),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(Icons.build_circle_outlined, size: 11,
+                      color: AppColors.green.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(hm['correctiveAction'].toString(),
+                      style: TextStyle(color: sl.text1, fontSize: 10.5,
+                        fontWeight: FontWeight.w500, height: 1.3))),
+                  ])),
+            ]),
+          );
+        }),
       ]));
   }
 
-  Widget _hth(String t, SL sl, {bool center = false}) => Padding(
-    padding: const EdgeInsets.all(7),
-    child: Text(t,
-      textAlign: center ? TextAlign.center : TextAlign.left,
-      style: TextStyle(color: sl.text3, fontSize: 8,
-          fontWeight: FontWeight.w700, letterSpacing: 0.4)));
-
-  Widget _htd(String t, SL sl) => Padding(
-    padding: const EdgeInsets.all(7),
-    child: Text(t, style: TextStyle(
-        color: sl.text1, fontSize: 9.5,
-        fontWeight: FontWeight.w600, height: 1.4)));
-
   Widget _sevPill(String sev, Color color) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
     decoration: BoxDecoration(
-      color: color.withOpacity(0.15),
-      border: Border.all(color: color),
-      borderRadius: BorderRadius.circular(8)),
-    child: Text(
-      sev.substring(0, sev.length > 4 ? 4 : sev.length),
-      style: TextStyle(color: color, fontSize: 8,
-          fontWeight: FontWeight.w800)));
+      color: color.withOpacity(0.12),
+      border: Border.all(color: color, width: 1),
+      borderRadius: BorderRadius.circular(6)),
+    child: Text(sev,
+      style: TextStyle(color: color, fontSize: 9,
+          fontWeight: FontWeight.w800, letterSpacing: 0.3)));
 
   Color _sevColor(String sev) {
     switch (sev.toUpperCase()) {

@@ -398,7 +398,10 @@ class _HomeTabState extends State<HomeTab> {
                     onTap: () {
                       ReportsTab.pendingStatusFilter = null;
                       ReportsTab.pendingSeverityFilter = null;
-                      widget.onTabChange(4); // go to Reports
+                      ReportsTab.pendingTypeFilter = 'AI_SCAN';
+                      ReportsTab.pendingMyReportsOnly = true;
+                      ReportsTab.pendingGoToLog = true;
+                      widget.onTabChange(4); // go to Reports → Log tab
                     },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,7 +435,10 @@ class _HomeTabState extends State<HomeTab> {
                     onTap: () {
                       ReportsTab.pendingStatusFilter = null;
                       ReportsTab.pendingSeverityFilter = null;
-                      widget.onTabChange(4);
+                      ReportsTab.pendingTypeFilter = 'NEAR_MISS';
+                      ReportsTab.pendingMyReportsOnly = true;
+                      ReportsTab.pendingGoToLog = true;
+                      widget.onTabChange(4); // go to Reports → Log tab
                     },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,

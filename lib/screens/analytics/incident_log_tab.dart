@@ -6,6 +6,7 @@ import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
 import '../../services/image_storage.dart';
 import '../incident_detail_screen.dart';
+import '../reports_tab.dart';
 
 class IncidentLogTab extends StatefulWidget {
   const IncidentLogTab({super.key});
@@ -23,20 +24,55 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
   final Set<String> _statusFilter = {};
   String _typeFilter = 'All';
   String _dateRange = '90 days';
+  bool _myReportsOnly = false; // ★ v35: filter by current user
+  String _currentUserName = '';
 
   @override
   void initState() {
     super.initState();
+    _applyPendingFilters();
     _load();
+  }
+
+  /// ★ v35: Apply pending filters set by Home tab navigation
+  void _applyPendingFilters() {
+    if (ReportsTab.pendingSeverityFilter != null) {
+      _sevFilter.add(ReportsTab.pendingSeverityFilter!);
+      ReportsTab.pendingSeverityFilter = null;
+    }
+    if (ReportsTab.pendingStatusFilter != null) {
+      _statusFilter.add(ReportsTab.pendingStatusFilter!);
+      ReportsTab.pendingStatusFilter = null;
+    }
+    if (ReportsTab.pendingTypeFilter != null) {
+      _typeFilter = ReportsTab.pendingTypeFilter!;
+      ReportsTab.pendingTypeFilter = null;
+    }
+    if (ReportsTab.pendingMyReportsOnly) {
+      _myReportsOnly = true;
+      _dateRange = 'All';
+      ReportsTab.pendingMyReportsOnly = false;
+    }
   }
 
   Future<void> _load() async {
     final inc = await LocalDB.getIncidents();
-    if (mounted) setState(() { _all = inc; _loading = false; });
+    final user = await LocalDB.getCurrentUser();
+    if (mounted) setState(() {
+      _all = inc;
+      _currentUserName = user?['name']?.toString() ?? '';
+      _loading = false;
+    });
   }
 
   List<Map<String, dynamic>> get _filtered {
     var list = List<Map<String, dynamic>>.from(_all);
+
+    // ★ v35: My reports filter
+    if (_myReportsOnly && _currentUserName.isNotEmpty) {
+      list = list.where((i) =>
+          (i['reportedBy']?.toString() ?? '') == _currentUserName).toList();
+    }
 
     // Plant filter
     if (_plantFilter != 'All') {
@@ -115,7 +151,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                   fontWeight: FontWeight.w600)),
           const Spacer(),
           if (_sevFilter.isNotEmpty || _statusFilter.isNotEmpty ||
-              _plantFilter != 'All' || _typeFilter != 'All')
+              _plantFilter != 'All' || _typeFilter != 'All' || _myReportsOnly)
             GestureDetector(
               onTap: () => setState(() {
                 _sevFilter.clear();
@@ -123,6 +159,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                 _plantFilter = 'All';
                 _typeFilter = 'All';
                 _dateRange = '90 days';
+                _myReportsOnly = false;
               }),
               child: Text('Clear filters', style: TextStyle(
                   color: AppColors.accent, fontSize: 11,
@@ -181,6 +218,9 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
             _typeChip(sl, 'All'),
             _typeChip(sl, 'AI_SCAN'),
             _typeChip(sl, 'NEAR_MISS'),
+            const SizedBox(width: 12),
+            // ★ v35: My Reports toggle
+            _myReportsChip(sl),
           ]),
         ),
         const SizedBox(height: 6),
@@ -293,6 +333,35 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
           child: Text(displayLabel, style: TextStyle(
               color: active ? AppColors.accent : sl.text3,
               fontSize: 10, fontWeight: FontWeight.w700)),
+        ),
+      ),
+    );
+  }
+
+  // ★ v35: "My Reports" filter chip
+  Widget _myReportsChip(SL sl) {
+    final active = _myReportsOnly;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () => setState(() => _myReportsOnly = !_myReportsOnly),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFF2196F3).withOpacity(0.15) : sl.glassColor,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+                color: active ? const Color(0xFF2196F3) : sl.glassBorder,
+                width: active ? 1.5 : 1),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.person_outline_rounded, size: 11,
+                color: active ? const Color(0xFF2196F3) : sl.text3),
+            const SizedBox(width: 3),
+            Text('Mine', style: TextStyle(
+                color: active ? const Color(0xFF2196F3) : sl.text3,
+                fontSize: 10, fontWeight: FontWeight.w700)),
+          ]),
         ),
       ),
     );
