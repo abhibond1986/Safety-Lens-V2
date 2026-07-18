@@ -36,6 +36,7 @@ import '../services/admin_alerts.dart';
 import '../services/kb_seed_data.dart';
 import '../services/knowledge_service.dart';
 import '../services/groq_service.dart';
+import '../services/gemini_vision.dart';
 import '../services/gemini_direct_vision.dart';
 import '../services/pdf_kb_extractor.dart';
 // Reuse the same web/mobile download shim that pdf_export.dart uses
@@ -1936,6 +1937,7 @@ class _AdminScreenState extends State<AdminScreen>
   bool _groqConfigured = false;
   final _groqKeyCtrl = TextEditingController();
   String _groqSelectedModel = GroqService.defaultModel;
+  String _groqVisionModel = 'auto'; // vision model used for AI hazard scans
 
   bool _geminiVisionConfigured = false;
   final _geminiVisionKeyCtrl = TextEditingController();
@@ -1944,6 +1946,7 @@ class _AdminScreenState extends State<AdminScreen>
   Future<void> _loadGroqConfig() async {
     final key = await GroqService.getApiKey();
     final model = await GroqService.getModel();
+    final visionModel = await GeminiVision.getGroqVisionModel();
     final gemKey = await GeminiDirectVision.getApiKey();
     final gemModel = await GeminiDirectVision.getModel();
     if (mounted) {
@@ -1951,6 +1954,7 @@ class _AdminScreenState extends State<AdminScreen>
         _groqConfigured = key.isNotEmpty && key.startsWith('gsk_');
         _groqKeyCtrl.text = key;
         _groqSelectedModel = model;
+        _groqVisionModel = visionModel;
         _geminiVisionConfigured = gemKey.isNotEmpty && gemKey.length > 20;
         _geminiVisionKeyCtrl.text = gemKey;
         _geminiVisionSelectedModel = gemModel;
@@ -2001,6 +2005,33 @@ class _AdminScreenState extends State<AdminScreen>
               borderSide: BorderSide(color: sl.border)),
           ),
         ),
+        const SizedBox(height: 10),
+        // Vision model — used for AI hazard image scans (self-healing).
+        DropdownButtonFormField<String>(
+          value: _groqVisionModel,
+          isExpanded: true,
+          items: GeminiVision.groqVisionModels.map((m) => DropdownMenuItem(
+            value: m['id'],
+            child: Text(m['name']!, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: sl.text1)),
+          )).toList(),
+          onChanged: (v) { if (v != null) setState(() => _groqVisionModel = v); },
+          dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
+          style: TextStyle(color: sl.text1, fontSize: 11),
+          decoration: InputDecoration(
+            labelText: 'Vision Model (image scans)',
+            labelStyle: TextStyle(color: sl.text3, fontSize: 10),
+            filled: true,
+            fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(color: sl.border)),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('“Auto” tries each model and remembers the one Groq accepts. '
+             'Pick a specific model only if you know your key serves it.',
+          style: TextStyle(color: sl.text4, fontSize: 9)),
         const SizedBox(height: 12),
         // ★ v26: Key is now auto-saved from the dialog. This button only updates model selection.
         if (_groqConfigured)
@@ -2008,7 +2039,8 @@ class _AdminScreenState extends State<AdminScreen>
             child: OutlinedButton.icon(
               onPressed: () async {
                 await GroqService.setModel(_groqSelectedModel);
-                _toast('✓ Groq model updated to $_groqSelectedModel', AppColors.green);
+                await GeminiVision.setGroqVisionModel(_groqVisionModel);
+                _toast('✓ Groq models updated', AppColors.green);
               },
               icon: Icon(Icons.tune, size: 14, color: sl.text2),
               label: Text('Update Model Selection', style: TextStyle(color: sl.text2, fontSize: 11)),

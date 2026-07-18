@@ -245,6 +245,9 @@ class GeminiVision {
   //  We try candidates in order, cache the first that works, and try the
   //  cached one first next time — so scans keep working when Groq swaps models.
   // ══════════════════════════════════════════════════════════════════════════
+  // Two separate prefs: an explicit admin PIN (never auto-cleared) and a
+  // self-healing CACHE of the last model that actually worked.
+  static const String _kGroqVisionPin   = 'groq_vision_model_pinned';
   static const String _kGroqVisionModel = 'groq_vision_model_working';
 
   /// Candidate Groq vision model IDs, in preferred order.
@@ -253,6 +256,33 @@ class GeminiVision {
     'meta-llama/llama-4-scout-17b-16e-instruct',
     'meta-llama/llama-4-maverick-17b-128e-instruct',
   ];
+
+  /// Vision models offered in the Admin panel dropdown (id → label).
+  /// 'auto' lets the self-healing logic pick the first working candidate.
+  static const List<Map<String, String>> groqVisionModels = [
+    {'id': 'auto', 'name': 'Auto (try Scout, then Maverick)'},
+    {'id': 'meta-llama/llama-4-scout-17b-16e-instruct',    'name': 'Llama 4 Scout 17B (16e)'},
+    {'id': 'meta-llama/llama-4-maverick-17b-128e-instruct', 'name': 'Llama 4 Maverick 17B (128e)'},
+  ];
+
+  /// Admin-selected preferred vision model ('auto' = self-healing default).
+  static Future<String> getGroqVisionModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kGroqVisionPin) ?? 'auto';
+  }
+
+  /// Save the admin's preferred vision model. 'auto' clears the pin so the
+  /// self-healing loop resumes trying candidates in order. Also clears the
+  /// working cache so the new choice takes effect on the next scan.
+  static Future<void> setGroqVisionModel(String model) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kGroqVisionModel); // reset self-healing cache
+    if (model == 'auto' || model.isEmpty) {
+      await prefs.remove(_kGroqVisionPin);
+    } else {
+      await prefs.setString(_kGroqVisionPin, model);
+    }
+  }
 
   static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -273,12 +303,18 @@ class GeminiVision {
           '$kbContext';
     }
 
-    // Try the last-known-good model first, then the remaining candidates.
+    // If an admin pinned a specific model, use ONLY that one (no fallback,
+    // and never auto-clear the pin). Otherwise self-heal: try the last-known-
+    // good model first, then the remaining candidates.
+    final pinned = prefs.getString(_kGroqVisionPin);
     final cached = prefs.getString(_kGroqVisionModel);
-    final models = <String>[
-      if (cached != null && cached.isNotEmpty) cached,
-      ..._groqVisionCandidates.where((m) => m != cached),
-    ];
+    final bool isPinned = pinned != null && pinned.isNotEmpty;
+    final models = isPinned
+        ? <String>[pinned]
+        : <String>[
+            if (cached != null && cached.isNotEmpty) cached,
+            ..._groqVisionCandidates.where((m) => m != cached),
+          ];
 
     for (final model in models) {
       final requestBody = {
@@ -307,8 +343,8 @@ class GeminiVision {
         ).timeout(const Duration(seconds: 30));
 
         if (response.statusCode == 200) {
-          // Remember the model that worked for next time.
-          if (cached != model) {
+          // Remember the model that worked (self-healing mode only).
+          if (!isPinned && cached != model) {
             await prefs.setString(_kGroqVisionModel, model);
           }
           final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -323,8 +359,10 @@ class GeminiVision {
         // Model unavailable to this key (retired / not vision-enabled):
         // clear a stale cache and try the next candidate.
         if (response.statusCode == 404 || response.statusCode == 400) {
-          print('GeminiVision: Groq model "$model" → HTTP ${response.statusCode}, trying next');
-          if (cached == model) await prefs.remove(_kGroqVisionModel);
+          print('GeminiVision: Groq model "$model" → HTTP ${response.statusCode}'
+              '${isPinned ? " (pinned)" : ", trying next"}');
+          // Only clear the self-healing cache, never the admin pin.
+          if (!isPinned && cached == model) await prefs.remove(_kGroqVisionModel);
           continue;
         }
 
