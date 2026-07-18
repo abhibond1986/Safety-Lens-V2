@@ -216,7 +216,7 @@ class PdfExport {
                 color: PdfColors.white, fontSize: 11,
                 fontWeight: pw.FontWeight.bold))),
             pw.SizedBox(height: 3),
-            pw.Text('IS 14489:1998  |  Factories Act 1948',
+            pw.Text('IS 14489:2018  |  Factories Act 1948',
               style: pw.TextStyle(
                 color: PdfColor.fromHex('#90CAF9'), fontSize: 6)),
           ]),
@@ -822,7 +822,7 @@ class PdfExport {
             child: pw.Text(
               inc['immediateAction']?.toString().isNotEmpty == true
                   ? inc['immediateAction'].toString()
-                  : 'Investigate and apply corrective actions per IS 14489:1998.',
+                  : 'Investigate and apply corrective actions per IS 14489:2018.',
               style: pw.TextStyle(fontSize: 9, color: _textDark,
                 lineSpacing: 1.4))),
         ])),

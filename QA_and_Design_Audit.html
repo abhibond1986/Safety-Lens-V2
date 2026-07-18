@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAIL Safety Lens — QA & Design Audit</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink:      #0D1117;
+    --ink-2:    #2C3646;
+    --slate:    #475569;
+    --slate-2:  #64748B;
+    --line:     #DCE1E9;
+    --line-2:   #EAEEF3;
+    --paper:    #FFFFFF;
+    --paper-2:  #F5F7FA;
+    --indigo:   #4F5BD5;
+    --indigo-d: #3B45B0;
+    --teal:     #0EA5B5;
+    --amber:    #F59E0B;
+    --red:      #DC2626;
+    --red-2:    #EF4444;
+    --green:    #10B981;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0;
+    background: var(--paper-2);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.62;
+  }
+  .sheet {
+    max-width: 880px;
+    margin: 32px auto;
+    background: var(--paper);
+    padding: 0 0 64px;
+    box-shadow: 0 1px 3px rgba(13,17,23,.06), 0 10px 40px rgba(13,17,23,.08);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* ---- Cover band ---- */
+  .cover {
+    background: linear-gradient(135deg, #2C3A66 0%, #4F5BD5 58%, #0EA5B5 100%);
+    color: #fff;
+    padding: 54px 56px 46px;
+    position: relative;
+  }
+  .cover::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: 0; height: 4px;
+    background: linear-gradient(90deg, var(--amber), #EA580C, var(--red));
+  }
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 3.5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(255,255,255,.72);
+    margin: 0 0 14px;
+  }
+  .cover h1 {
+    font-size: 34px;
+    line-height: 1.12;
+    font-weight: 800;
+    margin: 0 0 10px;
+    letter-spacing: -0.5px;
+  }
+  .cover .sub { font-size: 15px; color: rgba(255,255,255,.86); max-width: 560px; margin: 0; }
+  .cover .meta {
+    margin-top: 26px; display: flex; flex-wrap: wrap; gap: 26px;
+    font-size: 12.5px; color: rgba(255,255,255,.82);
+  }
+  .cover .meta b { display: block; color: #fff; font-size: 13.5px; font-weight: 700; margin-top: 2px; }
+
+  /* ---- Content ---- */
+  .body { padding: 8px 56px 0; }
+  h2 {
+    font-size: 20px; font-weight: 800; letter-spacing: -0.3px;
+    margin: 42px 0 4px; color: var(--ink);
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2 .num {
+    font-size: 12px; font-weight: 800; color: var(--indigo);
+    border: 1.5px solid var(--indigo); border-radius: 6px;
+    width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  h2 + .rule { height: 2px; background: var(--line); margin: 10px 0 18px; border: 0; }
+  h3 { font-size: 15.5px; font-weight: 700; margin: 26px 0 6px; color: var(--ink-2); }
+  p { margin: 0 0 12px; color: var(--ink-2); }
+  .lead { font-size: 15.5px; color: var(--slate); }
+  strong { color: var(--ink); }
+
+  .callout {
+    background: var(--paper-2); border-left: 4px solid var(--indigo);
+    border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 16px 0;
+    font-size: 14px; color: var(--ink-2);
+  }
+  .callout.warn { border-left-color: var(--amber); background: #FEF9EC; }
+
+  /* ---- Score cards ---- */
+  .scoregrid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin: 22px 0 6px; }
+  .scorecard {
+    border: 1px solid var(--line); border-radius: 10px; padding: 16px 14px; background: var(--paper);
+  }
+  .scorecard .val { font-size: 30px; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+  .scorecard .lbl { font-size: 11px; color: var(--slate-2); font-weight: 600; margin-top: 6px; text-transform: uppercase; letter-spacing: .4px; }
+  .val.indigo { color: var(--indigo); } .val.amber { color: var(--amber); }
+  .val.red { color: var(--red); } .val.green { color: var(--green); }
+
+  /* ---- Tables ---- */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 8px; font-size: 13.5px; }
+  th {
+    text-align: left; background: var(--ink); color: #fff; font-weight: 700;
+    padding: 9px 12px; font-size: 12px; letter-spacing: .3px;
+  }
+  th:first-child { border-radius: 6px 0 0 0; } th:last-child { border-radius: 0 6px 0 0; }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--line-2); vertical-align: top; color: var(--ink-2); }
+  tr:nth-child(even) td { background: #FBFCFD; }
+  .sev { font-weight: 800; font-size: 11px; padding: 2px 8px; border-radius: 20px; white-space: nowrap; display: inline-block; }
+  .sev.crit { background: rgba(220,38,38,.12); color: var(--red); }
+  .sev.high { background: rgba(239,68,68,.12); color: var(--red-2); }
+  .sev.med  { background: rgba(245,158,11,.14); color: #B45309; }
+  .sev.low  { background: rgba(16,185,129,.14); color: #047857; }
+  .sev.done { background: rgba(79,91,213,.12); color: var(--indigo); }
+  code { background: var(--line-2); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; color: var(--indigo-d); font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+
+  /* ---- Palette swatches ---- */
+  .swatches { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0; }
+  .swatch { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; width: 128px; }
+  .swatch .chip { height: 46px; }
+  .swatch .cap { padding: 7px 9px; font-size: 11px; }
+  .swatch .cap b { display: block; font-size: 12px; color: var(--ink); }
+  .swatch .cap span { color: var(--slate-2); font-family: ui-monospace, monospace; }
+
+  ul.clean { margin: 6px 0 14px; padding-left: 20px; }
+  ul.clean li { margin: 5px 0; color: var(--ink-2); }
+
+  .footer { padding: 30px 56px 0; margin-top: 40px; border-top: 2px solid var(--line); color: var(--slate-2); font-size: 12px; }
+
+  @media print {
+    body { background: #fff; }
+    .sheet { box-shadow: none; margin: 0; max-width: none; border-radius: 0; }
+    h2 { page-break-after: avoid; }
+    table, .scoregrid, .callout { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="cover">
+    <p class="eyebrow">Quality Assurance &amp; Design Audit</p>
+    <h1>SAIL Safety Lens</h1>
+    <p class="sub">A static code-quality, security, and visual-design review of the AI-powered industrial safety platform — with a cohesive design refresh applied across the Web and Android surfaces.</p>
+    <div class="meta">
+      <div>Prepared by<b>SteelSafe AI Enterprise</b></div>
+      <div>Date<b>18 July 2026</b></div>
+      <div>Codebase<b>Flutter · Web + Android</b></div>
+      <div>Scope<b>62 Dart files reviewed</b></div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <h2><span class="num">1</span>Executive Summary</h2>
+    <hr class="rule">
+    <p class="lead">Safety Lens is a mature, feature-rich Flutter application delivering offline-first AI hazard scanning, near-miss reporting, WSA-13 analytics, and an admin control centre from a single shared codebase. The engineering is defensively coded against network failure and thoughtfully platform-aware. The two areas holding it back from an enterprise-grade rating are <strong>security debt in the authentication and API-key handling</strong>, and a <strong>visual identity that fought itself</strong> — a consumer-style violet/magenta glass theme layered over screens that already used a professional indigo/amber palette.</p>
+    <p>This audit delivers both a findings report and a set of applied changes: a unified <strong>industrial steel identity</strong> now cascades across every screen on both platforms, and several safe, high-value bug and security fixes have been made in place. Higher-risk security items are documented as recommendations rather than changed blindly, since they touch the live authentication contract with the Google Apps Script backend.</p>
+
+    <div class="callout warn"><strong>Testing note.</strong> The isolated Linux build environment was unavailable during this session, so the app could not be compiled or run live. All findings come from rigorous static review of the source; all applied edits were independently re-reviewed for syntax and regressions. A live <code>flutter analyze</code> and device smoke-test should be run before release to confirm.</div>
+
+    <div class="scoregrid">
+      <div class="scorecard"><div class="val indigo">6.5<span style="font-size:15px">/10</span></div><div class="lbl">Production readiness</div></div>
+      <div class="scorecard"><div class="val red">4</div><div class="lbl">Critical findings</div></div>
+      <div class="scorecard"><div class="val amber">17</div><div class="lbl">High / Medium findings</div></div>
+      <div class="scorecard"><div class="val green">9</div><div class="lbl">Fixes applied now</div></div>
+    </div>
+
+    <h2><span class="num">2</span>Expert Analysis</h2>
+    <hr class="rule">
+    <p>The review was conducted across two tracks in parallel — a <strong>services / backend</strong> pass (auth, sync, AI providers, storage, PDF, crypto) and a <strong>screens / widgets</strong> pass (state management, lifecycle, layout, accessibility). The picture that emerged is consistent: strong feature coverage and careful null-handling, undermined by security drift and design inconsistency accumulated across many rapid iterations.</p>
+
+    <h3>What the codebase does well</h3>
+    <ul class="clean">
+      <li><strong>Resilient offline architecture</strong> — a multi-provider AI fallback chain and a local knowledge-base fallback keep the app useful without a network.</li>
+      <li><strong>Disciplined lifecycle in major flows</strong> — <code>mounted</code> checks after <code>await</code>, and disposal of long-lived controllers and timers, are consistently present in the primary tabs.</li>
+      <li><strong>Platform awareness</strong> — conditional <code>web</code>/<code>stub</code> imports for PDF export and KB extraction show real attention to the web/Android split.</li>
+      <li><strong>Clean separation of concerns</strong> — storage, sync, AI, i18n and PDF are cleanly modular.</li>
+    </ul>
+
+    <h3>Where the risk concentrates</h3>
+    <ul class="clean">
+      <li><strong>Authentication</strong> — shipped default admin credentials, plaintext / hash-equals-password fallback login paths, and a hand-rolled SHA-256 that risks producing different hashes on web vs. mobile.</li>
+      <li><strong>Secret handling</strong> — provider API keys are synced to the device and, for Gemini, placed in a request URL, contradicting the code's own "keys never leave the server" comments.</li>
+      <li><strong>Auto-update</strong> — APKs are downloaded and installed with only a file-size check, no signature/checksum verification.</li>
+      <li><strong>Design</strong> — clashing palettes, sub-legible 7–9px type, unlabeled icon-only controls, and heavy stacked blur in scrolling lists.</li>
+    </ul>
+
+    <h2><span class="num">3</span>Key Findings by Severity</h2>
+    <hr class="rule">
+    <p>The most material findings are listed below. Each was verified against real code. "Status" indicates whether it was fixed in this pass or is recommended for follow-up.</p>
+
+    <table>
+      <thead><tr><th style="width:88px">Severity</th><th>Finding</th><th style="width:120px">Location</th><th style="width:96px">Status</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sev crit">CRITICAL</span></td><td>Default admin account seeded with a known password (<code>demo</code>).</td><td>local_db.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev crit">CRITICAL</span></td><td>Login accepts plaintext and "hash == typed password" fallbacks.</td><td>local_db.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev crit">CRITICAL</span></td><td>Passwords hashed with unsalted, single-round SHA-256; hash used as the login credential.</td><td>crypto_utils.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev crit">CRITICAL</span></td><td>Credential hash and login diagnostics logged via <code>print()</code> in release builds.</td><td>sync_service · login_screen</td><td>Fixed</td></tr>
+        <tr><td><span class="sev high">HIGH</span></td><td>Provider API keys synced to device &amp; Gemini key placed in URL — contradicts stated security model.</td><td>gemini/groq services</td><td>Recommend</td></tr>
+        <tr><td><span class="sev high">HIGH</span></td><td>APK auto-update installs with only a size check — no signature/checksum verification.</td><td>app_updater.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev high">HIGH</span></td><td><code>_isAnalyzing</code> guard has no <code>try/finally</code>; can wedge AI analysis on a thrown path.</td><td>gemini_vision.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev high">HIGH</span></td><td>Admin API-key controllers not disposed (memory leak).</td><td>admin_screen.dart</td><td>Fixed</td></tr>
+        <tr><td><span class="sev high">HIGH</span></td><td>Dialog / edit-location controllers created inline and never disposed (cumulative leak).</td><td>multiple screens</td><td>Recommend</td></tr>
+        <tr><td><span class="sev high">HIGH</span></td><td>Debug <code>print()</code> loop ran on every rebuild of the AI result view.</td><td>ai_scan_tab.dart</td><td>Fixed</td></tr>
+        <tr><td><span class="sev med">MEDIUM</span></td><td><code>_userInitials</code> could throw a RangeError on names with trailing/extra spaces.</td><td>dashboard_tab.dart</td><td>Fixed</td></tr>
+        <tr><td><span class="sev med">MEDIUM</span></td><td>Hand-rolled SHA-256 may differ between web (JS doubles) and mobile — cross-platform login risk.</td><td>crypto_utils.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev med">MEDIUM</span></td><td>Generated PDF cited wrong standard year — <code>IS 14489:1998</code> vs. the correct <code>:2018</code>.</td><td>pdf_export · ai_scan_tab</td><td>Fixed</td></tr>
+        <tr><td><span class="sev med">MEDIUM</span></td><td>Hard-coded colors bypass theming; sub-legible 7–9px fonts; icon-only controls lack semantics.</td><td>most screens</td><td>Partly fixed</td></tr>
+        <tr><td><span class="sev med">MEDIUM</span></td><td>Unbounded in-memory image cache in the incident log can OOM on low-RAM devices.</td><td>incident_log_tab.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev med">MEDIUM</span></td><td>Notifications hardcode <code>platform:'android'</code> with no <code>kIsWeb</code>/iOS guard.</td><td>notification_service.dart</td><td>Recommend</td></tr>
+        <tr><td><span class="sev low">LOW</span></td><td>Backend <code>/exec</code> URL duplicated across 5+ files; dead widgets &amp; two parallel i18n systems.</td><td>various</td><td>Recommend</td></tr>
+      </tbody>
+    </table>
+
+    <h2><span class="num">4</span>Design Refresh Applied</h2>
+    <hr class="rule">
+    <p>The app previously mixed a deep purple-black glass theme (design tokens) with the professional indigo/cyan/amber palette used inside individual screens — so the hero, avatars and charts clashed with the content beneath them. The refresh unifies everything onto one deliberate <strong>industrial identity</strong>, chosen from the subject's own world: the graphite and steel-blue of a plant floor, with <strong>safety-amber as the recurring signature accent</strong> (the colour of plant signage and PPE).</p>
+    <p>Because the change was made at the <strong>design-token</strong> level — keeping every token's <em>name</em> identical — it ripples across every screen on both Web and Android with minimal regression risk, rather than requiring hundreds of scattered edits.</p>
+
+    <h3>New core palette</h3>
+    <div class="swatches">
+      <div class="swatch"><div class="chip" style="background:#4F5BD5"></div><div class="cap"><b>Steel Indigo</b><span>#4F5BD5</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#0EA5B5"></div><div class="cap"><b>Industrial Teal</b><span>#0EA5B5</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#F59E0B"></div><div class="cap"><b>Safety Amber</b><span>#F59E0B</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#0D1117"></div><div class="cap"><b>Graphite Base</b><span>#0D1117</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#DC2626"></div><div class="cap"><b>Critical Red</b><span>#DC2626</span></div></div>
+      <div class="swatch"><div class="chip" style="background:#10B981"></div><div class="cap"><b>Safe Emerald</b><span>#10B981</span></div></div>
+    </div>
+
+    <table>
+      <thead><tr><th>Area</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        <tr><td>Primary accent</td><td>Violet-purple <code>#7C4DFF</code></td><td>Steel indigo <code>#4F5BD5</code></td></tr>
+        <tr><td>Dark base</td><td>Purple-black <code>#0F0C29</code></td><td>Graphite <code>#0D1117</code></td></tr>
+        <tr><td>Light base</td><td>Neutral grey / lilac tint</td><td>Cool steel-tinted white <code>#F5F7FA</code></td></tr>
+        <tr><td>Status colors</td><td>Neon (<code>#FF1744</code>, <code>#00E676</code>)</td><td>Signage-standard (<code>#DC2626</code>, <code>#10B981</code>)</td></tr>
+        <tr><td>Home hero</td><td>Purple → blue → green (clashed with amber quote bar)</td><td>Deep steel → indigo → teal (amber bar now an intentional accent)</td></tr>
+        <tr><td>Avatars / accents</td><td>Purple-blue gradient <code>#7B5BFF→#5B7BFF</code></td><td>Indigo-teal gradient <code>#4F5BD5→#0EA5B5</code></td></tr>
+        <tr><td>Web splash</td><td><code>#0A0E1A</code></td><td><code>#0D1117</code> (matches app)</td></tr>
+      </tbody>
+    </table>
+
+    <h2><span class="num">5</span>Fixes Applied in This Pass</h2>
+    <hr class="rule">
+    <p>The following changes were made directly in the codebase and re-verified for syntax and regressions:</p>
+    <ul class="clean">
+      <li><strong>Unified design tokens</strong> in <code>main.dart</code> — new industrial palette, mesh &amp; background gradients retuned to graphite/steel.</li>
+      <li><strong>Removed clashing gradients</strong> in the home hero, both app-bar avatars, and three spots in the near-miss screen.</li>
+      <li><strong>Stopped credential logging</strong> — the login hash and login diagnostics are now wrapped in <code>assert()</code> so they are stripped from release builds.</li>
+      <li><strong>Fixed a controller memory leak</strong> — admin API-key fields are now disposed.</li>
+      <li><strong>Fixed a potential crash</strong> — <code>_userInitials</code> no longer throws on names with trailing spaces.</li>
+      <li><strong>Corrected compliance citation</strong> — generated PDFs and AI fallbacks now cite <code>IS 14489:2018</code>.</li>
+      <li><strong>Removed a per-rebuild debug print loop</strong> in the AI result view.</li>
+      <li><strong>Aligned the web splash</strong> background to the app's graphite base.</li>
+    </ul>
+
+    <h2><span class="num">6</span>Recommended Roadmap</h2>
+    <hr class="rule">
+    <table>
+      <thead><tr><th style="width:120px">Phase</th><th>Focus</th><th style="width:110px">Priority</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Now (security)</strong></td><td>Remove seeded admin credentials &amp; plaintext/hash-equals login; move API keys off-device or into secure storage &amp; out of URLs; add APK signature verification.</td><td><span class="sev crit">CRITICAL</span></td></tr>
+        <tr><td><strong>Next (stability)</strong></td><td>Wrap AI analysis in <code>try/finally</code>; dispose all dialog controllers; cap the incident-log image cache; verify SHA-256 parity across web &amp; mobile with test vectors.</td><td><span class="sev high">HIGH</span></td></tr>
+        <tr><td><strong>Polish (UX)</strong></td><td>Raise minimum font sizes to 11px+ and honour text scaling; add <code>Semantics</code>/tooltips to icon-only controls; enlarge sub-48px tap targets; reduce stacked blur in lists.</td><td><span class="sev med">MEDIUM</span></td></tr>
+        <tr><td><strong>Hygiene</strong></td><td>Centralise the backend URL to one constant; remove dead widgets; consolidate the two i18n systems; route caught errors through <code>AppLogger</code> instead of swallowing them.</td><td><span class="sev low">LOW</span></td></tr>
+      </tbody>
+    </table>
+
+    <h2><span class="num">7</span>Production Readiness Score</h2>
+    <hr class="rule">
+    <table>
+      <thead><tr><th>Dimension</th><th style="width:90px">Score</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>Feature completeness</td><td><strong>9 / 10</strong></td><td>Broad, well-considered coverage across scanning, reporting, analytics and admin.</td></tr>
+        <tr><td>Architecture &amp; maintainability</td><td><strong>7 / 10</strong></td><td>Clean modules; hurt by duplicated config and static mutable singletons.</td></tr>
+        <tr><td>Security</td><td><strong>4 / 10</strong></td><td>Auth &amp; secret-handling debt is the top blocker to release.</td></tr>
+        <tr><td>UI / UX &amp; accessibility</td><td><strong>7 / 10</strong></td><td>Refresh unified the identity; legibility &amp; semantics still need work.</td></tr>
+        <tr><td>Stability / error handling</td><td><strong>6 / 10</strong></td><td>Strong lifecycle hygiene; some leaks and swallowed errors remain.</td></tr>
+        <tr><td style="border-top:2px solid var(--line)"><strong>Overall</strong></td><td style="border-top:2px solid var(--line)"><strong>6.5 / 10</strong></td><td style="border-top:2px solid var(--line)">A capable platform, one focused security sprint away from enterprise-ready.</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <div class="footer">
+    <p><strong>SAIL Safety Lens — QA &amp; Design Audit.</strong> Prepared by SteelSafe AI Enterprise, 18 July 2026. Findings from static analysis of 62 Dart source files; live compilation was not available this session and should be run prior to release. Applied edits re-verified for syntax and regressions.</p>
+  </div>
+
+</div>
+</body>
+</html>

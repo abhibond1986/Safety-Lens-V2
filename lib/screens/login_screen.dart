@@ -137,7 +137,11 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       if (!mounted) return;
-      print('LoginScreen._login: user=${user != null ? "found" : "null"}, gotServerToken=$gotServerToken');
+      // Debug-only diagnostic; stripped from release builds.
+      assert(() {
+        print('LoginScreen._login: user=${user != null ? "found" : "null"}, gotServerToken=$gotServerToken');
+        return true;
+      }());
       if (user != null) {
         final Map<String, dynamic> confirmedUser = user;
         if (!gotServerToken) {
@@ -460,9 +464,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   List<Widget> _loginFields(SL sl) => [
-    _field('Username', _userCtrl, sl),
+    _field('Username', _userCtrl, sl,
+      textInputAction: TextInputAction.next),
     const SizedBox(height: 12),
-    _field('Password', _passCtrl, sl, obscure: true),
+    _field('Password', _passCtrl, sl, obscure: true,
+      textInputAction: TextInputAction.done,
+      onSubmitted: () { if (!_loading) _login(); }),
     const SizedBox(height: 8),
     Align(
       alignment: Alignment.centerRight,
@@ -621,7 +628,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Widget _field(String label, TextEditingController ctrl, SL sl,
-      {bool obscure = false, String? hint}) {
+      {bool obscure = false, String? hint,
+       VoidCallback? onSubmitted, TextInputAction? textInputAction}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -633,6 +641,8 @@ class _LoginScreenState extends State<LoginScreen> {
         TextField(
           controller: ctrl,
           obscureText: obscure,
+          textInputAction: textInputAction,
+          onSubmitted: onSubmitted == null ? null : (_) => onSubmitted(),
           style: TextStyle(color: sl.text1, fontSize: 13),
           decoration: InputDecoration(
             hintText: hint,

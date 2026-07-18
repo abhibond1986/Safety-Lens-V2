@@ -14,6 +14,11 @@ import '../services/local_db.dart';
 import '../utils/sail_logo.dart';
 
 class UniversalAppBar extends StatefulWidget implements PreferredSizeWidget {
+  /// Global "return to Home" hook. The parent shell (HomeScreen /
+  /// ContractorHomeScreen) sets this so tapping the SAIL badge in any tab's
+  /// app bar jumps straight back to the Home tab.
+  static VoidCallback? onHome;
+
   final String title;
   final String? subtitle;
   final Map<String, dynamic>? user;
@@ -223,7 +228,7 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
                       shape: BoxShape.circle,
                       gradient: const LinearGradient(
                         begin: Alignment.topLeft, end: Alignment.bottomRight,
-                        colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)])),
+                        colors: [Color(0xFF4F5BD5), Color(0xFF0EA5B5)])),
                     child: Center(child: Text(
                       (u['name']?.toString().isNotEmpty == true
                           ? u['name'].toString()[0] : '?').toUpperCase(),
@@ -396,17 +401,31 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 6, 8, 8),
               child: Row(children: [
-            // SAIL Safety Lens badge icon
-            SizedBox(
-              width: 36, height: 36,
-              child: Image.asset('assets/images/app_icon.png',
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Container(
-                  width: 36, height: 36,
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.shield, color: Colors.white, size: 20))),
+            // SAIL Safety Lens badge icon — tap to return to the Home tab
+            Semantics(
+              button: true,
+              label: 'Go to Home',
+              child: Tooltip(
+                message: 'Home',
+                child: InkWell(
+                  onTap: UniversalAppBar.onHome,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Padding(
+                    padding: const EdgeInsets.all(2),
+                    child: SizedBox(
+                      width: 36, height: 36,
+                      child: Image.asset('assets/images/app_icon.png',
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Container(
+                          width: 36, height: 36,
+                          decoration: BoxDecoration(
+                            color: AppColors.accent,
+                            borderRadius: BorderRadius.circular(8)),
+                          child: const Icon(Icons.shield, color: Colors.white, size: 20))),
+                    ),
+                  ),
+                ),
+              ),
             ),
             const SizedBox(width: 10),
 
@@ -478,7 +497,7 @@ class _UniversalAppBarState extends State<UniversalAppBar> {
                   shape: BoxShape.circle,
                   gradient: LinearGradient(
                     begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)])),
+                    colors: [Color(0xFF4F5BD5), Color(0xFF0EA5B5)])),
                 child: Center(child: Text(initial,
                     style: const TextStyle(
                         color: Colors.white,

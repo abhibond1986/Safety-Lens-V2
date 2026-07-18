@@ -855,7 +855,11 @@ class SyncService {
     }
     try {
       final url = await getBackendUrl();
-      print('SyncService.loginOnline: attempting login for "$username" with hash "$passwordHash"');
+      // SECURITY: never log the credential hash. Log only the (non-secret) username.
+      assert(() {
+        print('SyncService.loginOnline: attempting login for "$username"');
+        return true;
+      }());
       final resp = await _postWithRedirect(url, {
         'action': 'login',
         'username': username,

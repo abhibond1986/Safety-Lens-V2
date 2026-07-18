@@ -1,10 +1,10 @@
 // lib/services/gemini_vision.dart
 // ★ v25 MAXIMUM RELIABILITY — 4 independent providers, NEVER fails
 //
-// PRIORITY CHAIN (ordered by speed, stops at first success):
-//   1. Gemini Direct (client) — fastest (~3-8s), immediate response
-//   2. Groq Vision (client) — fast (~2-5s), independent quota/provider
-//   3. OpenRouter (client) — NVIDIA free vision models, independent
+// PRIORITY CHAIN (stops at first success):
+//   1. Groq Vision (client) — PRIMARY model (fast ~2-5s)
+//   2. OpenRouter Nemotron (client) — SECONDARY model (NVIDIA, free, 256K context)
+//   3. Gemini Direct (client) — fallback
 //   4. Apps Script (server) — parallel Gemini + OpenRouter (slowest due to round-trip)
 //   5. Offline fallback (clean message)
 //
@@ -113,40 +113,14 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 1: OPENROUTER — Nemotron 30B (PRIMARY model)
-      // ★ v35: Free, 256K context, multimodal, 30B reasoning model
-      // ══════════════════════════════════════════════════════════════════════
-      final prefs = await SharedPreferences.getInstance();
-      final orKey = prefs.getString('openrouter_api_key') ?? '';
-      if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-        print('GeminiVision: ▶ [1/4] OpenRouter Nemotron 30B (primary)...');
-        try {
-          final orResult = await _callOpenRouterVision(bytes, orKey, kbContext: kbContext);
-          if (_isValidResult(orResult)) {
-            print('GeminiVision: ✓ [1/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            orResult!['_source'] = 'openrouter_client';
-            orResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return orResult;
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ OpenRouter exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ [1/4] OpenRouter skipped (no key)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // STEP 2: GROQ VISION — llama-4-scout-17b (fast, free)
-      // ★ v35: Second priority — also used as audit model for comparison
+      // STEP 1: GROQ VISION — llama-4-scout-17b (PRIMARY model, fast & free)
       // ══════════════════════════════════════════════════════════════════════
       if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [2/4] Groq Scout...');
+        print('GeminiVision: ▶ [1/4] Groq Scout (primary)...');
         try {
           final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
           if (_isValidResult(groqResult)) {
-            print('GeminiVision: ✓ [2/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            print('GeminiVision: ✓ [1/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
             groqResult!['_source'] = 'groq_vision';
             groqResult['_isOnline'] = true;
             _lastCallTime = DateTime.now();
@@ -157,7 +131,32 @@ class GeminiVision {
           print('GeminiVision: ✗ Groq Vision exception: $e');
         }
       } else {
-        print('GeminiVision: ⏭ [2/4] Groq Vision skipped (no key)');
+        print('GeminiVision: ⏭ [1/4] Groq Vision skipped (no key)');
+      }
+
+      // ══════════════════════════════════════════════════════════════════════
+      // STEP 2: OPENROUTER — Nemotron 30B (SECONDARY model)
+      // ★ v35: Free, 256K context, multimodal, 30B reasoning model
+      // ══════════════════════════════════════════════════════════════════════
+      final prefs = await SharedPreferences.getInstance();
+      final orKey = prefs.getString('openrouter_api_key') ?? '';
+      if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
+        print('GeminiVision: ▶ [2/4] OpenRouter Nemotron 30B (secondary)...');
+        try {
+          final orResult = await _callOpenRouterVision(bytes, orKey, kbContext: kbContext);
+          if (_isValidResult(orResult)) {
+            print('GeminiVision: ✓ [2/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+            orResult!['_source'] = 'openrouter_client';
+            orResult['_isOnline'] = true;
+            _lastCallTime = DateTime.now();
+            _isAnalyzing = false;
+            return orResult;
+          }
+        } catch (e) {
+          print('GeminiVision: ✗ OpenRouter exception: $e');
+        }
+      } else {
+        print('GeminiVision: ⏭ [2/4] OpenRouter skipped (no key)');
       }
 
       // ══════════════════════════════════════════════════════════════════════

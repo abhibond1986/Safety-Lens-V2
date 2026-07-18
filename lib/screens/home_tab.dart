@@ -247,11 +247,11 @@ class _HomeTabState extends State<HomeTab> {
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
           colors: [
-            Color(0xFF7B5BFF),  // purple
-            Color(0xFF5B7BFF),  // blue
-            Color(0xFF34D399),  // green-teal
+            Color(0xFF2C3A66),  // deep steel indigo
+            Color(0xFF4F5BD5),  // steel indigo (primary)
+            Color(0xFF0EA5B5),  // industrial teal
           ],
-          stops: [0.0, 0.55, 1.0],
+          stops: [0.0, 0.6, 1.0],
         )),
       child: Stack(children: [
         // Decorative blurred circles

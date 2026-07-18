@@ -121,9 +121,10 @@ class _DashboardTabState extends State<DashboardTab> {
 
   String _userInitials(Map<String, dynamic>? u) {
     final n = _userName(u);
-    final parts = n.trim().split(' ');
+    // Drop empty segments so names with extra/trailing spaces can't crash on [0].
+    final parts = n.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
     if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    return n.isNotEmpty ? n[0].toUpperCase() : '?';
+    return parts.isNotEmpty ? parts[0][0].toUpperCase() : '?';
   }
 
   List<Map<String, dynamic>> get _userIncidents {

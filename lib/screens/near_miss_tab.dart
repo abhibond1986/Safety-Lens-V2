@@ -1573,7 +1573,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
       width: 22, height: 22,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)]),
+          colors: [Color(0xFF4F5BD5), Color(0xFF0EA5B5)]),
         borderRadius: BorderRadius.circular(7)),
       child: Center(child: Text(num, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)))),
     const SizedBox(width: 8),
@@ -1747,7 +1747,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
     if (filled) {
       return Container(
         decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [Color(0xFF7B5BFF), Color(0xFF5B7BFF)]),
+          gradient: const LinearGradient(colors: [Color(0xFF4F5BD5), Color(0xFF0EA5B5)]),
           borderRadius: BorderRadius.circular(12),
           boxShadow: [BoxShadow(color: AppColors.accent.withOpacity(0.25), blurRadius: 6, offset: const Offset(0, 2))]),
         child: ElevatedButton.icon(
@@ -2596,7 +2596,7 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
                       label: 'PDF',
                       actionId: 'pdf',
                       icon:  Icons.picture_as_pdf_rounded,
-                      colors: const [Color(0xFF7B5BFF), Color(0xFF06B6D4)],
+                      colors: const [Color(0xFF4F5BD5), Color(0xFF0EA5B5)],
                       onTap: _handleSavePdf,
                     )),
                   ]),

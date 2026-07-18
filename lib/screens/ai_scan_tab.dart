@@ -1539,7 +1539,7 @@ class _AIScanTabState extends State<AIScanTab> {
       'summary':         _result!['summary']?.toString() ?? '',
       'desc':            _result!['summary']?.toString() ?? '',
       'immediateAction': firstHazardMap['correctiveAction']?.toString()
-                         ?? 'Investigate per IS 14489:1998',
+                         ?? 'Investigate per IS 14489:2018',
       'type':            'AI_SCAN',
       'status':          'OPEN',
       'date':            DateTime.now().toIso8601String(),
@@ -1999,11 +1999,6 @@ class _AIScanTabState extends State<AIScanTab> {
       return sa.compareTo(sb);
     });
     final riskColor   = _sevColor(overallRisk);
-    // Debug: log bbox presence for troubleshooting
-    for (int i = 0; i < hazards.length; i++) {
-      final haz = hazards[i] as Map;
-      print('Hazard ${i+1} bbox: ${haz['bbox']}');
-    }
     final hasBbox     = hazards.any((h) {
       final bbox = (h as Map)['bbox'];
       if (bbox == null) return false;

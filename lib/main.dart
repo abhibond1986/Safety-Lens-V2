@@ -52,33 +52,36 @@ class AppColors {
   static const text3  = Color(0xFF94A3B8);
   static const text4  = Color(0xFF64748B);
 
-  // Vibrant accent palette — Image 3 style
-  static const accent     = Color(0xFF7C4DFF);   // deep violet-purple
-  static const accentDark = Color(0xFF6534E0);
-  static const accentGlow = Color(0xFF9B6BFF);
-  static const cyan       = Color(0xFF00BCD4);   // teal-cyan
-  static const purple     = Color(0xFFE040FB);   // bright magenta-purple
-  static const pink       = Color(0xFFFF4081);   // vivid pink
+  // Industrial accent palette — steel-blue indigo primary, safety-amber signature.
+  // Values align with the Tailwind-family colours already used across screens
+  // so the whole app now reads as one cohesive enterprise system.
+  static const accent     = Color(0xFF4F5BD5);   // steel indigo — primary
+  static const accentDark = Color(0xFF3B45B0);   // deeper indigo (pressed)
+  static const accentGlow = Color(0xFF6675E8);   // lifted indigo (glow/hover)
+  static const cyan       = Color(0xFF0EA5B5);   // industrial teal-cyan
+  static const purple     = Color(0xFF7C6CF0);   // muted violet (secondary)
+  static const pink       = Color(0xFFE0568A);   // desaturated rose (rare accent)
 
-  static const crit  = Color(0xFFFF1744);
-  static const red   = Color(0xFFFF5252);
-  static const amber = Color(0xFFFFAB00);
-  static const green = Color(0xFF00E676);
+  // Safety status palette — matches signage conventions used on the plant floor.
+  static const crit  = Color(0xFFDC2626);   // red-600 — critical
+  static const red   = Color(0xFFEF4444);   // red-500 — high
+  static const amber = Color(0xFFF59E0B);   // amber-500 — medium (SAIL signature)
+  static const green = Color(0xFF10B981);   // emerald-500 — safe / closed
 
-  // Dark mode — Glassmorphism deep purple-blue base
-  static const darkBg     = Color(0xFF0F0C29);   // deep purple-black
-  static const darkBg2    = Color(0xFF1A1735);   // slightly lighter
-  static const darkCard   = Color(0xFF1E1B3A);   // glass card base
-  static const darkCard2  = Color(0xFF272450);   // elevated glass
-  static const darkCard3  = Color(0xFF302B63);   // top-most surface
-  static const darkBorder = Color(0xFF3D3870);   // subtle purple separator
+  // Dark mode — graphite steel base (not purple). Cool, industrial, high-legibility.
+  static const darkBg     = Color(0xFF0D1117);   // graphite black
+  static const darkBg2    = Color(0xFF141B26);   // raised panel
+  static const darkCard   = Color(0xFF171F2C);   // glass card base
+  static const darkCard2  = Color(0xFF1F2937);   // elevated surface
+  static const darkCard3  = Color(0xFF283449);   // top-most surface
+  static const darkBorder = Color(0xFF2C3646);   // subtle steel separator
 
-  // Light mode — clean white with very subtle tint
-  static const lightBg     = Color(0xFFF8F8F8);  // near-white, no tint
-  static const lightBg2    = Color(0xFFEFEFEF);  // very light grey
+  // Light mode — cool neutral white with a faint steel tint
+  static const lightBg     = Color(0xFFF5F7FA);  // steel-tinted near-white
+  static const lightBg2    = Color(0xFFEAEEF3);  // very light cool grey
   static const lightCard   = Color(0xFFFFFFFF);  // pure white cards
-  static const lightCard2  = Color(0xFFF3F3F3);  // input field bg
-  static const lightBorder = Color(0xFFE0E0E0);  // clear grey border
+  static const lightCard2  = Color(0xFFF1F4F8);  // input field bg
+  static const lightBorder = Color(0xFFDCE1E9);  // clear cool-grey border
 }
 
 // ─── THEME HELPER ─────────────────────────────────────────────────────────────
@@ -111,14 +114,14 @@ class SL {
   LinearGradient get meshGradient => isDark
       ? const LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Color(0xFF0F0C29), Color(0xFF302B63), Color(0xFF24243E)])
+          colors: [Color(0xFF0D1117), Color(0xFF1A2436), Color(0xFF12181F)])
       : const LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [Color(0xFFE8EAF6), Color(0xFFF3E5F5), Color(0xFFEDE7F6)]);
+          colors: [Color(0xFFF5F7FA), Color(0xFFEAEEF3), Color(0xFFEEF1F6)]);
 
   List<Color> get bgGradient => isDark
-      ? [const Color(0xFF0F0C29), const Color(0xFF302B63), const Color(0xFF24243E)]
-      : [const Color(0xFFE8EAF6), const Color(0xFFF3E5F5), const Color(0xFFEDE7F6)];
+      ? [const Color(0xFF0D1117), const Color(0xFF1A2436), const Color(0xFF12181F)]
+      : [const Color(0xFFF5F7FA), const Color(0xFFEAEEF3), const Color(0xFFEEF1F6)];
 
   Gradient get cardGradient => isDark
       ? LinearGradient(

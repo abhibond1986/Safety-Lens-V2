@@ -15,6 +15,7 @@ import 'ai_scan_tab.dart';
 import 'near_miss_tab.dart';
 import 'chat_tab.dart';
 import 'reports_tab.dart';
+import '../widgets/universal_app_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback toggleTheme;
@@ -79,6 +80,11 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     final sl     = SL.of(context);
     final isDark = sl.isDark;
+
+    // Tapping the SAIL badge in any tab's app bar returns to the Home tab.
+    UniversalAppBar.onHome = () {
+      if (mounted && _tabIndex != 0) setState(() => _tabIndex = 0);
+    };
 
     final tabs = <Widget>[
       HomeTab(

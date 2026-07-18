@@ -177,6 +177,7 @@ class _AdminScreenState extends State<AdminScreen>
   @override
   void dispose() {
     _unameCtrl.dispose(); _pwCtrl.dispose();
+    _groqKeyCtrl.dispose(); _geminiVisionKeyCtrl.dispose();
     super.dispose();
   }
 
