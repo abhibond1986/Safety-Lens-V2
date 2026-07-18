@@ -41,6 +41,93 @@ class AdminMasterData {
     return '—';
   }
 
+  // ── PLANT NAME CANONICALIZATION ──────────────────────────────────
+  // Incidents were captured over time with the plant field in many
+  // formats — "DSP", "DSP Durgapur", "Durgapur Steel Plant",
+  // "DSP — Durgapur Steel Plant", plus en-dash/em-dash variants. This
+  // maps any of them to ONE canonical "CODE — Name" label so analytics
+  // group correctly and dropdowns show each plant only once.
+  //
+  // Matching (against the ACTIVE list, so admin edits are respected):
+  //   1. exact code, exact name, or exact "code — name"
+  //   2. code appears as a standalone token in the raw string
+  //   3. every significant word of a plant name appears in the raw string
+  // Falls back to the cleaned original when there is no confident match.
+  static String canonicalPlantFrom(
+      String raw, List<Map<String, String>> plants) {
+    // Normalise dashes to a single spaced em-dash and collapse whitespace.
+    final cleaned = raw
+        .replaceAll(RegExp(r'[‒–—―-]'), '—')
+        .replaceAll(RegExp(r'\s*—\s*'), ' — ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) return '';
+
+    final upper = cleaned.toUpperCase();
+    // Word set of the raw string for token matching.
+    final rawWords = upper
+        .replaceAll(RegExp(r'[^A-Z0-9 ]'), ' ')
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .toSet();
+
+    Map<String, String>? match;
+
+    // Pass 1 — exact code / name / "code — name".
+    for (final p in plants) {
+      final code = (p['code'] ?? '').toUpperCase();
+      final name = (p['name'] ?? '').toUpperCase();
+      final full = '$code — $name';
+      if (upper == code || upper == name || upper == full) { match = p; break; }
+    }
+
+    // Pass 2 — code present as a standalone token (e.g. "DSP Durgapur").
+    if (match == null) {
+      for (final p in plants) {
+        final code = (p['code'] ?? '').toUpperCase();
+        if (code.isNotEmpty && code != 'OTHER' && rawWords.contains(code)) {
+          match = p; break;
+        }
+      }
+    }
+
+    // Pass 3 — all significant words of a plant name are present.
+    if (match == null) {
+      for (final p in plants) {
+        final name = (p['name'] ?? '').toUpperCase();
+        if (name.isEmpty || name == 'OTHERS') continue;
+        final nameWords = name
+            .replaceAll(RegExp(r'[^A-Z0-9 ]'), ' ')
+            .split(' ')
+            .where((w) => w.length > 2) // skip "of", "&", short glue words
+            .toSet();
+        if (nameWords.isNotEmpty && nameWords.every(rawWords.contains)) {
+          match = p; break;
+        }
+      }
+    }
+
+    if (match != null) {
+      final code = match['code'] ?? '';
+      final name = match['name'] ?? '';
+      // If the name already carries its own separator (e.g. "Corporate — Ranchi"),
+      // don't prefix the code again — that would double the dash.
+      if (name.contains('—')) return name;
+      if (code.isNotEmpty && code != 'OTHER' && name.isNotEmpty) {
+        return '$code — $name';
+      }
+      if (name.isNotEmpty) return name;
+    }
+    return cleaned; // no confident match — keep the cleaned original
+  }
+
+  /// Convenience: canonicalize using the current active plant list.
+  static Future<String> canonicalPlant(String raw) async {
+    if (raw.trim().isEmpty) return '';
+    final plants = await getPlants();
+    return canonicalPlantFrom(raw, plants);
+  }
+
   // ── DEFAULT WSA 13 CAUSES ────────────────────────────────────────
   static const List<String> defaultWsaCauses = [
     '1. Failure to follow procedure',

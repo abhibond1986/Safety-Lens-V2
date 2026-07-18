@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
+import '../../services/admin_master_data.dart';
 import '../incident_detail_screen.dart';
 
 class PlantWiseTab extends StatefulWidget {
@@ -15,6 +16,13 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
   List<Map<String, dynamic>> _all = [];
   bool _loading = true;
   String? _selectedPlant;
+  // Active canonical plant list (admin-editable) for name normalization.
+  List<Map<String, String>> _plantDefs = AdminMasterData.sailPlants;
+
+  /// Canonical plant label for an incident (dedupes name variants).
+  String _canonPlant(Map<String, dynamic> i) =>
+      AdminMasterData.canonicalPlantFrom(
+          i['plant']?.toString() ?? '', _plantDefs);
 
   @override
   void initState() {
@@ -24,9 +32,11 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
 
   Future<void> _load() async {
     final inc = await LocalDB.getIncidents();
+    final plants = await AdminMasterData.getPlants();
     if (mounted) {
       setState(() {
         _all = inc;
+        _plantDefs = plants;
         _loading = false;
         if (_selectedPlant == null && _plants.isNotEmpty) {
           _selectedPlant = _plants.first;
@@ -35,10 +45,11 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
     }
   }
 
+  // Unique CANONICAL plants present in the data (each appears once).
   List<String> get _plants {
     final s = <String>{};
     for (final i in _all) {
-      final p = i['plant']?.toString() ?? '';
+      final p = _canonPlant(i);
       if (p.isNotEmpty) s.add(p);
     }
     final list = s.toList()..sort();
@@ -47,8 +58,7 @@ class _PlantWiseTabState extends State<PlantWiseTab> {
 
   List<Map<String, dynamic>> get _plantIncidents {
     if (_selectedPlant == null) return [];
-    return _all.where((i) =>
-        i['plant']?.toString() == _selectedPlant).toList();
+    return _all.where((i) => _canonPlant(i) == _selectedPlant).toList();
   }
 
   // KPIs for selected plant

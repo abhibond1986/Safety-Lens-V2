@@ -166,12 +166,21 @@ class _DashboardTabState extends State<DashboardTab> {
     }
     for (final inc in _incidents) {
       final rawPlant = inc['plant']?.toString() ?? '';
+      // Canonicalize to "CODE — Name", then take the code so all format
+      // variants of a plant roll up to the same row.
+      final canon = AdminMasterData.canonicalPlantFrom(rawPlant, _plants);
       String? code;
-      for (final p in _plants) {
-        if (rawPlant.toUpperCase().startsWith(p['code']!) ||
-            rawPlant.toLowerCase().contains(
-                p['name']!.split(' ').first.toLowerCase())) {
-          code = p['code']; break;
+      final dashIdx = canon.indexOf(' — ');
+      if (dashIdx > 0) {
+        final maybeCode = canon.substring(0, dashIdx).toUpperCase();
+        if (result.containsKey(maybeCode)) code = maybeCode;
+      }
+      // Fallback: match the canonical label against a known plant name.
+      if (code == null) {
+        for (final p in _plants) {
+          if (canon.toUpperCase() == (p['name'] ?? '').toUpperCase()) {
+            code = p['code']; break;
+          }
         }
       }
       code ??= 'SSO';

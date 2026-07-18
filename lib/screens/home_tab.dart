@@ -13,6 +13,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
 import '../services/local_db.dart';
+import '../services/admin_master_data.dart';
 import '../services/i18n.dart';
 import 'reports_tab.dart';
 import 'admin_screen.dart';
@@ -42,6 +43,8 @@ class HomeTab extends StatefulWidget {
 class _HomeTabState extends State<HomeTab> {
   List<Map<String, dynamic>> _incidents = [];
   bool _loading = true;
+  // Active canonical plant list (admin-editable) for name normalization.
+  List<Map<String, String>> _plantDefs = AdminMasterData.sailPlants;
 
   @override
   void initState() {
@@ -60,8 +63,9 @@ class _HomeTabState extends State<HomeTab> {
 
   Future<void> _load() async {
     final inc = await LocalDB.getIncidents();
+    final plants = await AdminMasterData.getPlants();
     if (!mounted) return;
-    setState(() { _incidents = inc; _loading = false; });
+    setState(() { _incidents = inc; _plantDefs = plants; _loading = false; });
   }
 
   /// True for admin users. Accepts boolean, 'true', or 'TRUE' string forms.
@@ -157,11 +161,12 @@ class _HomeTabState extends State<HomeTab> {
       _isMyIncident(i) &&
       (i['type']?.toString().toUpperCase() ?? '') == 'NEAR_MISS').length;
 
-  /// Hazard counts per plant (top 5)
+  /// Hazard counts per plant (top 5), grouped by canonical plant name.
   List<MapEntry<String, int>> get _byPlant {
     final m = <String, int>{};
     for (final i in _incidents) {
-      final p = i['plant']?.toString() ?? '—';
+      final p = AdminMasterData.canonicalPlantFrom(
+          i['plant']?.toString() ?? '', _plantDefs);
       if (p.isEmpty) continue;
       m[p] = (m[p] ?? 0) + 1;
     }

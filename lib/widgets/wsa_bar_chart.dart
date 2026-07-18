@@ -20,6 +20,8 @@ class _WsaBarChartState extends State<WsaBarChart> {
   List<String> _wsaCategories = [];
   String _selectedPlant = 'all';
   bool _loading = true;
+  // Admin-editable canonical plant list for name normalization.
+  List<Map<String, String>> _plantDefs = AdminMasterData.sailPlants;
 
   static const List<Map<String, String>> _plants = [
     {'code': 'all',  'name': 'Entire SAIL'},
@@ -43,18 +45,27 @@ class _WsaBarChartState extends State<WsaBarChart> {
     final inc = await LocalDB.getIncidents();
     // ✅ v23: Load WSA categories from AdminMasterData (same source as admin panel)
     final wsa = await AdminMasterData.getWsaCauses();
+    final plants = await AdminMasterData.getPlants();
     if (mounted) setState(() {
       _incidents = inc;
       _wsaCategories = wsa;
+      _plantDefs = plants;
       _loading = false;
     });
   }
 
   List<Map<String, dynamic>> get _filteredIncidents {
     if (_selectedPlant == 'all') return _incidents;
+    final target = _selectedPlant.toUpperCase();
     return _incidents.where((i) {
-      final plant = (i['plant']?.toString() ?? '').toUpperCase();
-      return plant.contains(_selectedPlant.toUpperCase());
+      // Canonicalize first so "DSP Durgapur" / "Durgapur Steel Plant" etc.
+      // all resolve to the same "CODE — Name" and match by code token.
+      final canon = AdminMasterData.canonicalPlantFrom(
+          i['plant']?.toString() ?? '', _plantDefs);
+      final code = canon.contains(' — ')
+          ? canon.split(' — ').first.toUpperCase()
+          : canon.toUpperCase();
+      return code == target || canon.toUpperCase().contains(target);
     }).toList();
   }
 

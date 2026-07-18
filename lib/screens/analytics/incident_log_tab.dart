@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
 import '../../services/image_storage.dart';
+import '../../services/admin_master_data.dart';
 import '../incident_detail_screen.dart';
 import '../reports_tab.dart';
 
@@ -26,6 +27,13 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
   String _dateRange = '90 days';
   bool _myReportsOnly = false; // ★ v35: filter by current user
   String _currentUserName = '';
+  // Active canonical plant list (admin-editable) for name normalization.
+  List<Map<String, String>> _plantDefs = AdminMasterData.sailPlants;
+
+  /// Canonical plant label for an incident (dedupes name variants).
+  String _canonPlant(Map<String, dynamic> i) =>
+      AdminMasterData.canonicalPlantFrom(
+          i['plant']?.toString() ?? '', _plantDefs);
 
   @override
   void initState() {
@@ -58,8 +66,10 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
   Future<void> _load() async {
     final inc = await LocalDB.getIncidents();
     final user = await LocalDB.getCurrentUser();
+    final plants = await AdminMasterData.getPlants();
     if (mounted) setState(() {
       _all = inc;
+      _plantDefs = plants;
       _currentUserName = user?['name']?.toString() ?? '';
       _loading = false;
     });
@@ -74,10 +84,10 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
           (i['reportedBy']?.toString() ?? '') == _currentUserName).toList();
     }
 
-    // Plant filter
+    // Plant filter — compare on canonical plant name so all format
+    // variants of the same plant are matched together.
     if (_plantFilter != 'All') {
-      list = list.where((i) =>
-          (i['plant']?.toString() ?? '').contains(_plantFilter)).toList();
+      list = list.where((i) => _canonPlant(i) == _plantFilter).toList();
     }
 
     // Severity filter
@@ -119,11 +129,11 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
     return list;
   }
 
-  // Get unique plants from data
+  // Unique CANONICAL plants present in the data (each appears once).
   List<String> get _plants {
     final s = <String>{};
     for (final i in _all) {
-      final p = i['plant']?.toString() ?? '';
+      final p = _canonPlant(i);
       if (p.isNotEmpty) s.add(p);
     }
     final list = s.toList()..sort();

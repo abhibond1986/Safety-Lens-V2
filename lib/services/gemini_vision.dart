@@ -113,10 +113,10 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 1: GROQ VISION — llama-4-scout-17b (PRIMARY model, fast & free)
+      // STEP 1: GROQ VISION — llama-4-maverick-17b-128e (PRIMARY model)
       // ══════════════════════════════════════════════════════════════════════
       if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [1/4] Groq Scout (primary)...');
+        print('GeminiVision: ▶ [1/4] Groq Maverick (primary)...');
         try {
           final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
           if (_isValidResult(groqResult)) {
@@ -240,9 +240,7 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION — Llama 4 Scout 17B (multimodal vision)
-  //  ★ v35: Maverick returns 404 on Groq — reverted to Scout which is still active
-  //  Will switch to Maverick once Groq actually deploys it
+  //  GROQ VISION — Llama 4 Maverick 17B (128e, multimodal vision)
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -252,9 +250,8 @@ class GeminiVision {
     final base64Image = base64Encode(bytes);
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
 
-    // ★ v35: Maverick (128e) returns HTTP 404 on Groq as of July 2026
-    // Scout is still active and working — use it until Maverick goes live
-    const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
+    // Groq vision model — Llama 4 Maverick 17B (128e)
+    const model = 'meta-llama/llama-4-maverick-17b-128e-instruct';
 
     // Build prompt with KB context if available
     String prompt = _getHazardPrompt();
