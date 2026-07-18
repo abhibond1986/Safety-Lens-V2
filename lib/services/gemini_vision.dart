@@ -240,8 +240,20 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION — Llama 4 Scout 17B (16e, multimodal vision)
+  //  GROQ VISION — self-healing across model IDs
+  //  Groq rotates its vision catalogue; a retired ID returns HTTP 404/400.
+  //  We try candidates in order, cache the first that works, and try the
+  //  cached one first next time — so scans keep working when Groq swaps models.
   // ══════════════════════════════════════════════════════════════════════════
+  static const String _kGroqVisionModel = 'groq_vision_model_working';
+
+  /// Candidate Groq vision model IDs, in preferred order.
+  /// The primary is Llama 4 Scout; others act as automatic fallbacks.
+  static const List<String> _groqVisionCandidates = [
+    'meta-llama/llama-4-scout-17b-16e-instruct',
+    'meta-llama/llama-4-maverick-17b-128e-instruct',
+  ];
+
   static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
     final prefs = await SharedPreferences.getInstance();
     final apiKey = prefs.getString('groq_api_key') ?? '';
@@ -249,9 +261,6 @@ class GeminiVision {
 
     final base64Image = base64Encode(bytes);
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
-
-    // Groq vision model — Llama 4 Scout 17B (16e)
-    const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
     // Build prompt with KB context if available
     String prompt = _getHazardPrompt();
@@ -264,44 +273,72 @@ class GeminiVision {
           '$kbContext';
     }
 
-    final requestBody = {
-      'model': model,
-      'messages': [
-        {
-          'role': 'user',
-          'content': [
-            {'type': 'text', 'text': prompt},
-            {'type': 'image_url', 'image_url': {'url': dataUrl}},
-          ]
-        }
-      ],
-      'max_tokens': 8192,
-      'temperature': 0.15,
-    };
+    // Try the last-known-good model first, then the remaining candidates.
+    final cached = prefs.getString(_kGroqVisionModel);
+    final models = <String>[
+      if (cached != null && cached.isNotEmpty) cached,
+      ..._groqVisionCandidates.where((m) => m != cached),
+    ];
 
-    try {
-      final response = await http.post(
-        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $apiKey',
-        },
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 30));
+    for (final model in models) {
+      final requestBody = {
+        'model': model,
+        'messages': [
+          {
+            'role': 'user',
+            'content': [
+              {'type': 'text', 'text': prompt},
+              {'type': 'image_url', 'image_url': {'url': dataUrl}},
+            ]
+          }
+        ],
+        'max_tokens': 8192,
+        'temperature': 0.15,
+      };
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        final choices = data['choices'] as List?;
-        if (choices != null && choices.isNotEmpty) {
-          final content = choices[0]['message']?['content']?.toString() ?? '';
-          return _parseAIResponse(content);
+      try {
+        final response = await http.post(
+          Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $apiKey',
+          },
+          body: jsonEncode(requestBody),
+        ).timeout(const Duration(seconds: 30));
+
+        if (response.statusCode == 200) {
+          // Remember the model that worked for next time.
+          if (cached != model) {
+            await prefs.setString(_kGroqVisionModel, model);
+          }
+          final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+          final choices = data['choices'] as List?;
+          if (choices != null && choices.isNotEmpty) {
+            final content = choices[0]['message']?['content']?.toString() ?? '';
+            return _parseAIResponse(content);
+          }
+          return null; // 200 but unusable body — don't try other models
         }
-      } else {
+
+        // Model unavailable to this key (retired / not vision-enabled):
+        // clear a stale cache and try the next candidate.
+        if (response.statusCode == 404 || response.statusCode == 400) {
+          print('GeminiVision: Groq model "$model" → HTTP ${response.statusCode}, trying next');
+          if (cached == model) await prefs.remove(_kGroqVisionModel);
+          continue;
+        }
+
+        // Other errors (401 auth, 429 quota, 5xx) won't be fixed by swapping
+        // models — stop and let the provider chain fall through.
         print('GeminiVision: Groq HTTP ${response.statusCode}');
+        return null;
+      } catch (e) {
+        print('GeminiVision: Groq exception ($model): $e');
+        return null;
       }
-    } catch (e) {
-      print('GeminiVision: Groq exception: $e');
     }
+
+    print('GeminiVision: Groq — no candidate model available');
     return null;
   }
 
