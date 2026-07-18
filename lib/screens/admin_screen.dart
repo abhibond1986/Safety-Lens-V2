@@ -5749,7 +5749,7 @@ class _AdminScreenState extends State<AdminScreen>
               decoration: BoxDecoration(
                 color: const Color(0xFF1565C0).withOpacity(0.12),
                 borderRadius: BorderRadius.circular(6)),
-              child: Text('Primary: Groq Maverick  |  Secondary: Nemotron 30B',
+              child: Text('Primary: Groq Scout  |  Secondary: Nemotron 30B',
                   style: TextStyle(color: const Color(0xFF1565C0), fontSize: 9, fontWeight: FontWeight.w700)),
             ),
           ]),
@@ -5958,7 +5958,7 @@ class _AdminScreenState extends State<AdminScreen>
               Row(children: [
                 const Icon(Icons.compare_arrows_rounded, color: Color(0xFFD32F2F), size: 12),
                 const SizedBox(width: 4),
-                Text('Groq Maverick (Audit)', style: TextStyle(
+                Text('Groq Scout (Audit)', style: TextStyle(
                     color: const Color(0xFFD32F2F), fontSize: 9, fontWeight: FontWeight.w700)),
               ]),
               const SizedBox(height: 6),

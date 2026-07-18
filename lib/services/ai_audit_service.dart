@@ -62,7 +62,7 @@ class AiAuditService {
       // Store audit result — full detail for admin comparison panel
       final auditData = <String, dynamic>{
         'auditScore': matchScore.round(),
-        'auditModel': 'Groq Maverick (Llama 4)',
+        'auditModel': 'Groq Scout (Llama 4)',
         'auditHazardCount': auditHazards.length,
         'originalHazardCount': originalHazards.length,
         'auditTimestamp': DateTime.now().toIso8601String(),
@@ -97,8 +97,8 @@ class AiAuditService {
     }
   }
 
-  /// Run audit analysis — uses Groq Maverick (llama-4-maverick-17b-128e)
-  /// Primary vision model = Groq Maverick, Secondary = OpenRouter Nemotron 30B
+  /// Run audit analysis — uses Groq Scout (llama-4-scout-17b-16e)
+  /// Primary vision model = Groq Scout, Secondary = OpenRouter Nemotron 30B
   /// This gives a real two-model comparison in the admin panel.
   static Future<Map<String, dynamic>?> _runAuditAnalysis(
       Uint8List bytes, String primarySource) async {
@@ -184,7 +184,7 @@ Respond ONLY with JSON.''';
 
       final base64Image = base64Encode(bytes);
       final dataUrl = 'data:image/jpeg;base64,$base64Image';
-      const model = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+      const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
       final response = await http.post(
         Uri.parse('https://api.groq.com/openai/v1/chat/completions'),

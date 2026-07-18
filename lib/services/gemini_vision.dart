@@ -113,10 +113,10 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 1: GROQ VISION — llama-4-maverick-17b-128e (PRIMARY model)
+      // STEP 1: GROQ VISION — llama-4-scout-17b-16e (PRIMARY model)
       // ══════════════════════════════════════════════════════════════════════
       if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [1/4] Groq Maverick (primary)...');
+        print('GeminiVision: ▶ [1/4] Groq Scout (primary)...');
         try {
           final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
           if (_isValidResult(groqResult)) {
@@ -240,7 +240,7 @@ class GeminiVision {
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION — Llama 4 Maverick 17B (128e, multimodal vision)
+  //  GROQ VISION — Llama 4 Scout 17B (16e, multimodal vision)
   // ══════════════════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -250,8 +250,8 @@ class GeminiVision {
     final base64Image = base64Encode(bytes);
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
 
-    // Groq vision model — Llama 4 Maverick 17B (128e)
-    const model = 'meta-llama/llama-4-maverick-17b-128e-instruct';
+    // Groq vision model — Llama 4 Scout 17B (16e)
+    const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
     // Build prompt with KB context if available
     String prompt = _getHazardPrompt();
