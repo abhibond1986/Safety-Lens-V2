@@ -2006,7 +2006,7 @@ class _AdminScreenState extends State<AdminScreen>
           ),
         ),
         const SizedBox(height: 10),
-        // Vision model — used for AI hazard image scans (self-healing).
+        // Vision model — AI hazard image scans run on OpenRouter.
         DropdownButtonFormField<String>(
           value: _groqVisionModel,
           isExpanded: true,
@@ -2019,7 +2019,7 @@ class _AdminScreenState extends State<AdminScreen>
           dropdownColor: sl.isDark ? const Color(0xFF252840) : Colors.white,
           style: TextStyle(color: sl.text1, fontSize: 11),
           decoration: InputDecoration(
-            labelText: 'Vision Model (image scans)',
+            labelText: 'Vision Model — image scans (OpenRouter)',
             labelStyle: TextStyle(color: sl.text3, fontSize: 10),
             filled: true,
             fillColor: sl.isDark ? const Color(0xFF1C1F2E) : const Color(0xFFF8F9FC),
@@ -2029,8 +2029,9 @@ class _AdminScreenState extends State<AdminScreen>
           ),
         ),
         const SizedBox(height: 6),
-        Text('“Auto” tries each model and remembers the one Groq accepts. '
-             'Pick a specific model only if you know your key serves it.',
+        Text('Image hazard scans run on OpenRouter. “Auto” tries Gemma, then '
+             'Nemotron. Pick a specific model only if your key serves it. '
+             '(Groq key above is used for near-miss text, not image scans.)',
           style: TextStyle(color: sl.text4, fontSize: 9)),
         const SizedBox(height: 12),
         // ★ v26: Key is now auto-saved from the dialog. This button only updates model selection.

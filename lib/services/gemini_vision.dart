@@ -1,35 +1,27 @@
 // lib/services/gemini_vision.dart
 // ★ v25 MAXIMUM RELIABILITY — 4 independent providers, NEVER fails
 //
-// PRIORITY CHAIN (stops at first success):
-//   1. Groq Vision (client) — PRIMARY model (fast ~2-5s)
-//   2. OpenRouter Nemotron (client) — SECONDARY model (NVIDIA, free, 256K context)
-//   3. Gemini Direct (client) — fallback
-//   4. Apps Script (server) — parallel Gemini + OpenRouter (slowest due to round-trip)
-//   5. Offline fallback (clean message)
+// PRIORITY CHAIN (OpenRouter only, stops at first success):
+//   1. OpenRouter Gemma 4 26B (client) — PRIMARY model (free)
+//   2. OpenRouter Nemotron 30B (client) — SECONDARY model (free, 256K context)
+//   3. Offline KB fallback (clean message, no network)
 //
 // FAST-BAIL: On 429/quota errors, skips remaining models on same key immediately.
 // ALL keys auto-sync from Apps Script Properties on every app launch.
 
 import 'dart:convert';
-import 'dart:async';
 import 'dart:io' show File;
 import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'network_checker.dart';
-import 'gemini_direct_vision.dart';
-import 'groq_service.dart';
 import 'admin_master_data.dart';
 import 'knowledge_service.dart';
 
 class GeminiVision {
-  static const String _backendUrl =
-      'https://script.google.com/macros/s/AKfycbzDiT4OSvlDUxvcM9DYJ_-SiB1HyDrgXtYflGfmqJRH9wnZZusj5GqX9frCx64rkd61Rg/exec';
-
-  // Cooldown to prevent hammering exhausted server
-  static DateTime? _lastExhaustionTime;
-  static const Duration _exhaustionCooldown = Duration(seconds: 60);
+  // OpenRouter vision models (free tier), tried in order.
+  static const String _orGemmaModel    = 'google/gemma-4-26b-a4b-it:free';
+  static const String _orNemotronModel = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 
   // Rate-limiting between analyses
   static DateTime? _lastCallTime;
@@ -85,13 +77,17 @@ class GeminiVision {
         }
       }
 
-      // Ensure API keys are on device (auto-sync from server)
-      if (!await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: Keys missing — syncing from backend...');
-        try {
-          await AdminMasterData.syncFromBackend()
-              .timeout(const Duration(seconds: 8), onTimeout: () => false);
-        } catch (_) {}
+      // Ensure the OpenRouter key is on device (auto-sync from server).
+      {
+        final p = await SharedPreferences.getInstance();
+        final k = p.getString('openrouter_api_key') ?? '';
+        if (!k.startsWith('sk-or-')) {
+          print('GeminiVision: OpenRouter key missing — syncing from backend...');
+          try {
+            await AdminMasterData.syncFromBackend()
+                .timeout(const Duration(seconds: 8), onTimeout: () => false);
+          } catch (_) {}
+        }
       }
 
       // ══════════════════════════════════════════════════════════════════════
@@ -113,108 +109,50 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 1: GROQ VISION — llama-4-scout-17b-16e (PRIMARY model)
-      // ══════════════════════════════════════════════════════════════════════
-      if (await GroqService.isConfigured) {
-        print('GeminiVision: ▶ [1/4] Groq Scout (primary)...');
-        try {
-          final groqResult = await _callGroqVision(bytes, kbContext: kbContext);
-          if (_isValidResult(groqResult)) {
-            print('GeminiVision: ✓ [1/4] Groq Vision SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            groqResult!['_source'] = 'groq_vision';
-            groqResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return groqResult;
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ Groq Vision exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ [1/4] Groq Vision skipped (no key)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // STEP 2: OPENROUTER — Nemotron 30B (SECONDARY model)
-      // ★ v35: Free, 256K context, multimodal, 30B reasoning model
+      // OPENROUTER-ONLY vision chain. Try Gemma first, then Nemotron.
       // ══════════════════════════════════════════════════════════════════════
       final prefs = await SharedPreferences.getInstance();
       final orKey = prefs.getString('openrouter_api_key') ?? '';
       if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-        print('GeminiVision: ▶ [2/4] OpenRouter Nemotron 30B (secondary)...');
-        try {
-          final orResult = await _callOpenRouterVision(bytes, orKey, kbContext: kbContext);
-          if (_isValidResult(orResult)) {
-            print('GeminiVision: ✓ [2/4] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            orResult!['_source'] = 'openrouter_client';
-            orResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return orResult;
+        // If an admin pinned a model, use only that one; else Gemma → Nemotron.
+        final pinned = prefs.getString(_kVisionModelPin);
+        final List<List<String>> attempts = (pinned != null && pinned.isNotEmpty)
+            ? [[pinned, 'pinned model']]
+            : const [
+                [_orGemmaModel,    'Gemma 4 26B (primary)'],
+                [_orNemotronModel, 'Nemotron 30B (secondary)'],
+              ];
+        for (int i = 0; i < attempts.length; i++) {
+          final model = attempts[i][0];
+          final label = attempts[i][1];
+          print('GeminiVision: ▶ [${i + 1}/${attempts.length}] OpenRouter $label...');
+          try {
+            final orResult = await _callOpenRouterVision(bytes, orKey, model, kbContext: kbContext);
+            if (_isValidResult(orResult)) {
+              print('GeminiVision: ✓ [${i + 1}/${attempts.length}] OpenRouter SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
+              orResult!['_source'] = 'openrouter_client';
+              orResult['_model'] = model;
+              orResult['_isOnline'] = true;
+              _lastCallTime = DateTime.now();
+              _isAnalyzing = false;
+              return orResult;
+            }
+          } catch (e) {
+            print('GeminiVision: ✗ OpenRouter $label exception: $e');
           }
-        } catch (e) {
-          print('GeminiVision: ✗ OpenRouter exception: $e');
         }
       } else {
-        print('GeminiVision: ⏭ [2/4] OpenRouter skipped (no key)');
+        print('GeminiVision: ⏭ OpenRouter skipped (no key)');
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // STEP 3: GEMINI DIRECT — Google's model, fallback
+      // OPENROUTER UNAVAILABLE → offline KB fallback
       // ══════════════════════════════════════════════════════════════════════
-      if (await GeminiDirectVision.isConfigured) {
-        print('GeminiVision: ▶ [3/4] Gemini Direct...');
-        try {
-          final directResult = await GeminiDirectVision.analyzeImage(bytes, kbContext: kbContext);
-          if (_isValidResult(directResult)) {
-            print('GeminiVision: ✓ [3/4] Gemini Direct SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            directResult!['_source'] = directResult['_source'] ?? 'gemini_direct';
-            directResult['_isOnline'] = true;
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return directResult;
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ Gemini Direct exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ [3/4] Gemini Direct skipped (no key)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // STEP 4: APPS SCRIPT — server-side parallel (slowest, last resort)
-      // ══════════════════════════════════════════════════════════════════════
-      final serverCooldownActive = _lastExhaustionTime != null &&
-          DateTime.now().difference(_lastExhaustionTime!) < _exhaustionCooldown;
-
-      if (!serverCooldownActive) {
-        print('GeminiVision: ▶ [4/4] Apps Script (server)...');
-        try {
-          final appsResult = await _callAppsScript(bytes);
-          if (_isValidResult(appsResult)) {
-            print('GeminiVision: ✓ [4/4] Apps Script SUCCESS in ${stopwatch.elapsedMilliseconds}ms');
-            _lastCallTime = DateTime.now();
-            _isAnalyzing = false;
-            return appsResult;
-          }
-          if (appsResult != null && appsResult['error'] != null) {
-            print('GeminiVision: ✗ Server error: ${appsResult['error']}');
-          }
-        } catch (e) {
-          print('GeminiVision: ✗ Apps Script exception: $e');
-        }
-      } else {
-        print('GeminiVision: ⏭ [4/4] Apps Script skipped (cooldown)');
-      }
-
-      // ══════════════════════════════════════════════════════════════════════
-      // ALL 4 PROVIDERS FAILED → offline
-      // ══════════════════════════════════════════════════════════════════════
-      print('GeminiVision: ✗ ALL 4 providers failed. Total: ${stopwatch.elapsedMilliseconds}ms');
+      print('GeminiVision: ✗ OpenRouter unavailable. Total: ${stopwatch.elapsedMilliseconds}ms');
       _lastCallTime = DateTime.now();
       _isAnalyzing = false;
       return await _offlineFallback(bytes,
-          reason: 'All AI providers unavailable (${stopwatch.elapsedMilliseconds}ms)');
+          reason: 'AI vision unavailable (${stopwatch.elapsedMilliseconds}ms)');
     } catch (e) {
       print('GeminiVision: Unexpected error: $e');
       _isAnalyzing = false;
@@ -233,163 +171,48 @@ class GeminiVision {
     final summary = result['summary']?.toString().toLowerCase() ?? '';
     if (summary.contains('all providers exhausted') ||
         summary.contains('temporarily unavailable')) {
-      _lastExhaustionTime = DateTime.now();
       return false;
     }
     return true;
   }
 
   // ══════════════════════════════════════════════════════════════════════════
-  //  GROQ VISION — self-healing across model IDs
-  //  Groq rotates its vision catalogue; a retired ID returns HTTP 404/400.
-  //  We try candidates in order, cache the first that works, and try the
-  //  cached one first next time — so scans keep working when Groq swaps models.
+  //  VISION MODEL SELECTION (OpenRouter)
+  //  Admin can pin a specific model, or leave 'auto' to try Gemma → Nemotron.
   // ══════════════════════════════════════════════════════════════════════════
-  // Two separate prefs: an explicit admin PIN (never auto-cleared) and a
-  // self-healing CACHE of the last model that actually worked.
-  static const String _kGroqVisionPin   = 'groq_vision_model_pinned';
-  static const String _kGroqVisionModel = 'groq_vision_model_working';
-
-  /// Candidate Groq vision model IDs, in preferred order.
-  /// The primary is Llama 4 Scout; others act as automatic fallbacks.
-  static const List<String> _groqVisionCandidates = [
-    'meta-llama/llama-4-scout-17b-16e-instruct',
-    'meta-llama/llama-4-maverick-17b-128e-instruct',
-  ];
+  static const String _kVisionModelPin = 'vision_model_pinned';
 
   /// Vision models offered in the Admin panel dropdown (id → label).
-  /// 'auto' lets the self-healing logic pick the first working candidate.
   static const List<Map<String, String>> groqVisionModels = [
-    {'id': 'auto', 'name': 'Auto (try Scout, then Maverick)'},
-    {'id': 'meta-llama/llama-4-scout-17b-16e-instruct',    'name': 'Llama 4 Scout 17B (16e)'},
-    {'id': 'meta-llama/llama-4-maverick-17b-128e-instruct', 'name': 'Llama 4 Maverick 17B (128e)'},
+    {'id': 'auto', 'name': 'Auto (Gemma, then Nemotron)'},
+    {'id': _orGemmaModel,    'name': 'Gemma 4 26B (free)'},
+    {'id': _orNemotronModel, 'name': 'Nemotron 30B (free)'},
   ];
 
-  /// Admin-selected preferred vision model ('auto' = self-healing default).
+  /// Admin-selected preferred vision model ('auto' = try the chain in order).
   static Future<String> getGroqVisionModel() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_kGroqVisionPin) ?? 'auto';
+    return prefs.getString(_kVisionModelPin) ?? 'auto';
   }
 
   /// Save the admin's preferred vision model. 'auto' clears the pin so the
-  /// self-healing loop resumes trying candidates in order. Also clears the
-  /// working cache so the new choice takes effect on the next scan.
+  /// chain (Gemma → Nemotron) is tried in order.
   static Future<void> setGroqVisionModel(String model) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kGroqVisionModel); // reset self-healing cache
     if (model == 'auto' || model.isEmpty) {
-      await prefs.remove(_kGroqVisionPin);
+      await prefs.remove(_kVisionModelPin);
     } else {
-      await prefs.setString(_kGroqVisionPin, model);
+      await prefs.setString(_kVisionModelPin, model);
     }
   }
 
-  static Future<Map<String, dynamic>?> _callGroqVision(Uint8List bytes, {String? kbContext}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final apiKey = prefs.getString('groq_api_key') ?? '';
-    if (apiKey.isEmpty || !apiKey.startsWith('gsk_')) return null;
-
+  // ══════════════════════════════════════════════════════════════════════════
+  //  OPENROUTER (client) — multimodal vision, model chosen by caller
+  // ══════════════════════════════════════════════════════════════════════════
+  static Future<Map<String, dynamic>?> _callOpenRouterVision(
+      Uint8List bytes, String apiKey, String model, {String? kbContext}) async {
     final base64Image = base64Encode(bytes);
     final dataUrl = 'data:image/jpeg;base64,$base64Image';
-
-    // Build prompt with KB context if available
-    String prompt = _getHazardPrompt();
-    if (kbContext != null && kbContext.isNotEmpty) {
-      prompt += '\n\n═══════════════════════════════════════════════════════\n'
-          'ADDITIONAL REFERENCE MATERIAL FROM KNOWLEDGE BANK\n'
-          '═══════════════════════════════════════════════════════\n'
-          'Use the following uploaded reference documents for ACCURATE regulation citations.\n'
-          'If a specific clause/section is mentioned below, cite it EXACTLY as written:\n\n'
-          '$kbContext';
-    }
-
-    // If an admin pinned a specific model, use ONLY that one (no fallback,
-    // and never auto-clear the pin). Otherwise self-heal: try the last-known-
-    // good model first, then the remaining candidates.
-    final pinned = prefs.getString(_kGroqVisionPin);
-    final cached = prefs.getString(_kGroqVisionModel);
-    final bool isPinned = pinned != null && pinned.isNotEmpty;
-    final models = isPinned
-        ? <String>[pinned]
-        : <String>[
-            if (cached != null && cached.isNotEmpty) cached,
-            ..._groqVisionCandidates.where((m) => m != cached),
-          ];
-
-    for (final model in models) {
-      final requestBody = {
-        'model': model,
-        'messages': [
-          {
-            'role': 'user',
-            'content': [
-              {'type': 'text', 'text': prompt},
-              {'type': 'image_url', 'image_url': {'url': dataUrl}},
-            ]
-          }
-        ],
-        'max_tokens': 8192,
-        'temperature': 0.15,
-      };
-
-      try {
-        final response = await http.post(
-          Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer $apiKey',
-          },
-          body: jsonEncode(requestBody),
-        ).timeout(const Duration(seconds: 30));
-
-        if (response.statusCode == 200) {
-          // Remember the model that worked (self-healing mode only).
-          if (!isPinned && cached != model) {
-            await prefs.setString(_kGroqVisionModel, model);
-          }
-          final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-          final choices = data['choices'] as List?;
-          if (choices != null && choices.isNotEmpty) {
-            final content = choices[0]['message']?['content']?.toString() ?? '';
-            return _parseAIResponse(content);
-          }
-          return null; // 200 but unusable body — don't try other models
-        }
-
-        // Model unavailable to this key (retired / not vision-enabled):
-        // clear a stale cache and try the next candidate.
-        if (response.statusCode == 404 || response.statusCode == 400) {
-          print('GeminiVision: Groq model "$model" → HTTP ${response.statusCode}'
-              '${isPinned ? " (pinned)" : ", trying next"}');
-          // Only clear the self-healing cache, never the admin pin.
-          if (!isPinned && cached == model) await prefs.remove(_kGroqVisionModel);
-          continue;
-        }
-
-        // Other errors (401 auth, 429 quota, 5xx) won't be fixed by swapping
-        // models — stop and let the provider chain fall through.
-        print('GeminiVision: Groq HTTP ${response.statusCode}');
-        return null;
-      } catch (e) {
-        print('GeminiVision: Groq exception ($model): $e');
-        return null;
-      }
-    }
-
-    print('GeminiVision: Groq — no candidate model available');
-    return null;
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  //  OPENROUTER (client) — NVIDIA free vision model
-  // ══════════════════════════════════════════════════════════════════════════
-  static Future<Map<String, dynamic>?> _callOpenRouterVision(Uint8List bytes, String apiKey, {String? kbContext}) async {
-    final base64Image = base64Encode(bytes);
-    final dataUrl = 'data:image/jpeg;base64,$base64Image';
-
-    // NVIDIA free vision model — completely independent from Google
-    // ★ v35: Upgraded to Nemotron 3 Nano Omni 30B — free, 256K context, multimodal vision
-    const model = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 
     // Build prompt with KB context if available
     String prompt = _getHazardPrompt();
@@ -445,85 +268,6 @@ class GeminiVision {
     return null;
   }
 
-  // ══════════════════════════════════════════════════════════════════════════
-  //  APPS SCRIPT — server-side parallel Gemini + OpenRouter
-  // ══════════════════════════════════════════════════════════════════════════
-  static Future<Map<String, dynamic>?> _callAppsScript(Uint8List bytes) async {
-    final payloadKB = bytes.length ~/ 1024;
-    final timeoutSec = payloadKB > 500 ? 60 : 45;
-    print('GeminiVision: Payload ${payloadKB}KB, timeout ${timeoutSec}s');
-
-    final requestBody = {
-      'action': 'gemini',
-      'imageBase64': base64Encode(bytes),
-    };
-
-    http.Response response;
-
-    if (kIsWeb) {
-      response = await http.post(
-        Uri.parse(_backendUrl),
-        body: jsonEncode(requestBody),
-        headers: {'Content-Type': 'text/plain;charset=utf-8'},
-      ).timeout(Duration(seconds: timeoutSec));
-    } else {
-      final client = http.Client();
-      try {
-        response = await client.post(
-          Uri.parse(_backendUrl),
-          body: jsonEncode(requestBody),
-          headers: {'Content-Type': 'text/plain;charset=utf-8'},
-        ).timeout(Duration(seconds: timeoutSec));
-
-        if (response.statusCode == 302 || response.statusCode == 301) {
-          final loc = response.headers['location'] ?? '';
-          if (loc.isNotEmpty) {
-            response = await client.get(
-              Uri.parse(loc),
-              headers: {'Accept': 'application/json'},
-            ).timeout(Duration(seconds: timeoutSec));
-          }
-        }
-      } finally { client.close(); }
-    }
-
-    if (response.statusCode != 200) {
-      print('GeminiVision: Apps Script HTTP ${response.statusCode}');
-      return null;
-    }
-
-    final bodyTrimmed = utf8.decode(response.bodyBytes).trim();
-    if (bodyTrimmed.isEmpty || bodyTrimmed.startsWith('<!') || bodyTrimmed.startsWith('<html')) {
-      print('GeminiVision: Apps Script returned HTML, not JSON');
-      return null;
-    }
-
-    try {
-      final data = jsonDecode(bodyTrimmed) as Map<String, dynamic>;
-
-      final summary = data['summary']?.toString().toLowerCase() ?? '';
-      final firstHazardDesc = (data['hazards'] is List && (data['hazards'] as List).isNotEmpty)
-          ? (data['hazards'] as List).first['description']?.toString().toLowerCase() ?? ''
-          : '';
-      if (summary.contains('all providers exhausted') ||
-          summary.contains('temporarily unavailable') ||
-          firstHazardDesc.contains('all providers exhausted') ||
-          firstHazardDesc.contains('temporarily unavailable')) {
-        _lastExhaustionTime = DateTime.now();
-        data['error'] = 'AI providers exhausted on server';
-        return data;
-      }
-
-      if (data['hazards'] != null) {
-        data['_source'] = 'apps_script';
-        data['_isOnline'] = true;
-      }
-      return data;
-    } catch (e) {
-      print('GeminiVision: Apps Script JSON parse error: $e');
-      return null;
-    }
-  }
 
   // ══════════════════════════════════════════════════════════════════════════
   //  PARSE AI RESPONSE — extract JSON from model output
