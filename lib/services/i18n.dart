@@ -170,6 +170,11 @@ class I18n extends ChangeNotifier {
     'nearMiss.tapToTalk'   : 'Tap mic to dictate',
 
     'reports.title'        : 'Reports',
+    'reports.heading'      : 'Analytics & Reports',
+    'reports.tab.overview' : 'Overview',
+    'reports.tab.log'      : 'Log',
+    'reports.tab.analysis' : 'Analysis',
+    'reports.tab.plantWise': 'Plant Wise',
     'reports.all'          : 'All',
     'reports.open'         : 'Open',
     'reports.closed'       : 'Closed',
@@ -342,6 +347,11 @@ class I18n extends ChangeNotifier {
     'nearMiss.tapToTalk'   : 'बोलने के लिए माइक दबाएँ',
 
     'reports.title'        : 'रिपोर्ट्स',
+    'reports.heading'      : 'विश्लेषण और रिपोर्ट',
+    'reports.tab.overview' : 'अवलोकन',
+    'reports.tab.log'      : 'लॉग',
+    'reports.tab.analysis' : 'विश्लेषण',
+    'reports.tab.plantWise': 'प्लांट अनुसार',
     'reports.all'          : 'सभी',
     'reports.open'         : 'खुले',
     'reports.closed'       : 'बंद',

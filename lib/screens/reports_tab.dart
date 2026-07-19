@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
+import '../services/i18n.dart';
 import '../widgets/universal_app_bar.dart';
 import 'analytics/overview_tab.dart';
 import 'analytics/incident_log_tab.dart';
@@ -44,10 +45,14 @@ class _ReportsTabState extends State<ReportsTab>
       _tabController.index = 1;
       ReportsTab.pendingGoToLog = false;
     }
+    I18n.instance.addListener(_onLocale);
   }
+
+  void _onLocale() { if (mounted) setState(() {}); }
 
   @override
   void dispose() {
+    I18n.instance.removeListener(_onLocale);
     _tabController.dispose();
     super.dispose();
   }
@@ -61,7 +66,7 @@ class _ReportsTabState extends State<ReportsTab>
         child: Column(
           children: [
             UniversalAppBar(
-              title: 'Analytics & Reports',
+              title: I18n.t('reports.heading'),
               user: widget.user,
               toggleTheme: widget.toggleTheme,
               onSignOut: widget.onSignOut,
@@ -85,8 +90,8 @@ class _ReportsTabState extends State<ReportsTab>
                     labelColor: Colors.white,
                     unselectedLabelColor: sl.text3,
                     labelStyle: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700),
-                    unselectedLabelStyle: const TextStyle(fontSize: 11),
+                        fontSize: 13.5, fontWeight: FontWeight.w700),
+                    unselectedLabelStyle: const TextStyle(fontSize: 13.5),
                     indicator: BoxDecoration(
                       color: AppColors.accent,
                       borderRadius: BorderRadius.circular(10),
@@ -95,11 +100,12 @@ class _ReportsTabState extends State<ReportsTab>
                     dividerColor: Colors.transparent,
                     isScrollable: false,
                     padding: const EdgeInsets.all(3),
-                    tabs: const [
-                      Tab(text: 'Overview'),
-                      Tab(text: 'Log'),
-                      Tab(text: 'Analysis'),
-                      Tab(text: 'Plant Wise'),
+                    labelPadding: const EdgeInsets.symmetric(vertical: 4),
+                    tabs: [
+                      Tab(text: I18n.t('reports.tab.overview')),
+                      Tab(text: I18n.t('reports.tab.log')),
+                      Tab(text: I18n.t('reports.tab.analysis')),
+                      Tab(text: I18n.t('reports.tab.plantWise')),
                     ],
                   ),
                 ),

@@ -316,7 +316,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
           ),
           child: Text(label, style: TextStyle(
               color: active ? color : sl.text3,
-              fontSize: 10, fontWeight: FontWeight.w700)),
+              fontSize: 12, fontWeight: FontWeight.w700)),
         ),
       ),
     );
@@ -341,7 +341,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
           ),
           child: Text(label, style: TextStyle(
               color: active ? color : sl.text3,
-              fontSize: 10, fontWeight: FontWeight.w700)),
+              fontSize: 12, fontWeight: FontWeight.w700)),
         ),
       ),
     );
@@ -496,9 +496,9 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
               Row(children: [
                 Expanded(child: Text(
                   inc['title']?.toString() ?? 'Untitled',
-                  style: TextStyle(color: sl.text1, fontSize: 13,
+                  style: TextStyle(color: sl.text1, fontSize: 14.5,
                       fontWeight: FontWeight.w700),
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
                 )),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -508,7 +508,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                     border: Border.all(color: statusColor.withOpacity(0.3)),
                   ),
                   child: Text(status, style: TextStyle(
-                      color: statusColor, fontSize: 8, fontWeight: FontWeight.w800)),
+                      color: statusColor, fontSize: 9.5, fontWeight: FontWeight.w800)),
                 ),
               ]),
               const SizedBox(height: 5),
@@ -518,13 +518,13 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                 const SizedBox(width: 3),
                 Flexible(child: Text(
                   inc['plant']?.toString() ?? '—',
-                  style: TextStyle(color: sl.text3, fontSize: 10),
+                  style: TextStyle(color: sl.text3, fontSize: 11.5),
                   overflow: TextOverflow.ellipsis,
                 )),
                 const SizedBox(width: 8),
-                Icon(Icons.calendar_today_outlined, color: sl.text4, size: 10),
+                Icon(Icons.calendar_today_outlined, color: sl.text4, size: 11),
                 const SizedBox(width: 3),
-                Text(dateStr, style: TextStyle(color: sl.text3, fontSize: 10)),
+                Text(dateStr, style: TextStyle(color: sl.text3, fontSize: 11.5)),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -532,7 +532,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                     color: sevColor.withOpacity(0.12),
                     borderRadius: BorderRadius.circular(4)),
                   child: Text(sev, style: TextStyle(
-                      color: sevColor, fontSize: 8, fontWeight: FontWeight.w800)),
+                      color: sevColor, fontSize: 9.5, fontWeight: FontWeight.w800)),
                 ),
               ]),
               const SizedBox(height: 5),
@@ -558,7 +558,7 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                     Icon(typeIcon, color: typeColor, size: 9),
                     const SizedBox(width: 3),
                     Text(typeLabel, style: TextStyle(
-                        color: typeColor, fontSize: 8, fontWeight: FontWeight.w700)),
+                        color: typeColor, fontSize: 9.5, fontWeight: FontWeight.w700)),
                   ]),
                 ),
                 // ★ v35: Audit status badge

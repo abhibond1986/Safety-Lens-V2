@@ -33,6 +33,61 @@ class GeminiVision {
   static DateTime? _lastCallTime;
   static const Duration _minCallInterval = Duration(seconds: 5);
 
+  // ── CONSISTENCY CACHE ──────────────────────────────────────────────────────
+  // Keyed by image content hash so a repeat scan of the SAME photo returns the
+  // SAME analysis. Capped so it can't grow unbounded.
+  static const String _kResultCache = 'ai_result_cache_v1';
+  static const int    _kMaxCachedResults = 60;
+
+  /// Stable content hash of the image bytes (fast, dependency-free).
+  static String _contentHash(Uint8List bytes) {
+    // FNV-1a over a sampled subset (handles large images cheaply) plus length.
+    int h = 0x811c9dc5;
+    final step = bytes.length > 4096 ? bytes.length ~/ 2048 : 1;
+    for (int i = 0; i < bytes.length; i += step) {
+      h ^= bytes[i];
+      h = (h * 0x01000193) & 0xFFFFFFFF;
+    }
+    return '${bytes.length}_${h.toRadixString(16)}';
+  }
+
+  static Future<Map<String, dynamic>?> _readCachedResult(String hash) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kResultCache);
+      if (raw == null) return null;
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final entry = map[hash];
+      if (entry == null) return null;
+      // Deep copy so callers can mutate freely.
+      return Map<String, dynamic>.from(jsonDecode(jsonEncode(entry)) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> _writeCachedResult(
+      String hash, Map<String, dynamic> result) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_kResultCache);
+      final map = raw == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      // Store a lean copy (no bulky transient fields).
+      final lean = Map<String, dynamic>.from(result)..remove('_fromCache');
+      map[hash] = lean;
+      // Evict oldest if over cap (insertion order preserved by JSON map).
+      if (map.length > _kMaxCachedResults) {
+        final keys = map.keys.toList();
+        for (int i = 0; i < map.length - _kMaxCachedResults; i++) {
+          map.remove(keys[i]);
+        }
+      }
+      await prefs.setString(_kResultCache, jsonEncode(map));
+    } catch (_) {}
+  }
+
   // Prevent concurrent AI calls
   static bool _isAnalyzing = false;
 
@@ -51,6 +106,20 @@ class GeminiVision {
 
     try {
       print('GeminiVision: ═══ STARTING ANALYSIS ═══ (${bytes.length} bytes)');
+
+      // ══════════════════════════════════════════════════════════════════════
+      // CONSISTENCY CACHE — the SAME image must always produce the SAME report.
+      // AI vision models are non-deterministic, so re-scanning one photo could
+      // otherwise yield different hazards/risk. We key results by a content
+      // hash and return the stored analysis on a repeat scan.
+      // ══════════════════════════════════════════════════════════════════════
+      final imgHash = _contentHash(bytes);
+      final cached = await _readCachedResult(imgHash);
+      if (cached != null) {
+        print('GeminiVision: ✓ Returning CACHED result for image $imgHash (consistent)');
+        cached['_fromCache'] = true;
+        return cached;
+      }
 
       // Prevent concurrent analysis
       if (_isAnalyzing) {
@@ -141,6 +210,8 @@ class GeminiVision {
               orResult['_isOnline'] = true;
               _lastCallTime = DateTime.now();
               _isAnalyzing = false;
+              // Cache so the SAME image always returns THIS result.
+              await _writeCachedResult(imgHash, orResult);
               return orResult;
             }
           } catch (e) {
@@ -244,7 +315,12 @@ class GeminiVision {
         }
       ],
       'max_tokens': 4096,
-      'temperature': 0.15,
+      // Deterministic decoding: temperature 0 + fixed seed minimise run-to-run
+      // variance so a new image gets as reproducible a result as the model allows.
+      // (The image-hash cache guarantees exact repeats are identical.)
+      'temperature': 0,
+      'top_p': 1,
+      'seed': 42,
     };
 
     try {
