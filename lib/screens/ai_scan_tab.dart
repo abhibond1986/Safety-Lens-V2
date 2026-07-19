@@ -112,15 +112,26 @@ class _AIScanTabState extends State<AIScanTab> {
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    // ✅ Step 1: Open camera/gallery IMMEDIATELY — no GPS blocking
+    // ✅ Step 1: Open camera/gallery IMMEDIATELY — no GPS blocking.
+    // For GALLERY, pick at FULL quality (no resize) so the image's EXIF —
+    // including embedded GPS — is preserved; image_picker's imageQuality/
+    // maxWidth/maxHeight re-encode the file and strip all metadata.
+    // We downscale in-app afterwards for fast analysis. Camera photos have
+    // no useful EXIF GPS here (we watermark with live device GPS instead),
+    // so we let the picker resize those directly.
     final picker = ImagePicker();
-    final picked = await picker.pickImage(
-        source: source, imageQuality: 80,
-        maxWidth: 1024, maxHeight: 1024);
+    final bool isGallery = source == ImageSource.gallery;
+    final picked = isGallery
+        ? await picker.pickImage(source: source)
+        : await picker.pickImage(
+            source: source, imageQuality: 80,
+            maxWidth: 1024, maxHeight: 1024);
     if (picked == null) return;
 
-    // Step 2: Read image bytes
-    Uint8List bytes = await picked.readAsBytes();
+    // Step 2: Read image bytes. Keep the ORIGINAL (with EXIF) for gallery so
+    // GPS can be extracted; use a downscaled copy for analysis/display.
+    final Uint8List originalBytes = await picked.readAsBytes();
+    Uint8List bytes = isGallery ? _downscaleForAnalysis(originalBytes) : originalBytes;
 
     // Step 3: Update state immediately — start AI analysis
     setState(() {
@@ -136,19 +147,23 @@ class _AIScanTabState extends State<AIScanTab> {
       _currentStep    = 2;
     });
 
-    // Step 4: Capture GPS silently in background (non-blocking)
-    // ★ v32: Try EXIF GPS for gallery photos first
-    _captureLocationSmart(bytes, source);
+    // Step 4: Capture GPS silently in background (non-blocking).
+    // ★ Try EXIF GPS from the ORIGINAL (metadata-preserving) bytes for
+    //   gallery uploads; watermark the downscaled display image.
+    _captureLocationSmart(originalBytes, bytes, source);
 
     await _analyze();
   }
 
-  /// Captures GPS location silently in background without showing any UI to user
-  /// ★ v32: Try EXIF GPS for gallery, device GPS for camera
-  Future<void> _captureLocationSmart(Uint8List originalBytes, ImageSource source) async {
+  /// Captures GPS location silently in background without showing any UI.
+  /// [exifBytes] retains EXIF (used for GPS extraction); [displayBytes] is the
+  /// downscaled image shown/analyzed and watermarked.
+  /// ★ Try EXIF GPS for gallery, device GPS for camera.
+  Future<void> _captureLocationSmart(
+      Uint8List exifBytes, Uint8List displayBytes, ImageSource source) async {
     if (source == ImageSource.gallery) {
       try {
-        final exifLocation = await GeoService.getLocationFromExif(originalBytes).timeout(
+        final exifLocation = await GeoService.getLocationFromExif(exifBytes).timeout(
           const Duration(seconds: 5), onTimeout: () => null);
         if (!mounted) return;
         if (exifLocation != null && exifLocation.isValid) {
@@ -156,8 +171,8 @@ class _AIScanTabState extends State<AIScanTab> {
             _capturedLocation = exifLocation;
             _locationController.text = GeoService.getDisplayAddress(exifLocation);
           });
-          // Still watermark with EXIF location
-          final watermarked = await GeoService.addWatermarkToImage(originalBytes, exifLocation);
+          // Watermark the DISPLAY image with the EXIF-derived location.
+          final watermarked = await GeoService.addWatermarkToImage(displayBytes, exifLocation);
           if (watermarked != null && mounted) {
             setState(() => _imageBytes = watermarked);
           }
@@ -165,8 +180,8 @@ class _AIScanTabState extends State<AIScanTab> {
         }
       } catch (_) {}
     }
-    // Fallback to device GPS
-    _captureGpsInBackground(originalBytes);
+    // Fallback to device GPS — watermark the display image.
+    _captureGpsInBackground(displayBytes);
   }
 
   Future<void> _captureGpsInBackground(Uint8List originalBytes) async {
@@ -198,6 +213,25 @@ class _AIScanTabState extends State<AIScanTab> {
           _imageBytes = watermarked;
         });
       }
+    }
+  }
+
+  /// Downscale a full-resolution gallery image (kept full so EXIF survives the
+  /// pick) to ~1024px on the long edge for fast upload/analysis. Falls back to
+  /// the original bytes if decoding fails.
+  Uint8List _downscaleForAnalysis(Uint8List original, {int maxEdge = 1024}) {
+    try {
+      final decoded = img.decodeImage(original);
+      if (decoded == null) return original;
+      if (decoded.width <= maxEdge && decoded.height <= maxEdge) {
+        return original; // already small enough
+      }
+      final resized = decoded.width >= decoded.height
+          ? img.copyResize(decoded, width: maxEdge)
+          : img.copyResize(decoded, height: maxEdge);
+      return Uint8List.fromList(img.encodeJpg(resized, quality: 85));
+    } catch (_) {
+      return original;
     }
   }
 

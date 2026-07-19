@@ -87,11 +87,20 @@ class NotificationService {
       },
     );
 
-    // Create the notification channel
-    await _localNotifications
+    final androidImpl = _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_alertChannel);
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    // Android 13+ (API 33) requires an explicit runtime POST_NOTIFICATIONS
+    // grant before ANY notification (local or FCM) will display.
+    try {
+      await androidImpl?.requestNotificationsPermission();
+    } catch (e) {
+      print('[FCM] Notification permission request failed: $e');
+    }
+
+    // Create the notification channel
+    await androidImpl?.createNotificationChannel(_alertChannel);
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
