@@ -6,6 +6,8 @@ import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
 import '../../services/image_storage.dart';
 import '../../services/admin_master_data.dart';
+import '../../services/pdf_export.dart';
+import '../../services/sync_service.dart';
 import '../incident_detail_screen.dart';
 import '../reports_tab.dart';
 
@@ -27,8 +29,24 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
   String _dateRange = '90 days';
   bool _myReportsOnly = false; // ★ v35: filter by current user
   String _currentUserName = '';
+  String _currentUserPno = '';
+  bool _currentUserIsAdmin = false;
   // Active canonical plant list (admin-editable) for name normalization.
   List<Map<String, String>> _plantDefs = AdminMasterData.sailPlants;
+
+  /// True if the current user may delete [inc]: admins can delete anything;
+  /// a reporter can delete only their own AI scan / near-miss report.
+  bool _canDelete(Map<String, dynamic> inc) {
+    if (_currentUserIsAdmin) return true;
+    final byName = (inc['reportedBy']?.toString() ?? '').trim().toLowerCase();
+    final byPno  = (inc['reportedByPno']?.toString() ??
+                    inc['reporterPno']?.toString() ?? '').trim().toLowerCase();
+    final myName = _currentUserName.trim().toLowerCase();
+    final myPno  = _currentUserPno.trim().toLowerCase();
+    if (myPno.isNotEmpty && byPno.isNotEmpty && myPno == byPno) return true;
+    if (myName.isNotEmpty && byName.isNotEmpty && myName == byName) return true;
+    return false;
+  }
 
   /// Canonical plant label for an incident (dedupes name variants).
   String _canonPlant(Map<String, dynamic> i) =>
@@ -67,10 +85,16 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
     final inc = await LocalDB.getIncidents();
     final user = await LocalDB.getCurrentUser();
     final plants = await AdminMasterData.getPlants();
+    final adminVal = user?['isAdmin'];
+    final isAdmin = adminVal is bool
+        ? adminVal
+        : adminVal?.toString().toLowerCase() == 'true';
     if (mounted) setState(() {
       _all = inc;
       _plantDefs = plants;
       _currentUserName = user?['name']?.toString() ?? '';
+      _currentUserPno = user?['pno']?.toString() ?? '';
+      _currentUserIsAdmin = isAdmin;
       _loading = false;
     });
   }
@@ -572,14 +596,137 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
                 ],
                 const Spacer(),
                 if ((inc['reportedBy']?.toString() ?? '').isNotEmpty)
-                  Text(inc['reportedBy'].toString(),
-                      style: TextStyle(color: sl.text4, fontSize: 9)),
+                  Flexible(child: Text(inc['reportedBy'].toString(),
+                      style: TextStyle(color: sl.text4, fontSize: 9),
+                      overflow: TextOverflow.ellipsis)),
+              ]),
+              const SizedBox(height: 8),
+              // ── Actions: PDF report (all) + Delete (owner or admin only) ──
+              Row(children: [
+                _cardAction(
+                  icon: Icons.picture_as_pdf_rounded,
+                  label: 'PDF',
+                  color: AppColors.cyan,
+                  onTap: () => _exportPdf(inc),
+                ),
+                if (_canDelete(inc)) ...[
+                  const SizedBox(width: 8),
+                  _cardAction(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Delete',
+                    color: AppColors.red,
+                    onTap: () => _confirmDelete(inc),
+                  ),
+                ],
               ]),
             ])),
           ]),
         ),
       ),
     );
+  }
+
+  /// Small pill button used in the incident card action row.
+  Widget _cardAction({
+    required IconData icon, required String label,
+    required Color color, required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.35)),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, color: color, size: 14),
+            const SizedBox(width: 5),
+            Text(label, style: TextStyle(
+                color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  /// Generate + download/share the PDF report for one incident.
+  Future<void> _exportPdf(Map<String, dynamic> inc) async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Generating PDF…'),
+      duration: Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+    ));
+    try {
+      Uint8List? imageBytes;
+      try {
+        imageBytes = await ImageStorage.getImageForIncident(inc);
+      } catch (_) {}
+      await PdfExport.downloadOrShareIncident(
+        incident: inc,
+        reporterName: inc['reportedBy']?.toString() ?? 'SAIL Safety Officer',
+        reporterPno: inc['reportedByPno']?.toString() ?? inc['reporterPno']?.toString() ?? '',
+        imageBytes: imageBytes,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('PDF failed: $e'),
+        backgroundColor: AppColors.red,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  /// Confirm + delete an incident (AI scan or near miss), then refresh.
+  Future<void> _confirmDelete(Map<String, dynamic> inc) async {
+    final sl = SL.of(context);
+    final id = inc['id']?.toString() ?? '';
+    if (id.isEmpty) return;
+    final title = inc['title']?.toString() ?? 'this report';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: sl.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Row(children: [
+          const Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 20),
+          const SizedBox(width: 8),
+          Expanded(child: Text('Delete report?',
+              style: TextStyle(color: sl.text1, fontSize: 15, fontWeight: FontWeight.w800))),
+        ]),
+        content: Text('“$title” will be permanently deleted. This cannot be undone.',
+            style: TextStyle(color: sl.text2, fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: Text('Cancel', style: TextStyle(color: sl.text3))),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.red,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: const Text('Delete', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await LocalDB.deleteIncident(id);
+      await SyncService.deleteIncident(id).catchError((_) => false);
+    } catch (_) {}
+    if (!mounted) return;
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Report deleted'),
+      backgroundColor: AppColors.red,
+      behavior: SnackBarBehavior.floating,
+    ));
   }
 
   Widget _typeIconWidget(IconData icon, Color color) {
