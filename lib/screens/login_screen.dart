@@ -241,10 +241,12 @@ class _LoginScreenState extends State<LoginScreen> {
         final pushData = Map<String, dynamic>.from(userData);
         pushData.remove('password'); // Don't send plaintext password
         pushData['passwordHash'] = _simpleHash(pass); // Backend expects this
-        // Try registration first (direct, public action), then upsertUser as backup
+        // Try registration first (direct, public action); if it doesn't land,
+        // push reliably (enqueues for retry) so the user reliably reaches the
+        // backend — and therefore the admin panel on other devices.
         SyncService.registerOnline(pushData).then((registered) {
-          if (!registered) SyncService.pushUser(pushData);
-        }).catchError((_) => SyncService.pushUser(pushData).catchError((_) => false));
+          if (!registered) SyncService.pushUserReliable(pushData);
+        }).catchError((_) => SyncService.pushUserReliable(pushData));
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('${I18n.t('common.success')}! Welcome, $name'),
           backgroundColor: Colors.green,

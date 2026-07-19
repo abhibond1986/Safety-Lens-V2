@@ -23,6 +23,56 @@ class LocalDB {
   static const _kKbDocs        = 'kb_documents';
   static const _kFeedback      = 'feedback_corrections';
   static const _kCustomHazards = 'custom_hazards';
+  // Tombstones: ids/usernames deleted locally that must stay hidden even if a
+  // backend re-fetch still returns them (until the backend confirms removal).
+  static const _kDeletedIncidentIds = 'deleted_incident_ids';
+  static const _kDeletedUsernames   = 'deleted_usernames';
+
+  // ═══════════════════════════════════════════════════════════════
+  //  TOMBSTONES — keep deletes from being resurrected by sheet merges
+  // ═══════════════════════════════════════════════════════════════
+  static Set<String> _readSet(String key) {
+    final raw = _prefs.getString(key);
+    if (raw == null || raw.isEmpty) return <String>{};
+    try {
+      return (jsonDecode(raw) as List).map((e) => e.toString()).toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static Future<void> _writeSet(String key, Set<String> v) async {
+    await _prefs.setString(key, jsonEncode(v.toList()));
+  }
+
+  static Set<String> deletedIncidentIds() => _readSet(_kDeletedIncidentIds);
+  static Set<String> deletedUsernames()   => _readSet(_kDeletedUsernames);
+
+  static Future<void> addDeletedIncidentId(String id) async {
+    if (id.trim().isEmpty) return;
+    final s = _readSet(_kDeletedIncidentIds)..add(id.trim());
+    await _writeSet(_kDeletedIncidentIds, s);
+  }
+
+  static Future<void> addDeletedUsername(String username) async {
+    if (username.trim().isEmpty) return;
+    final s = _readSet(_kDeletedUsernames)..add(username.trim());
+    await _writeSet(_kDeletedUsernames, s);
+  }
+
+  /// Prune a tombstone once the backend confirms the record is gone
+  /// (i.e. a fresh fetch no longer returns it).
+  static Future<void> pruneIncidentTombstones(Set<String> stillPresentIds) async {
+    final s = _readSet(_kDeletedIncidentIds);
+    final pruned = s.where((id) => stillPresentIds.contains(id)).toSet();
+    if (pruned.length != s.length) await _writeSet(_kDeletedIncidentIds, pruned);
+  }
+
+  static Future<void> pruneUsernameTombstones(Set<String> stillPresentUsernames) async {
+    final s = _readSet(_kDeletedUsernames);
+    final pruned = s.where((u) => stillPresentUsernames.contains(u)).toSet();
+    if (pruned.length != s.length) await _writeSet(_kDeletedUsernames, pruned);
+  }
 
   static Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
@@ -265,6 +315,12 @@ class LocalDB {
     users.add(userData);
     await _prefs.setString(_kUsers, jsonEncode(users));
 
+    // If this username was previously deleted, clear its tombstone so the
+    // re-registered account is visible again.
+    final ts = _readSet(_kDeletedUsernames);
+    final uname = (userData['username']?.toString() ?? '').trim();
+    if (ts.remove(uname)) await _writeSet(_kDeletedUsernames, ts);
+
     // Store safe user (no credentials) in current session
     final safeUser = Map<String, dynamic>.from(userData)
       ..remove('password')..remove('passwordHash')..remove('salt');
@@ -314,8 +370,10 @@ class LocalDB {
   static Future<List<Map<String, dynamic>>> getUsers() async {
     final raw = _prefs.getString(_kUsers);
     if (raw == null) return [];
+    final tombstoned = deletedUsernames();
     return (jsonDecode(raw) as List)
         .map((e) => Map<String, dynamic>.from(e))
+        .where((u) => !tombstoned.contains((u['username']?.toString() ?? '').trim()))
         .toList();
   }
 
@@ -355,7 +413,12 @@ class LocalDB {
     final uname = (user['username']?.toString() ?? '').trim();
     if (uname.isEmpty) return;
 
-    final users = await getUsers();
+    // Read RAW (not tombstone-filtered) so we update the real record rather
+    // than duplicating a previously-deleted one.
+    final rawU = _prefs.getString(_kUsers);
+    final users = rawU == null
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(rawU) as List).map((e) => Map<String, dynamic>.from(e)).toList();
     final idx = users.indexWhere(
         (u) => (u['username']?.toString() ?? '').trim() == uname);
 
@@ -370,6 +433,10 @@ class LocalDB {
       users.add(Map<String, dynamic>.from(user));
     }
     await _prefs.setString(_kUsers, jsonEncode(users));
+
+    // Re-adding a user clears any prior deletion tombstone.
+    final ts = _readSet(_kDeletedUsernames);
+    if (ts.remove(uname)) await _writeSet(_kDeletedUsernames, ts);
 
     // Also refresh cached_users so the dashboard switcher sees the change
     try {
@@ -399,7 +466,11 @@ class LocalDB {
     final uname = username.trim();
     if (uname.isEmpty) return;
 
-    final users = await getUsers();
+    // Read RAW (getUsers hides tombstoned) so we mutate the real bucket.
+    final rawU = _prefs.getString(_kUsers);
+    final users = rawU == null
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(rawU) as List).map((e) => Map<String, dynamic>.from(e)).toList();
     users.removeWhere(
         (u) => (u['username']?.toString() ?? '').trim() == uname);
     await _prefs.setString(_kUsers, jsonEncode(users));
@@ -412,6 +483,9 @@ class LocalDB {
         await _prefs.setString(_kCachedUsers, jsonEncode(cached));
       }
     } catch (_) {}
+
+    // Tombstone so a backend re-fetch can't resurrect the deleted user.
+    await addDeletedUsername(uname);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -421,8 +495,11 @@ class LocalDB {
   static Future<List<Map<String, dynamic>>> getIncidents() async {
     final raw = _prefs.getString(_kIncidents);
     if (raw == null) return [];
+    final tombstoned = deletedIncidentIds();
     final list = (jsonDecode(raw) as List)
         .map((e) => Map<String, dynamic>.from(e))
+        // Never surface a locally-deleted incident, even if it lingers.
+        .where((i) => !tombstoned.contains(i['id']?.toString() ?? ''))
         .toList();
     list.sort((a, b) => (b['date'] ?? '')
         .toString()
@@ -485,9 +562,15 @@ class LocalDB {
   }
 
   static Future<void> deleteIncident(String id) async {
-    final incidents = await getIncidents();
+    // Read the RAW list (getIncidents() already hides tombstoned ids).
+    final raw = _prefs.getString(_kIncidents);
+    final incidents = raw == null
+        ? <Map<String, dynamic>>[]
+        : (jsonDecode(raw) as List).map((e) => Map<String, dynamic>.from(e)).toList();
     incidents.removeWhere((i) => i['id']?.toString() == id);
     await _prefs.setString(_kIncidents, jsonEncode(incidents));
+    // Tombstone so a backend re-fetch can't resurrect it.
+    await addDeletedIncidentId(id);
   }
 
   // ═══════════════════════════════════════════════════════════════

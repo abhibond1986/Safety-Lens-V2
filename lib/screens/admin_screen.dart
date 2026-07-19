@@ -245,11 +245,18 @@ class _AdminScreenState extends State<AdminScreen>
       final localUsers  = await LocalDB.getUsers();
       final cachedUsers = await LocalDB.getCachedUsers();
 
+      // Locally-deleted usernames must stay hidden even if the sheet still
+      // returns them. Prune tombstones the backend no longer knows about.
+      final deletedUnames = LocalDB.deletedUsernames();
+      await LocalDB.pruneUsernameTombstones(
+          sheetsUsers.map((u) => (u['username']?.toString() ?? '').trim()).toSet());
+
       final byUname = <String, Map<String, dynamic>>{};
       // Sheets data takes priority, then cached, then local
       for (final u in [...localUsers, ...cachedUsers, ...sheetsUsers]) {
         final uname = (u['username']?.toString() ?? '').trim();
         if (uname.isEmpty) continue;
+        if (deletedUnames.contains(uname)) continue; // tombstoned — skip
         if (!byUname.containsKey(uname)) {
           byUname[uname] = Map<String, dynamic>.from(u);
         } else {
@@ -274,11 +281,18 @@ class _AdminScreenState extends State<AdminScreen>
       try { sheetsIncs = await SyncService.fetchIncidents(); } catch (_) {}
       final localIncs = await LocalDB.getIncidents();
 
+      // Locally-deleted incident ids must stay hidden even if the sheet still
+      // returns them. Prune tombstones the backend no longer knows about.
+      final deletedIds = LocalDB.deletedIncidentIds();
+      await LocalDB.pruneIncidentTombstones(
+          sheetsIncs.map((i) => (i['id']?.toString() ?? '').trim()).toSet());
+
       // Merge: backend overrides, local adds missing
       final byId = <String, Map<String, dynamic>>{};
       for (final inc in [...localIncs, ...sheetsIncs]) {
         final id = (inc['id']?.toString() ?? '').trim();
         if (id.isEmpty) continue;
+        if (deletedIds.contains(id)) continue; // tombstoned — skip
         if (!byId.containsKey(id)) {
           byId[id] = Map<String, dynamic>.from(inc);
         } else {
@@ -1556,8 +1570,11 @@ class _AdminScreenState extends State<AdminScreen>
     int success = 0;
     for (final id in ids) {
       try {
+        // Local delete records a tombstone so the row can't be resurrected
+        // by a sheet re-fetch. Remote delete is awaited; if it fails the
+        // tombstone keeps it hidden and it retries via the pending queue.
         await LocalDB.deleteIncident(id);
-        SyncService.deleteIncident(id).catchError((_) => false);
+        await SyncService.deleteIncident(id).catchError((_) => false);
         success++;
       } catch (_) {}
     }

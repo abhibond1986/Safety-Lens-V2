@@ -560,6 +560,16 @@ class SyncService {
         // ✅ FIX: Pass fromQueue=true to prevent pushIncident from
         // re-adding to the queue (which caused duplicate entries)
         ok = await pushIncident(payload, fromQueue: true);
+      } else if (action == 'upsertUser') {
+        // Retry a user registration/update that couldn't reach the backend.
+        ok = await pushUser(payload);
+      } else if (action == 'deleteIncident') {
+        ok = await deleteIncident(payload['id']?.toString() ?? '');
+      } else if (action == 'deleteUser') {
+        ok = await deleteUser(payload['username']?.toString() ?? '');
+      } else {
+        // Unknown/legacy action — drop it so the queue can't wedge forever.
+        ok = true;
       }
       if (ok) {
         synced++;
@@ -788,6 +798,17 @@ class SyncService {
     }
 
     return false;
+  }
+
+  /// Push a user to the backend; if it fails (offline / backend down),
+  /// enqueue it so it retries later. Prevents "registered users never reach
+  /// the admin panel on other devices" when the one-shot push is missed.
+  static Future<bool> pushUserReliable(Map<String, dynamic> user) async {
+    final ok = await pushUser(user).catchError((_) => false);
+    if (!ok) {
+      await _addToPendingQueue('upsertUser', user);
+    }
+    return ok;
   }
 
   static Future<void> pushAllIncidents(
