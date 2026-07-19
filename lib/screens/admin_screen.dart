@@ -2029,9 +2029,10 @@ class _AdminScreenState extends State<AdminScreen>
           ),
         ),
         const SizedBox(height: 6),
-        Text('Image hazard scans run on OpenRouter. “Auto” tries Gemma, then '
-             'Nemotron. Pick a specific model only if your key serves it. '
-             '(Groq key above is used for near-miss text, not image scans.)',
+        Text('Image hazard scans run on OpenRouter. “Auto” tries the fast '
+             'Nano 12B VL first, then 30B Omni. Free models can queue when '
+             'busy; use a paid model for consistent speed. '
+             '(Groq key above is for near-miss text, not image scans.)',
           style: TextStyle(color: sl.text4, fontSize: 9)),
         const SizedBox(height: 12),
         // ★ v26: Key is now auto-saved from the dialog. This button only updates model selection.

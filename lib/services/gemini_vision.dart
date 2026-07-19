@@ -2,9 +2,11 @@
 // ★ v25 MAXIMUM RELIABILITY — 4 independent providers, NEVER fails
 //
 // PRIORITY CHAIN (OpenRouter only, stops at first success):
-//   1. OpenRouter Gemma 4 26B (client) — PRIMARY model (free)
-//   2. OpenRouter Nemotron 30B (client) — SECONDARY model (free, 256K context)
+//   1. OpenRouter Nemotron Nano 12B VL (client) — PRIMARY (fastest free image model)
+//   2. OpenRouter Nemotron 30B Omni (client) — SECONDARY (free, higher capacity)
 //   3. Offline KB fallback (clean message, no network)
+// NOTE: free-tier models share capacity and can queue; a paid endpoint
+//       (drop ":free") is the way to get consistent ~5s latency.
 //
 // FAST-BAIL: On 429/quota errors, skips remaining models on same key immediately.
 // ALL keys auto-sync from Apps Script Properties on every app launch.
@@ -20,8 +22,12 @@ import 'knowledge_service.dart';
 
 class GeminiVision {
   // OpenRouter vision models (free tier), tried in order.
-  static const String _orGemmaModel    = 'google/gemma-4-26b-a4b-it:free';
+  // Nano 12B VL is the lightest/fastest free image model (hybrid
+  // Transformer-Mamba, built for low latency); the 30B Omni is a
+  // higher-capacity fallback if Nano is unavailable or too slow.
+  static const String _orNanoVlModel   = 'nvidia/nemotron-nano-12b-v2-vl:free';
   static const String _orNemotronModel = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
+  static const String _orGemmaModel    = 'google/gemma-4-26b-a4b-it:free';
 
   // Rate-limiting between analyses
   static DateTime? _lastCallTime;
@@ -109,18 +115,18 @@ class GeminiVision {
       }
 
       // ══════════════════════════════════════════════════════════════════════
-      // OPENROUTER-ONLY vision chain. Try Gemma first, then Nemotron.
+      // OPENROUTER-ONLY vision chain. Fast Nano 12B VL first, then 30B Omni.
       // ══════════════════════════════════════════════════════════════════════
       final prefs = await SharedPreferences.getInstance();
       final orKey = prefs.getString('openrouter_api_key') ?? '';
       if (orKey.isNotEmpty && orKey.startsWith('sk-or-')) {
-        // If an admin pinned a model, use only that one; else Gemma → Nemotron.
+        // If an admin pinned a model, use only that one; else Nano VL → Omni.
         final pinned = prefs.getString(_kVisionModelPin);
         final List<List<String>> attempts = (pinned != null && pinned.isNotEmpty)
             ? [[pinned, 'pinned model']]
             : const [
-                [_orGemmaModel,    'Gemma 4 26B (primary)'],
-                [_orNemotronModel, 'Nemotron 30B (secondary)'],
+                [_orNanoVlModel,   'Nemotron Nano 12B VL (primary, fastest)'],
+                [_orNemotronModel, 'Nemotron 30B Omni (secondary)'],
               ];
         for (int i = 0; i < attempts.length; i++) {
           final model = attempts[i][0];
@@ -184,9 +190,10 @@ class GeminiVision {
 
   /// Vision models offered in the Admin panel dropdown (id → label).
   static const List<Map<String, String>> groqVisionModels = [
-    {'id': 'auto', 'name': 'Auto (Gemma, then Nemotron)'},
-    {'id': _orGemmaModel,    'name': 'Gemma 4 26B (free)'},
-    {'id': _orNemotronModel, 'name': 'Nemotron 30B (free)'},
+    {'id': 'auto', 'name': 'Auto (Nano 12B VL → 30B Omni)'},
+    {'id': _orNanoVlModel,   'name': 'Nemotron Nano 12B VL (fastest, free)'},
+    {'id': _orNemotronModel, 'name': 'Nemotron 30B Omni (free)'},
+    {'id': _orGemmaModel,    'name': 'Gemma 4 26B (free, slower)'},
   ];
 
   /// Admin-selected preferred vision model ('auto' = try the chain in order).
@@ -250,7 +257,7 @@ class GeminiVision {
           'X-Title': 'SAIL Safety Lens',
         },
         body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 30));
+      ).timeout(const Duration(seconds: 45));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
