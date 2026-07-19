@@ -18,6 +18,7 @@ import '../main.dart';
 import '../services/gemini_vision.dart';
 import '../services/local_ai.dart';
 import '../services/local_db.dart';
+import '../services/image_storage.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_export.dart';
 import '../services/geo_service.dart';
@@ -903,6 +904,20 @@ class _AIScanTabState extends State<AIScanTab> {
       final hash         = _computeHash(_imageBytes!);
       dbInc['imageHash'] = hash;
       _savedImageHash    = hash;
+
+      // Persist the FULL image to file storage so it survives the
+      // imageBase64 purge and is available later for the PDF (with bbox
+      // overlays) and the detail view. On web there's no file system, so we
+      // keep the inline base64 which the web build tolerates.
+      if (!kIsWeb) {
+        try {
+          final ref = await ImageStorage.saveImage(
+              dbInc['id']?.toString() ?? '', _imageBytes!);
+          if (ref != null) dbInc['imageRef'] = ref;
+        } catch (_) {}
+      } else {
+        dbInc['imageBase64'] = base64Encode(_imageBytes!);
+      }
     }
 
     await LocalDB.saveIncident(dbInc);

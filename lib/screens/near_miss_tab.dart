@@ -99,7 +99,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
   bool                    _voiceSessionEnded = false; // ★ v29: prevent double AI trigger
   int                     _voiceSessionId = 0; // ★ v29: stale timeout protection
   TextEditingController? _activeMicField;
-  String                  _detectedLang    = 'en'; // ★ v25: auto-detected input language
+  String                  _detectedLang    = I18n.currentLang; // input language (seed from app locale)
 
   // Mic pulse animation
   late AnimationController _micPulseCtrl;
@@ -242,7 +242,7 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         },
         localeId:     _voiceLocaleId,
         listenFor:    const Duration(minutes: 3),
-        pauseFor:     const Duration(seconds: 6), // ★ v25: 6-sec pause auto-stops
+        pauseFor:     const Duration(seconds: 5), // auto-stops after 5s pause → AI analysis
         partialResults: true,
         cancelOnError:  false,
         listenMode:   stt.ListenMode.dictation,
@@ -320,21 +320,24 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
         },
         localeId:       _voiceLocaleId,
         listenFor:      const Duration(minutes: 3),
-        pauseFor:       const Duration(seconds: 6), // ★ v25: 6-sec pause auto-stops mic
+        pauseFor:       const Duration(seconds: 5), // auto-stops after 5s pause → AI analysis
         partialResults: true,
         cancelOnError:  false,
         listenMode:     stt.ListenMode.dictation,
       );
-      // ★ v28: Voice timeout — if no result in 5s, locale may be unsupported
-      Future.delayed(const Duration(seconds: 5), () {
+      // Voice diagnostic — if NOTHING is recognized after 8s, the selected
+      // locale likely isn't installed for on-device dictation. (Kept longer
+      // than the 5s pauseFor so a normal pause doesn't trigger this.)
+      Future.delayed(const Duration(seconds: 8), () {
         if (!mounted || !_isListening || _activeMicField != targetField) return;
-        // Check if text changed (i.e., result was received)
         if (targetField.text == baseText) {
-          // No result received — locale may not be supported
           _speech.stop();
           setState(() { _isListening = false; _activeMicField = null; });
-          final langName = _selectedVoiceLang == 'hi' ? 'Hindi' : 'English';
-          _snack('$langName voice not available in this browser. Switching to Hindi.', AppColors.amber);
+          final langName = _selectedVoiceLang == 'hi' ? 'Hindi (हिंदी)' : 'English';
+          _snack('$langName speech recognition isn\'t available on this device. '
+                 'Install the $langName language pack in your keyboard/voice settings, '
+                 'or type the report — AI will still refine it in $langName.',
+                 AppColors.amber);
         }
       });
     } catch (e) {
@@ -355,15 +358,20 @@ class _NearMissTabState extends State<NearMissTab> with TickerProviderStateMixin
       if (c >= 0x0900 && c <= 0x097F) devanagari++;      // Hindi/Devanagari
       else if (c >= 0x0041 && c <= 0x007A) latin++;      // English (ASCII letters)
     }
-    final max = [devanagari, latin].reduce((a, b) => a > b ? a : b);
-    if (max == 0) return;
-    String detected;
-    if (max == devanagari) detected = 'hi';
-    else detected = 'en';
-    if (detected != _detectedLang) {
-      debugPrint('Language auto-detected: $detected (from: ${text.substring(0, text.length.clamp(0, 30))})');
-      _detectedLang = detected;
+    // Any Devanagari present ⇒ Hindi (mixed input is common; even a few
+    // Hindi characters mean the worker is writing in Hindi).
+    if (devanagari > 0) {
+      _detectedLang = 'hi';
+      return;
     }
+    // If the user explicitly chose Hindi as their voice/input language, honour
+    // that even before any Hindi characters are typed — the AI must reply in
+    // Hindi. Only fall to English when there IS latin text and Hindi wasn't chosen.
+    if (_selectedVoiceLang == 'hi') {
+      _detectedLang = 'hi';
+      return;
+    }
+    if (latin > 0) _detectedLang = 'en';
   }
 
   /// Get language name for AI prompt
@@ -2070,7 +2078,10 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
           return Padding(
             padding: const EdgeInsets.only(right: 6),
             child: GestureDetector(
-              onTap: () => setState(() => _selectedVoiceLang = l['code']!),
+              onTap: () => setState(() {
+                _selectedVoiceLang = l['code']!;
+                _detectedLang = l['code']!; // AI replies in the chosen language
+              }),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
@@ -2104,7 +2115,10 @@ ${[_immediateAction.text.trim(), ..._additionalActions.map((c) => c.text.trim())
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       tileColor: isSelected ? AppColors.accent.withOpacity(0.08) : null,
       onTap: () {
-        setState(() => _selectedVoiceLang = code);
+        setState(() {
+          _selectedVoiceLang = code;
+          _detectedLang = code; // AI replies in the chosen language
+        });
         Navigator.pop(context);
         _snack('Voice language: $label — speak and text will appear in native script', AppColors.accent);
       },

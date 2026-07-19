@@ -8,6 +8,7 @@
 //                   replaceAllUsers, replaceAllKnowledgeDocs
 
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'kb_seed_data.dart';
 import 'crypto_utils.dart';
@@ -525,15 +526,16 @@ class LocalDB {
     // incident['locationAddress']  - Human-readable address
     // incident['locationTimestamp'] - When GPS was captured
 
-    // ✅ FIX: Strip imageBase64 before local storage to prevent
-    // QuotaExceededError. Images are already uploaded to Cloudinary
-    // and sent to Google Sheets separately — no need to store locally.
+    // Image retention:
+    //  • Mobile stores the full image as a FILE (imageRef) — so we always
+    //    strip the heavy imageBase64 from SharedPreferences here.
+    //  • Web has no file storage, so the inline imageBase64 is the ONLY copy
+    //    the PDF (with bbox overlays) can use. We keep it, but only for the
+    //    most-recent few incidents to stay under the browser storage quota.
     final toStore = Map<String, dynamic>.from(incident);
-    toStore.remove('imageBase64');
-
-    // Also strip imageBase64 from any existing entries (in case purge hasn't run yet)
-    for (final existing in all) {
-      existing.remove('imageBase64');
+    final hasFileRef = (toStore['imageRef']?.toString() ?? '').isNotEmpty;
+    if (!kIsWeb || hasFileRef) {
+      toStore.remove('imageBase64'); // mobile: file copy exists
     }
 
     final existingIdx = all.indexWhere(
@@ -543,6 +545,10 @@ class LocalDB {
     } else {
       all.add(toStore);
     }
+
+    // Bound inline-image storage: keep imageBase64 only on the newest
+    // _kMaxInlineImages incidents; strip it from older ones to avoid quota.
+    _boundInlineImages(all);
 
     try {
       await _prefs.setString(_kIncidents, jsonEncode(all));
@@ -558,6 +564,27 @@ class LocalDB {
       } else {
         rethrow;
       }
+    }
+  }
+
+  /// Max number of recent incidents allowed to keep a heavy inline
+  /// imageBase64 (web only, where there's no file storage). Keeps the PDF
+  /// image available for recent scans without blowing the browser quota.
+  static const int _kMaxInlineImages = 8;
+
+  /// Strip imageBase64 from all but the newest [_kMaxInlineImages] incidents.
+  static void _boundInlineImages(List<Map<String, dynamic>> all) {
+    // Sort a copy by date desc to find which ids are "recent".
+    final sorted = List<Map<String, dynamic>>.from(all)
+      ..sort((a, b) => (b['date'] ?? '').toString()
+          .compareTo((a['date'] ?? '').toString()));
+    final keepIds = sorted
+        .take(_kMaxInlineImages)
+        .map((i) => i['id']?.toString() ?? '')
+        .toSet();
+    for (final inc in all) {
+      final id = inc['id']?.toString() ?? '';
+      if (!keepIds.contains(id)) inc.remove('imageBase64');
     }
   }
 
@@ -610,8 +637,9 @@ class LocalDB {
     await _prefs.setString(_kIncidents, jsonEncode(cleaned));
   }
 
-  /// ✅ FIX: Purge bloated imageBase64 fields from existing stored incidents.
-  /// Call this once on app startup to reclaim storage quota.
+  /// ✅ Purge bloated imageBase64 fields to reclaim storage quota.
+  /// Mobile: strip ALL inline images (the full copy lives in file storage).
+  /// Web: keep the newest few (only copy available for the PDF), strip the rest.
   /// Returns number of incidents cleaned.
   static Future<int> purgeStoredImages() async {
     final raw = _prefs.getString(_kIncidents);
@@ -621,8 +649,23 @@ class LocalDB {
       final list = (jsonDecode(raw) as List)
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList();
+
+      // On web, protect the newest _kMaxInlineImages so their PDF images survive.
+      Set<String> keepIds = <String>{};
+      if (kIsWeb) {
+        final sorted = List<Map<String, dynamic>>.from(list)
+          ..sort((a, b) => (b['date'] ?? '').toString()
+              .compareTo((a['date'] ?? '').toString()));
+        keepIds = sorted
+            .take(_kMaxInlineImages)
+            .map((i) => i['id']?.toString() ?? '')
+            .toSet();
+      }
+
       int cleaned = 0;
       for (final inc in list) {
+        final id = inc['id']?.toString() ?? '';
+        if (keepIds.contains(id)) continue; // web: keep recent inline image
         if (inc.containsKey('imageBase64') &&
             inc['imageBase64'] != null &&
             inc['imageBase64'].toString().length > 10) {

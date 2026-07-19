@@ -229,7 +229,7 @@ class PdfExport {
           pw.Expanded(child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text(inc['title']?.toString() ?? 'Safety Incident Report',
+              pw.Text(_safe(inc['title']?.toString() ?? 'Safety Incident Report'),
                 style: pw.TextStyle(fontSize: 13, fontWeight: pw.FontWeight.bold,
                   color: _textDark)),
               pw.SizedBox(height: 2),
@@ -262,6 +262,14 @@ class PdfExport {
       color: _sailBlue, letterSpacing: 0.5)),
   );
 
+  /// Replace glyphs the bundled PDF font can't render (em/en-dashes, fancy
+  /// quotes, bullets) so they don't show as tofu boxes in the report.
+  static String _safe(String s) => s
+      .replaceAll(RegExp(r'[‒–—―]'), '-') // ‒–—―  → -
+      .replaceAll('‘', "'").replaceAll('’', "'")      // ‘ ’ → '
+      .replaceAll('“', '"').replaceAll('”', '"')      // “ ” → "
+      .replaceAll('…', '...');                             // …  → ...
+
   static pw.Widget _detailsGrid(Map<String, dynamic> inc, String date,
       String reporter, String pno) {
     pw.Widget cell(String lbl, String val, {bool hi = false}) =>
@@ -272,11 +280,11 @@ class PdfExport {
           color: hi ? _sailLight : PdfColors.white),
         child: pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            pw.Text(lbl.toUpperCase(), style: pw.TextStyle(
+            pw.Text(_safe(lbl).toUpperCase(), style: pw.TextStyle(
               fontSize: 6.5, color: _textLight,
               fontWeight: pw.FontWeight.bold, letterSpacing: 0.3)),
             pw.SizedBox(height: 3),
-            pw.Text(val.isEmpty ? '—' : val, style: pw.TextStyle(
+            pw.Text(val.isEmpty ? '-' : _safe(val), style: pw.TextStyle(
               fontSize: 9, color: _textDark,
               fontWeight: pw.FontWeight.bold)),
           ]));
@@ -603,7 +611,7 @@ class PdfExport {
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 8, 6, 8),
               color: bg,
-              child: pw.Text(h['name']?.toString() ?? '',
+              child: pw.Text(_safe(h['name']?.toString() ?? ''),
                 style: pw.TextStyle(fontSize: 8,
                   fontWeight: pw.FontWeight.bold, color: _textDark,
                   lineSpacing: 1.3))),
@@ -618,19 +626,19 @@ class PdfExport {
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 8, 6, 8),
               color: bg,
-              child: pw.Text(h['description']?.toString() ?? '',
+              child: pw.Text(_safe(h['description']?.toString() ?? ''),
                 style: pw.TextStyle(fontSize: 7.5, color: _textDark,
                   lineSpacing: 1.4))),
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 8, 6, 8),
               color: bg,
-              child: pw.Text(h['regulation']?.toString() ?? '',
+              child: pw.Text(_safe(h['regulation']?.toString() ?? ''),
                 style: pw.TextStyle(fontSize: 7, color: _textMed,
                   lineSpacing: 1.3))),
             pw.Container(
               padding: const pw.EdgeInsets.fromLTRB(6, 8, 6, 8),
               color: bg,
-              child: pw.Text(h['correctiveAction']?.toString() ?? '',
+              child: pw.Text(_safe(h['correctiveAction']?.toString() ?? ''),
                 style: pw.TextStyle(fontSize: 7.5, color: _textDark,
                   lineSpacing: 1.4))),
           ]);
@@ -703,7 +711,7 @@ class PdfExport {
     decoration: pw.BoxDecoration(
       border: pw.Border.all(color: _divider, width: 0.5),
       color: PdfColor.fromHex('#FAFAFA')),
-    child: pw.Text(summary.isEmpty ? 'No summary provided.' : summary,
+    child: pw.Text(summary.isEmpty ? 'No summary provided.' : _safe(summary),
       style: pw.TextStyle(fontSize: 9, color: _textDark, lineSpacing: 1.6)));
 
   // ✅ GPS LOCATION SECTION — Place name FIRST, coordinates as link only
