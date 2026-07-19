@@ -756,20 +756,28 @@ class PdfExport {
             fontSize: 10.5, color: _textDark,
             fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 6),
-          // Accuracy + Map link row
+          // Accuracy + Map link row — real clickable hyperlink (all platforms)
           pw.Row(children: [
             if (acc != null)
               pw.Text('Accuracy: +/-${_toDouble(acc).toStringAsFixed(0)}m',
                 style: pw.TextStyle(fontSize: 7.5, color: _textMed)),
             pw.Spacer(),
-            pw.Text('View on Google Maps',
-              style: pw.TextStyle(fontSize: 8, color: PdfColor.fromHex('#0D47A1'),
-                fontWeight: pw.FontWeight.bold,
-                decoration: pw.TextDecoration.underline)),
+            pw.UrlLink(
+              destination: mapsUrl,
+              child: pw.Text('View on Google Maps',
+                style: pw.TextStyle(fontSize: 8.5, color: PdfColor.fromHex('#0D47A1'),
+                  fontWeight: pw.FontWeight.bold,
+                  decoration: pw.TextDecoration.underline)),
+            ),
           ]),
-          pw.SizedBox(height: 2),
-          pw.Text(mapsUrl,
-            style: pw.TextStyle(fontSize: 6.5, color: _textLight)),
+          pw.SizedBox(height: 3),
+          // The full URL is also a clickable link (shown small for reference).
+          pw.UrlLink(
+            destination: mapsUrl,
+            child: pw.Text(mapsUrl,
+              style: pw.TextStyle(fontSize: 6.5, color: PdfColor.fromHex('#1565C0'),
+                decoration: pw.TextDecoration.underline)),
+          ),
         ]));
   }
 
