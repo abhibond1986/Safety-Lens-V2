@@ -632,15 +632,25 @@ class SyncService {
       if (id.isNotEmpty) serverIds.add(id);
     }
 
-    // Push local-only incidents to server (ones that never made it)
-    final localIncidents = await LocalDB.getIncidents();
+    // Push local-only incidents to server (ones that never made it).
+    // IMPORTANT: never re-push a tombstoned (locally-deleted) incident — doing
+    // so resurrects rows the user deleted, refilling a cleared sheet.
+    final tombstoned = LocalDB.deletedIncidentIds();
+    final localIncidents = await LocalDB.getIncidents(); // already excludes tombstoned
     int extraPushed = 0;
     for (final local in localIncidents) {
       final id = local['id']?.toString() ?? '';
-      if (id.isNotEmpty && !serverIds.contains(id)) {
-        // This incident exists locally but not on server — push it
+      if (id.isEmpty || tombstoned.contains(id)) continue;
+      // Only push a genuinely NEW local incident (has a pending-queue marker or
+      // a fresh flag). A row that's simply "not on the server" may have been
+      // deleted server-side — re-pushing it would resurrect it.
+      final isUnsynced = local['_synced'] != true && local['_pushedOnce'] != true;
+      if (!serverIds.contains(id) && isUnsynced) {
         final ok = await pushIncident(local, fromQueue: true);
-        if (ok) extraPushed++;
+        if (ok) {
+          extraPushed++;
+          local['_pushedOnce'] = true; // don't auto-push again next cycle
+        }
       }
     }
     if (extraPushed > 0) {
@@ -650,7 +660,11 @@ class SyncService {
       pulled.addAll(await fetchIncidents());
     }
 
-    // Merge: server is source of truth for shared data
+    // Merge: server is source of truth for shared data.
+    // Prune tombstones the server no longer knows about (confirmed deleted),
+    // and never re-add a still-tombstoned id from the server.
+    await LocalDB.pruneIncidentTombstones(serverIds);
+    final activeTombstones = LocalDB.deletedIncidentIds();
     if (pulled.isNotEmpty) {
       final localMap = <String, Map<String, dynamic>>{};
       for (final l in localIncidents) {
@@ -660,6 +674,7 @@ class SyncService {
       for (final remote in pulled) {
         final id = remote['id']?.toString() ?? '';
         if (id.isEmpty) continue;
+        if (activeTombstones.contains(id)) continue; // deleted locally — keep hidden
         if (!localMap.containsKey(id)) {
           localMap[id] = remote;
         } else {

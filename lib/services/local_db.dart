@@ -108,99 +108,13 @@ class LocalDB {
       await _prefs.setString(_kUsers, jsonEncode(seed));
     }
 
+    // NOTE: We intentionally DO NOT seed demo incidents. Previously, fixed-id
+    // demo rows ('1'..'8') were created on every fresh install and then pushed
+    // to the Google Sheet by fullSync — which refilled a sheet the admin had
+    // cleared. Incidents are now sourced solely from the backend + real user
+    // reports, so all devices show the same shared data.
     if (_prefs.getString(_kIncidents) == null) {
-      final now = DateTime.now();
-      final seedIncidents = [
-        {
-          'id': '1', 'title': 'No Fall Arrest at Formwork',
-          'plant': 'BSP Bhilai', 'dept': 'Civil Construction',
-          'location': 'BF-2 Cast House', 'severity': 'CRITICAL',
-          'wsaCategory': 'Fall from Height',
-          'date': now.subtract(const Duration(days: 6)).toIso8601String(),
-          'status': 'OPEN', 'reportedBy': 'R.K. Sharma',
-          'reportedByPno': 'BSP-2024-001',
-          'type': 'AI_SCAN',
-          'desc': 'Worker observed at height without harness',
-        },
-        {
-          'id': '2', 'title': 'Crane Near Miss',
-          'plant': 'BSP Bhilai', 'dept': 'Rolling Mill',
-          'location': 'Bay 4', 'severity': 'CRITICAL',
-          'wsaCategory': 'Hit / Caught / Pressed',
-          'date': now.subtract(const Duration(days: 4)).toIso8601String(),
-          'status': 'INVESTIGATING', 'reportedBy': 'Priya Singh',
-          'reportedByPno': 'ISP-2024-001',
-          'type': 'NEAR_MISS',
-          'desc': 'Crane load swung close to worker',
-        },
-        {
-          'id': '3', 'title': 'Slip Hazard on Walkway',
-          'plant': 'DSP Durgapur', 'dept': 'Coke Oven',
-          'location': 'Pusher side', 'severity': 'MEDIUM',
-          'wsaCategory': 'Slip / Fall',
-          'date': now.subtract(const Duration(days: 3)).toIso8601String(),
-          'status': 'CLOSED', 'reportedBy': 'Rajesh Kumar',
-          'reportedByPno': 'BSP-2024-002',
-          'type': 'NEAR_MISS',
-          'desc': 'Oil spillage on walkway',
-        },
-        {
-          'id': '4', 'title': 'Hot Metal Splash Risk',
-          'plant': 'RSP Rourkela', 'dept': 'SMS',
-          'location': 'Caster 2', 'severity': 'HIGH',
-          'wsaCategory': 'Hot Metal / Slag / Sub',
-          'date': now.subtract(const Duration(days: 2)).toIso8601String(),
-          'status': 'CLOSED', 'reportedBy': 'Priya Singh',
-          'reportedByPno': 'ISP-2024-001',
-          'type': 'AI_SCAN',
-          'desc': 'Splash guard missing on caster',
-        },
-        {
-          'id': '5', 'title': 'PPE Gap — Helmet Missing',
-          'plant': 'BSL Bokaro', 'dept': 'Blast Furnace',
-          'location': 'BF-3 Stock house', 'severity': 'HIGH',
-          'wsaCategory': 'Other',
-          'date': now.subtract(const Duration(days: 2)).toIso8601String(),
-          'status': 'OPEN', 'reportedBy': 'Rajesh Kumar',
-          'reportedByPno': 'BSP-2024-002',
-          'type': 'AI_SCAN',
-          'desc': 'Worker without helmet near furnace',
-        },
-        {
-          'id': '6', 'title': 'Electrical Panel Open',
-          'plant': 'ISP Burnpur', 'dept': 'Electrical',
-          'location': 'Sub-station 4', 'severity': 'HIGH',
-          'wsaCategory': 'Electrical',
-          'date': now.subtract(const Duration(days: 1)).toIso8601String(),
-          'status': 'OPEN', 'reportedBy': 'Abhishek Kumar',
-          'reportedByPno': 'SAIL-SSO-001',
-          'type': 'NEAR_MISS',
-          'desc': 'Live panel open without barrier',
-        },
-        {
-          'id': '7', 'title': 'Hose Trip Hazard',
-          'plant': 'BSP Bhilai', 'dept': 'Maintenance',
-          'location': 'Workshop', 'severity': 'LOW',
-          'wsaCategory': 'Slip / Fall',
-          'date': now.subtract(const Duration(days: 1)).toIso8601String(),
-          'status': 'OPEN', 'reportedBy': 'Priya Singh',
-          'reportedByPno': 'ISP-2024-001',
-          'type': 'NEAR_MISS',
-          'desc': 'Compressed air hose across walkway',
-        },
-        {
-          'id': '8', 'title': 'Loose Cable Trip Risk',
-          'plant': 'ISP Burnpur', 'dept': 'Rolling Mill',
-          'location': 'Bay 2', 'severity': 'MEDIUM',
-          'wsaCategory': 'Electrical',
-          'date': now.toIso8601String(),
-          'status': 'OPEN', 'reportedBy': 'Abhishek Kumar',
-          'reportedByPno': 'SAIL-SSO-001',
-          'type': 'NEAR_MISS',
-          'desc': 'Loose electrical cable across walkway',
-        },
-      ];
-      await _prefs.setString(_kIncidents, jsonEncode(seedIncidents));
+      await _prefs.setString(_kIncidents, jsonEncode(<Map<String, dynamic>>[]));
     }
   }
 

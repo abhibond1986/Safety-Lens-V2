@@ -25,6 +25,10 @@ void main() async {
   // ✅ FIX: Purge bloated imageBase64 from local storage to fix QuotaExceededError
   LocalDB.purgeStoredImages().catchError((_) => 0);
   SyncService.drainPendingQueue().catchError((_) => 0);
+  // ★ Pull ALL shared incidents from the backend into local storage so every
+  //   device shows the SAME data for a given user (desktop == mobile).
+  //   Non-blocking: screens refresh when it completes / on pull-to-refresh.
+  SyncService.fullSync().catchError((_) => <String, dynamic>{});
   // ★ v24: Pull latest master data (plants, depts, WSA) from backend on startup
   // Await with timeout so UI renders with fresh data (not stale defaults)
   await AdminMasterData.syncFromBackend()

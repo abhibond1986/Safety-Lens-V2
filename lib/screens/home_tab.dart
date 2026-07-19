@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../main.dart' show AppColors, SL;
 import '../services/local_db.dart';
 import '../services/admin_master_data.dart';
+import '../services/sync_service.dart';
 import '../services/i18n.dart';
 import 'reports_tab.dart';
 import 'admin_screen.dart';
@@ -62,6 +63,12 @@ class _HomeTabState extends State<HomeTab> {
   void _rebuild() { if (mounted) setState(() {}); }
 
   Future<void> _load() async {
+    // Pull shared data from the backend first so stats match across devices.
+    // Bounded so a slow network can't hang the refresh; falls back to local.
+    try {
+      await SyncService.fullSync()
+          .timeout(const Duration(seconds: 12), onTimeout: () => <String, dynamic>{});
+    } catch (_) {}
     final inc = await LocalDB.getIncidents();
     final plants = await AdminMasterData.getPlants();
     if (!mounted) return;
