@@ -29,9 +29,9 @@ class GeminiVision {
   static const String _orNemotronModel = 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
   static const String _orGemmaModel    = 'google/gemma-4-26b-a4b-it:free';
 
-  // Rate-limiting between analyses
+  // Rate-limiting between analyses (kept small — only affects back-to-back scans)
   static DateTime? _lastCallTime;
-  static const Duration _minCallInterval = Duration(seconds: 5);
+  static const Duration _minCallInterval = Duration(seconds: 2);
 
   // ── CONSISTENCY CACHE ──────────────────────────────────────────────────────
   // Keyed by image content hash so a repeat scan of the SAME photo returns the
@@ -90,6 +90,9 @@ class GeminiVision {
 
   // Prevent concurrent AI calls
   static bool _isAnalyzing = false;
+
+  // KB regulation context cached for the session (avoids re-fetching per scan).
+  static String? _kbContextCache;
 
   // ── analyseImage (mobile / File path) ─────────────────────────────────────
   static Future<Map<String, dynamic>?> analyseImage(File imageFile) async {
@@ -168,19 +171,25 @@ class GeminiVision {
       // ══════════════════════════════════════════════════════════════════════
       // FETCH KB CONTEXT — inject regulation knowledge from uploaded docs
       // ══════════════════════════════════════════════════════════════════════
-      String kbContext = '';
-      try {
-        // Get all regulation-related KB docs for maximum accuracy
-        kbContext = await KnowledgeService.getContextForPrompt(
-          'safety regulation statutory reference factories act IS standard',
-          maxKbDocs: 5,
-          includeExpertPrompt: false,
-        ).timeout(const Duration(seconds: 3), onTimeout: () => '');
-        if (kbContext.isNotEmpty) {
-          print('GeminiVision: ✓ KB context loaded (${kbContext.length} chars)');
+      String kbContext = _kbContextCache ?? '';
+      if (_kbContextCache == null) {
+        // Fetch KB context once per session and cache it — it rarely changes
+        // and re-fetching it added a few seconds before every scan.
+        try {
+          kbContext = await KnowledgeService.getContextForPrompt(
+            'safety regulation statutory reference factories act IS standard',
+            maxKbDocs: 5,
+            includeExpertPrompt: false,
+          ).timeout(const Duration(seconds: 3), onTimeout: () => '');
+          _kbContextCache = kbContext; // cache (even empty) for the session
+          if (kbContext.isNotEmpty) {
+            print('GeminiVision: ✓ KB context loaded (${kbContext.length} chars)');
+          }
+        } catch (_) {
+          print('GeminiVision: KB context fetch failed — continuing without');
         }
-      } catch (_) {
-        print('GeminiVision: KB context fetch failed — continuing without');
+      } else {
+        print('GeminiVision: ✓ KB context (cached)');
       }
 
       // ══════════════════════════════════════════════════════════════════════

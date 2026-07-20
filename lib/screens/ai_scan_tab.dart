@@ -130,9 +130,10 @@ class _AIScanTabState extends State<AIScanTab> {
     if (picked == null) return;
 
     // Step 2: Read image bytes. Keep the ORIGINAL (with EXIF) for gallery so
-    // GPS can be extracted; use a downscaled copy for analysis/display.
+    // GPS can be extracted; use a downscaled+compressed copy for fast analysis.
+    // Both camera and gallery images are compressed for a quicker upload.
     final Uint8List originalBytes = await picked.readAsBytes();
-    Uint8List bytes = isGallery ? _downscaleForAnalysis(originalBytes) : originalBytes;
+    Uint8List bytes = _downscaleForAnalysis(originalBytes);
 
     // Step 3: Update state immediately — start AI analysis
     setState(() {
@@ -220,17 +221,22 @@ class _AIScanTabState extends State<AIScanTab> {
   /// Downscale a full-resolution gallery image (kept full so EXIF survives the
   /// pick) to ~1024px on the long edge for fast upload/analysis. Falls back to
   /// the original bytes if decoding fails.
-  Uint8List _downscaleForAnalysis(Uint8List original, {int maxEdge = 1024}) {
+  /// Downscale for FASTER analysis: a smaller JPEG uploads quicker and the
+  /// vision model processes it faster, with negligible impact on hazard
+  /// detection at 900px. Re-encode even already-small images to compress them.
+  Uint8List _downscaleForAnalysis(Uint8List original, {int maxEdge = 900}) {
     try {
       final decoded = img.decodeImage(original);
       if (decoded == null) return original;
-      if (decoded.width <= maxEdge && decoded.height <= maxEdge) {
-        return original; // already small enough
-      }
-      final resized = decoded.width >= decoded.height
-          ? img.copyResize(decoded, width: maxEdge)
-          : img.copyResize(decoded, height: maxEdge);
-      return Uint8List.fromList(img.encodeJpg(resized, quality: 85));
+      final img.Image resized =
+          (decoded.width <= maxEdge && decoded.height <= maxEdge)
+              ? decoded
+              : (decoded.width >= decoded.height
+                  ? img.copyResize(decoded, width: maxEdge)
+                  : img.copyResize(decoded, height: maxEdge));
+      final out = Uint8List.fromList(img.encodeJpg(resized, quality: 72));
+      // Only use the re-encoded copy if it's actually smaller.
+      return out.length < original.length ? out : original;
     } catch (_) {
       return original;
     }
