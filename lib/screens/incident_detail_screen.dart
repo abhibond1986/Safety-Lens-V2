@@ -16,6 +16,7 @@ import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
 import '../services/pdf_export.dart';
+import '../services/image_storage.dart';
 
 class IncidentDetailScreen extends StatefulWidget {
   final Map<String, dynamic> incident;
@@ -112,15 +113,20 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     );
   }
 
-  // ★ v31: Get image bytes from incident — prefer shareImageBase64 (medium-res)
-  // Fallback chain: imageBase64 > shareImageBase64 > thumbnailBase64
-  Uint8List? _getImageBytes() {
-    final imgB64 = _inc['imageBase64']?.toString() ?? '';
+  // Resolve the evidence image for PDF/share.
+  // IMPORTANT: on mobile the full image is stored as a FILE (imageRef) and
+  // imageBase64 is stripped from the record — so we MUST ask ImageStorage
+  // first (it handles imageRef files AND legacy inline base64). Only if that
+  // yields nothing do we fall back to any inline base64 still on the record.
+  Future<Uint8List?> _resolveImageBytes() async {
+    try {
+      final fromStore = await ImageStorage.getImageForIncident(_inc);
+      if (fromStore != null && fromStore.isNotEmpty) return fromStore;
+    } catch (_) {}
+    // Fallback: any inline base64 fields (medium-res or thumbnail).
     final shareB64 = _inc['shareImageBase64']?.toString() ?? '';
     final thumbB64 = _inc['thumbnailBase64']?.toString() ?? '';
-    final b64 = imgB64.isNotEmpty ? imgB64
-        : shareB64.isNotEmpty ? shareB64
-        : thumbB64;
+    final b64 = shareB64.isNotEmpty ? shareB64 : thumbB64;
     if (b64.isEmpty) return null;
     try { return base64Decode(b64); } catch (_) { return null; }
   }
@@ -219,7 +225,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     try {
       _snack('Generating PDF…', AppColors.accent);
       final user = await LocalDB.getCurrentUser() ?? {};
-      final imageBytes = _getImageBytes();
+      final imageBytes = await _resolveImageBytes();
       await PdfExport.downloadOrShareIncident(
         incident: _inc,
         reporterName: user['name']?.toString() ?? 'SAIL Safety Officer',
@@ -234,7 +240,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     _snack('Generating PDF report...', AppColors.accent);
     try {
       final user = await LocalDB.getCurrentUser() ?? {};
-      final imageBytes = _getImageBytes();
+      final imageBytes = await _resolveImageBytes();
       final pdfBytes = await PdfExport.generateIncidentReportBytes(
         incident: _inc,
         reporterName: user['name']?.toString() ?? 'SAIL Safety Officer',
@@ -275,7 +281,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     _snack('Generating PDF…', AppColors.accent);
     try {
       final user = await LocalDB.getCurrentUser() ?? {};
-      final imageBytes = _getImageBytes();
+      final imageBytes = await _resolveImageBytes();
       final pdfBytes = await PdfExport.generateIncidentReportBytes(
         incident: _inc,
         reporterName: user['name']?.toString() ?? 'SAIL Safety Officer',
@@ -309,7 +315,7 @@ class _IncidentDetailScreenState extends State<IncidentDetailScreen> {
     // ★ v32: Use native share intent — never wa.me URLs (those open new tabs)
     try {
       final text = _buildShareText();
-      final imageBytes = _getImageBytes();
+      final imageBytes = await _resolveImageBytes();
 
       if (!kIsWeb && imageBytes != null) {
         final tempDir = await getTemporaryDirectory();

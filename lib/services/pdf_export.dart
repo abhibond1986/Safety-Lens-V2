@@ -16,6 +16,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
+import 'image_storage.dart';
 import 'pdf_export_stub.dart' if (dart.library.html) 'pdf_export_web.dart' as html; // ignore: avoid_web_libraries_in_flutter
 
 class PdfExport {
@@ -60,6 +61,14 @@ class PdfExport {
     Uint8List? imgBytes = imageBytes;
     if (imgBytes == null && incident['imageBase64'] != null) {
       try { imgBytes = base64Decode(incident['imageBase64'].toString()); } catch (_) {}
+    }
+    // Defense-in-depth: if the caller didn't pass bytes and there's no inline
+    // base64 (stripped on mobile), resolve from file storage via imageRef.
+    // Guarantees the evidence photo appears regardless of how it was saved.
+    if (imgBytes == null) {
+      try {
+        imgBytes = await ImageStorage.getImageForIncident(incident);
+      } catch (_) {}
     }
 
     List<Map<String, dynamic>> hazards = _parseHazards(incident['hazards']);
