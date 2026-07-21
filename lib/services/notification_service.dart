@@ -13,6 +13,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'supabase_service.dart';
+import 'supabase_config.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._();
@@ -139,6 +141,14 @@ class NotificationService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_kFcmToken, token);
       await prefs.setString(_kBaseUrlKey, baseUrl);
+
+      // ★ Supabase path — upsert into device_tokens.
+      if (SupabaseConfig.enabled) {
+        await SupabaseService.registerDeviceToken(
+          token: token, username: username, plant: plant, platform: 'android');
+        print('[FCM] Device token registered (Supabase)');
+        return;
+      }
 
       final response = await http.post(
         Uri.parse(baseUrl),

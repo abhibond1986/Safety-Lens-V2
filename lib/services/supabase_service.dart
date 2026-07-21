@@ -284,4 +284,103 @@ class SupabaseService {
       return null;
     }
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  KNOWLEDGE BASE (knowledge_docs table)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Fetch all KB docs (title/content/source). Returns [] on error.
+  static Future<List<Map<String, dynamic>>> fetchKnowledgeDocs() async {
+    if (!isReady) return [];
+    try {
+      final rows = await _db
+          .from('knowledge_docs')
+          .select('title, content, source')
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map((r) => Map<String, dynamic>.from(r as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Insert one KB doc. Returns true on success.
+  static Future<bool> addKnowledgeDoc(Map<String, dynamic> doc) async {
+    if (!isReady) return false;
+    try {
+      await _db.from('knowledge_docs').insert({
+        'title':   doc['title']?.toString() ?? 'Untitled',
+        'content': doc['content']?.toString() ?? '',
+        'source':  doc['source']?.toString() ?? 'uploaded',
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  MASTER DATA (master_data key→jsonb)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Save one master-data list under [key] (e.g. 'plants'). Value is any
+  /// JSON-serializable structure (list of strings or list of maps).
+  static Future<bool> setMasterData(String key, dynamic value) async {
+    if (!isReady || key.isEmpty) return false;
+    try {
+      await _db.from('master_data').upsert(
+        {'key': key, 'value': value, 'updated_at': DateTime.now().toIso8601String()},
+        onConflict: 'key',
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Fetch all master-data as a { key: value } map. Returns {} on error.
+  static Future<Map<String, dynamic>> fetchMasterData() async {
+    if (!isReady) return {};
+    try {
+      final rows = await _db.from('master_data').select('key, value');
+      final out = <String, dynamic>{};
+      for (final r in (rows as List)) {
+        final m = Map<String, dynamic>.from(r as Map);
+        final k = m['key']?.toString();
+        if (k != null) out[k] = m['value'];
+      }
+      return out;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  DEVICE TOKENS (device_tokens — FCM push registration)
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Register (upsert) an FCM device token. Returns true on success.
+  static Future<bool> registerDeviceToken({
+    required String token,
+    String username = '',
+    String plant = '',
+    String platform = '',
+  }) async {
+    if (!isReady || token.isEmpty) return false;
+    try {
+      await _db.from('device_tokens').upsert(
+        {
+          'token': token,
+          'username': username,
+          'plant': plant,
+          'platform': platform,
+        },
+        onConflict: 'token',
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

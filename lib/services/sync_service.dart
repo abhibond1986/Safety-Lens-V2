@@ -246,6 +246,13 @@ class SyncService {
   /// Uses existing 'addKnowledge' action — sends each doc individually.
   /// For bulk: clears server KB sheet first, then re-adds all.
   static Future<bool> pushKbDocs(List<Map<String, dynamic>> docs) async {
+    if (SupabaseConfig.enabled) {
+      int ok = 0;
+      for (final doc in docs) {
+        if (await SupabaseService.addKnowledgeDoc(doc)) ok++;
+      }
+      return ok > 0;
+    }
     if (!await isConfigured) return false;
     try {
       final url = await getBackendUrl();
@@ -272,6 +279,10 @@ class SyncService {
   /// Pull KB documents from backend using existing 'listKnowledge' action.
   /// All devices call this on startup/sync to get admin-uploaded knowledge.
   static Future<List<Map<String, dynamic>>?> pullKbDocs() async {
+    if (SupabaseConfig.enabled) {
+      final docs = await SupabaseService.fetchKnowledgeDocs();
+      return docs.isEmpty ? null : docs;
+    }
     if (!await isConfigured) return null;
     try {
       final url = await getBackendUrl();
@@ -326,6 +337,16 @@ class SyncService {
     List<String>? obsTypes,
     String? updatedBy,
   }) async {
+    if (SupabaseConfig.enabled) {
+      bool any = false;
+      if (plants != null)      any |= await SupabaseService.setMasterData('plants', plants);
+      if (departments != null) any |= await SupabaseService.setMasterData('departments', departments);
+      if (wsaCauses != null)   any |= await SupabaseService.setMasterData('wsa_causes', wsaCauses);
+      if (severities != null)  any |= await SupabaseService.setMasterData('severities', severities);
+      if (statuses != null)    any |= await SupabaseService.setMasterData('statuses', statuses);
+      if (obsTypes != null)    any |= await SupabaseService.setMasterData('obs_types', obsTypes);
+      return any;
+    }
     if (!await isConfigured) return false;
     try {
       final url = await getBackendUrl();
@@ -351,6 +372,19 @@ class SyncService {
 
   /// Pull latest master data from backend. Returns the data map or null.
   static Future<Map<String, dynamic>?> pullMasterData() async {
+    if (SupabaseConfig.enabled) {
+      final raw = await SupabaseService.fetchMasterData();
+      if (raw.isEmpty) return null;
+      // Map DB keys → the camelCase keys AdminMasterData.syncFromBackend expects.
+      return {
+        if (raw['plants'] != null)      'plants':      raw['plants'],
+        if (raw['departments'] != null) 'departments': raw['departments'],
+        if (raw['wsa_causes'] != null)  'wsaCauses':   raw['wsa_causes'],
+        if (raw['severities'] != null)  'severities':  raw['severities'],
+        if (raw['statuses'] != null)    'statuses':    raw['statuses'],
+        if (raw['obs_types'] != null)   'obsTypes':    raw['obs_types'],
+      };
+    }
     if (!await isConfigured) return null;
     try {
       final url = await getBackendUrl();
@@ -524,6 +558,9 @@ class SyncService {
 
   static Future<bool> pushKnowledgeDoc(
       Map<String, dynamic> doc) async {
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.addKnowledgeDoc(doc);
+    }
     if (!await isConfigured) return false;
     try {
       final url  = await getBackendUrl();
@@ -550,6 +587,9 @@ class SyncService {
   }
 
   static Future<List<Map<String, dynamic>>> fetchKnowledgeDocs() async {
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.fetchKnowledgeDocs();
+    }
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
