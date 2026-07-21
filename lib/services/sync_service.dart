@@ -169,6 +169,12 @@ class SyncService {
   /// Used by the dashboard user-switcher dropdown.
   /// Results are automatically cached in LocalDB for offline use.
   static Future<List<Map<String, dynamic>>> fetchUsers() async {
+    // ★ Supabase path.
+    if (SupabaseConfig.enabled) {
+      final users = await SupabaseService.fetchUsers();
+      if (users.isNotEmpty) await LocalDB.cacheUsers(users);
+      return users;
+    }
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
@@ -767,6 +773,10 @@ class SyncService {
   }
 
   static Future<bool> deleteUser(String username) async {
+    // ★ Supabase path.
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.deleteUser(username);
+    }
     try {
       final url = await getBackendUrl();
       final resp = await _postWithRedirect(url, {
@@ -805,6 +815,10 @@ class SyncService {
   //  wraps in try/catch and treats it as best-effort).
   // ═══════════════════════════════════════════════════════════════
   static Future<bool> pushUser(Map<String, dynamic> user) async {
+    // ★ Supabase path.
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.upsertUser(user);
+    }
     if (!await isConfigured) return false;
 
     final uname = (user['username']?.toString() ?? '').trim();
@@ -925,6 +939,28 @@ class SyncService {
   // ═══════════════════════════════════════════════════════════════
   static Future<Map<String, dynamic>?> loginOnline(
       String username, String passwordHash) async {
+    // ★ Supabase path: look the user up in app_users and verify the hash.
+    // The local salted-hash verification in LocalDB.signIn is the primary
+    // check; this enables CROSS-DEVICE login (registered on device A, first
+    // login on device B). We compare the app's transported hash against the
+    // stored one, matching the same fields the Sheets backend used.
+    if (SupabaseConfig.enabled) {
+      try {
+        final u = await SupabaseService.getUserByUsername(username);
+        if (u == null) return null;
+        final stored = u['passwordHash']?.toString() ?? '';
+        // Accept if the transported hash matches the stored hash. (Both come
+        // from the same client hashing path used at registration.)
+        if (stored.isNotEmpty && stored == passwordHash) {
+          final safe = Map<String, dynamic>.from(u)
+            ..remove('passwordHash')..remove('salt');
+          return safe;
+        }
+        return null;
+      } catch (_) {
+        return null;
+      }
+    }
     if (!await isConfigured) {
       print('SyncService.loginOnline: backend not configured');
       return null;
@@ -991,6 +1027,10 @@ class SyncService {
   //  REGISTER ONLINE — direct call to Apps Script 'register' action
   // ═══════════════════════════════════════════════════════════════
   static Future<bool> registerOnline(Map<String, dynamic> userData) async {
+    // ★ Supabase path: upsert into app_users (creates the account row).
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.upsertUser(userData);
+    }
     if (!await isConfigured) return false;
     try {
       final url = await getBackendUrl();

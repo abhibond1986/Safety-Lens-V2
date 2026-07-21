@@ -186,4 +186,102 @@ class SupabaseService {
       return null;
     }
   }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  //  USERS (app_users table — custom login, NOT Supabase Auth)
+  // ══════════════════════════════════════════════════════════════════════════
+  static const Map<String, String> _userAppToDb = {
+    'username': 'username',
+    'name': 'name',
+    'designation': 'designation',
+    'plant': 'plant',
+    'department': 'department',
+    'pno': 'pno',
+    'mobile': 'mobile',
+    'email': 'email',
+    'isAdmin': 'is_admin',
+    'status': 'status',
+    'passwordHash': 'password_hash',
+    'salt': 'salt',
+  };
+  static final Map<String, String> _userDbToApp = {
+    for (final e in _userAppToDb.entries) e.value: e.key,
+  };
+
+  static Map<String, dynamic> _userToRow(Map<String, dynamic> u) {
+    final row = <String, dynamic>{};
+    _userAppToDb.forEach((appKey, dbCol) {
+      if (!u.containsKey(appKey)) return;
+      var v = u[appKey];
+      if (appKey == 'isAdmin') {
+        v = v is bool ? v : v?.toString().toLowerCase() == 'true';
+      }
+      row[dbCol] = v;
+    });
+    return row;
+  }
+
+  static Map<String, dynamic> _userFromRow(Map<String, dynamic> row) {
+    final u = <String, dynamic>{};
+    row.forEach((dbCol, v) {
+      final appKey = _userDbToApp[dbCol];
+      if (appKey != null) u[appKey] = v;
+    });
+    return u;
+  }
+
+  /// Fetch all users. Returns [] on error.
+  static Future<List<Map<String, dynamic>>> fetchUsers() async {
+    if (!isReady) return [];
+    try {
+      final rows = await _db.from('app_users').select();
+      return (rows as List)
+          .map((r) => _userFromRow(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Insert or update a user (keyed by username). Returns true on success.
+  static Future<bool> upsertUser(Map<String, dynamic> user) async {
+    if (!isReady) return false;
+    try {
+      final row = _userToRow(user);
+      if ((row['username']?.toString() ?? '').isEmpty) return false;
+      await _db.from('app_users').upsert(row, onConflict: 'username');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Delete a user by username. Returns true on success.
+  static Future<bool> deleteUser(String username) async {
+    if (!isReady || username.isEmpty) return false;
+    try {
+      await _db.from('app_users').delete().eq('username', username);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Look up one user by username (for cross-device login). Returns the app-shaped
+  /// map (including password_hash/salt so the caller can verify), or null.
+  static Future<Map<String, dynamic>?> getUserByUsername(String username) async {
+    if (!isReady || username.isEmpty) return null;
+    try {
+      final rows = await _db
+          .from('app_users')
+          .select()
+          .eq('username', username)
+          .limit(1);
+      final list = rows as List;
+      if (list.isEmpty) return null;
+      return _userFromRow(Map<String, dynamic>.from(list.first as Map));
+    } catch (_) {
+      return null;
+    }
+  }
 }
