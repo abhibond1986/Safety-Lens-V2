@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/local_db.dart';
 import 'services/sync_service.dart';
+import 'services/supabase_service.dart';
 import 'services/admin_master_data.dart';
 import 'services/app_updater.dart';
 import 'services/image_storage.dart';
@@ -18,6 +19,8 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LocaleService().load();
   await LocalDB.init();
+  // Supabase backend (no-op until configured + enabled in SupabaseConfig).
+  await SupabaseService.init();
   await SyncService.init();
   await ImageStorage.init();
   // Migrate legacy base64 images to file storage (one-time, non-blocking)

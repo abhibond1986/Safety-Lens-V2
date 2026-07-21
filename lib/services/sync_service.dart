@@ -7,6 +7,9 @@ import 'local_db.dart';
 import 'auth_token_service.dart';
 import 'app_logger.dart';
 import 'admin_alerts.dart';
+import 'supabase_service.dart';
+import 'supabase_config.dart';
+import 'image_storage.dart';
 
 /// SAIL Safety Lens — Google Sheets Sync Service
 ///
@@ -39,6 +42,8 @@ class SyncService {
   }
 
   static Future<bool> get isConfigured async {
+    // Supabase counts as "configured" so fullSync and other guarded flows run.
+    if (SupabaseConfig.enabled) return true;
     final url = await getBackendUrl();
     return url.isNotEmpty && url.startsWith('https://');
   }
@@ -366,6 +371,37 @@ class SyncService {
   /// re-adding to the queue (the caller handles retry tracking).
   static Future<bool> pushIncident(
       Map<String, dynamic> incident, {bool fromQueue = false}) async {
+    // ★ Supabase path: upload image to Storage (once), then upsert the row.
+    if (SupabaseConfig.enabled) {
+      try {
+        final row = Map<String, dynamic>.from(incident);
+        final id = row['id']?.toString() ?? '';
+        // Upload the evidence image if we don't already have a Storage URL.
+        if ((row['imageUrl']?.toString() ?? '').isEmpty && id.isNotEmpty) {
+          Uint8List? bytes;
+          try { bytes = await ImageStorage.getImageForIncident(row); } catch (_) {}
+          if (bytes == null) {
+            final b64 = row['imageBase64']?.toString() ?? '';
+            if (b64.isNotEmpty && b64 != '[image]') {
+              try { bytes = base64Decode(b64); } catch (_) {}
+            }
+          }
+          if (bytes != null && bytes.isNotEmpty) {
+            final imgUrl = await SupabaseService.uploadIncidentImage(id, bytes);
+            if (imgUrl != null) row['imageUrl'] = imgUrl;
+          }
+        }
+        // Don't store bulky base64 in the DB row — the image lives in Storage.
+        row.remove('imageBase64');
+        row.remove('shareImageBase64');
+        final ok = await SupabaseService.upsertIncident(row);
+        if (!ok && !fromQueue) await _addToPendingQueue('addIncident', incident);
+        return ok;
+      } catch (e) {
+        if (!fromQueue) await _addToPendingQueue('addIncident', incident);
+        return false;
+      }
+    }
     if (!await isConfigured) {
       if (!fromQueue) await _addToPendingQueue('addIncident', incident);
       return false;
@@ -452,6 +488,10 @@ class SyncService {
 
   /// Fetch all incidents from backend.
   static Future<List<Map<String, dynamic>>> fetchIncidents() async {
+    // ★ Supabase path (single source of truth) when enabled.
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.fetchIncidents();
+    }
     if (!await isConfigured) return [];
     try {
       final url = await getBackendUrl();
@@ -1051,6 +1091,10 @@ class SyncService {
   //  DELETE INCIDENT from Sheets (admin action)
   // ═══════════════════════════════════════════════════════════════
   static Future<bool> deleteIncident(String id) async {
+    // ★ Supabase path — a real DELETE (no resurrection possible).
+    if (SupabaseConfig.enabled) {
+      return SupabaseService.deleteIncident(id);
+    }
     if (!await isConfigured) return false;
     try {
       final url = await getBackendUrl();

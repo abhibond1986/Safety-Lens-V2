@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -62,20 +63,33 @@ class ImageStorage {
   static Future<Uint8List?> getImageForIncident(Map<String, dynamic> incident) async {
     final imageRef = incident['imageRef']?.toString();
     final imageBase64 = incident['imageBase64']?.toString();
+    final imageUrl = incident['imageUrl']?.toString();
 
-    // New format: file reference
+    // Preferred: local file (mobile) — fast, offline.
     if (imageRef != null && imageRef.isNotEmpty && imageRef != 'null') {
-      return await loadImage(imageRef);
+      final local = await loadImage(imageRef);
+      if (local != null) return local;
     }
 
-    // Legacy format: inline base64
+    // Legacy format: inline base64.
     if (imageBase64 != null && imageBase64.isNotEmpty &&
         imageBase64 != 'null' && imageBase64 != '[image]') {
       try {
         return base64Decode(imageBase64);
-      } catch (_) {
-        return null;
-      }
+      } catch (_) {}
+    }
+
+    // Supabase Storage URL — works on BOTH web and mobile (fixes PDF images
+    // for incidents synced from another device / the cloud).
+    if (imageUrl != null && imageUrl.startsWith('http')) {
+      try {
+        final resp = await http
+            .get(Uri.parse(imageUrl))
+            .timeout(const Duration(seconds: 20));
+        if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+          return resp.bodyBytes;
+        }
+      } catch (_) {}
     }
 
     return null;
