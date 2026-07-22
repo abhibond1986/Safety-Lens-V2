@@ -384,34 +384,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             Divider(color: sl.border),
             const SizedBox(height: 20),
 
-            // ── BACKEND STATUS CARD ──────────────────────────────
-            _sectionLabel('GOOGLE SHEETS SYNC'),
+            // ── CLOUD SYNC STATUS ────────────────────────────────
+            // Data now syncs through Supabase (see SupabaseConfig). The legacy
+            // Google Sheets / Apps Script backend UI has been retired; the code
+            // path remains as a safe fallback but is no longer user-facing.
+            _sectionLabel('CLOUD SYNC'),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: _backendOk
-                    ? AppColors.green.withOpacity(0.08)
-                    : AppColors.amber.withOpacity(0.08),
-                border: Border.all(
-                  color: _backendOk ? AppColors.green : AppColors.amber,
-                ),
+                color: AppColors.green.withOpacity(0.08),
+                border: Border.all(color: AppColors.green),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Icon(
-                      _backendOk ? Icons.cloud_done : Icons.cloud_off,
-                      color: _backendOk ? AppColors.green : AppColors.amber,
-                      size: 22,
-                    ),
-                    const SizedBox(width: 8),
+                  Row(children: const [
+                    Icon(Icons.cloud_done, color: AppColors.green, size: 22),
+                    SizedBox(width: 8),
                     Text(
-                      _backendOk ? 'Backend Configured' : 'Backend Not Configured',
+                      'Connected — live sync active',
                       style: TextStyle(
-                        color: _backendOk ? AppColors.green : AppColors.amber,
+                        color: AppColors.green,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
@@ -419,11 +414,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ]),
                   const SizedBox(height: 6),
                   Text(
-                    _backendOk
-                        ? 'Reports will sync to Google Sheets automatically.'
-                        : 'Reports save locally only. Add the Apps Script URL below to enable sync.',
-                    style: const TextStyle(
-                      color: sl.text2, fontSize: 11, height: 1.4),
+                    'Reports, AI hazard scans and near-miss records sync '
+                    'automatically across all devices in real time.',
+                    style: TextStyle(color: sl.text2, fontSize: 11, height: 1.4),
                   ),
                   if (_lastSync != null) ...[
                     const SizedBox(height: 4),
@@ -446,78 +439,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // ── URL INPUT ────────────────────────────────────────
-            _sectionLabel('APPS SCRIPT URL'),
-            const SizedBox(height: 6),
-            const Text(
-              'Paste the Web App URL from your Apps Script deployment.\nFormat: https://script.google.com/macros/s/.../exec',
-              style: TextStyle(color: sl.text3, fontSize: 10, height: 1.4),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _urlCtrl,
-              style: TextStyle(
-                  color: scheme.onSurface, fontSize: 11),
-              maxLines: 2,
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: scheme.surface,
-                hintText: 'https://script.google.com/macros/s/.../exec',
-                hintStyle: TextStyle(color: sl.text4, fontSize: 10),
-                contentPadding: const EdgeInsets.all(10),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: sl.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide:
-                      const BorderSide(color: AppColors.accent, width: 2),
-                ),
-              ),
-            ),
             const SizedBox(height: 10),
 
-            // Save + Test row
-            Row(children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _busy ? null : _saveUrl,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text('Save URL',
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w600)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: _busy ? null : _testConnection,
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: AppColors.accent, width: 2),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8)),
-                  ),
-                  child: const Text('Test Connection',
-                      style: TextStyle(
-                          color: AppColors.accent, fontWeight: FontWeight.w600)),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 10),
-
-            // Sync Now
+            // Manual refresh — pull the latest from the cloud on demand.
             ElevatedButton.icon(
-              onPressed: (_busy || !_backendOk) ? null : _syncNow,
+              onPressed: _busy ? null : _syncNow,
               icon: _busy
                   ? const SizedBox(
                       width: 16, height: 16,
@@ -525,32 +451,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.sync, color: Colors.white, size: 18),
               label: Text(
-                _busy ? 'Syncing…' : 'Sync Now  (Push + Pull)',
+                _busy ? 'Syncing…' : 'Sync Now',
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.w600),
               ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.green,
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                minimumSize: const Size(double.infinity, 0),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            const SizedBox(height: 8),
-
-            // Test Save to Sheets — writes a real test row
-            OutlinedButton.icon(
-              onPressed: _busy ? null : _testSaveToSheets,
-              icon: const Icon(Icons.science_outlined,
-                  color: AppColors.amber, size: 16),
-              label: const Text('Test Save to Sheets',
-                  style: TextStyle(
-                      color: AppColors.amber, fontWeight: FontWeight.w600,
-                      fontSize: 12)),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: AppColors.amber, width: 1.5),
-                padding: const EdgeInsets.symmetric(vertical: 12),
                 minimumSize: const Size(double.infinity, 0),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8)),
