@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAIL Safety Lens — Live Analytics</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js"></script>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --border:#334155;
+    --text:#e2e8f0; --text2:#94a3b8; --accent:#3b82f6;
+    --crit:#ef4444; --high:#f97316; --med:#eab308; --low:#10b981;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);color:var(--text);padding:20px;min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;margin-bottom:16px}
+  h1{font-size:20px;font-weight:700}
+  h1 span{color:var(--text2);font-weight:400;font-size:13px;display:block;margin-top:2px}
+  .btn{background:var(--accent);color:#fff;border:none;padding:9px 16px;
+    border-radius:8px;font-size:13px;font-weight:600;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:wait}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px}
+  .tabs{display:flex;gap:6px;background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:4px}
+  .tab{padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;
+    cursor:pointer;color:var(--text2);border:none;background:none}
+  .tab.active{background:var(--accent);color:#fff}
+  select{background:var(--panel);color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px;font-size:12px}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--panel2);
+    border:1px solid var(--accent);color:var(--text);padding:6px 10px;
+    border-radius:20px;font-size:12px}
+  .chip b{color:var(--accent)}
+  .chip .x{cursor:pointer;font-weight:700;color:var(--text2)}
+  .chip .x:hover{color:var(--crit)}
+  .clear{font-size:12px;color:var(--text2);cursor:pointer;text-decoration:underline}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:12px;margin-bottom:18px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px}
+  .kpi .n{font-size:26px;font-weight:700;line-height:1}
+  .kpi .l{font-size:11px;color:var(--text2);text-transform:uppercase;
+    letter-spacing:.5px;margin-top:6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:16px;display:flex;flex-direction:column}
+  .card h2{font-size:13px;font-weight:600;margin-bottom:4px;color:var(--text)}
+  .card .hint{font-size:10px;color:var(--text2);margin-bottom:12px}
+  .chart-wrap{position:relative;height:260px}
+  .full{grid-column:1/-1}
+  .msg{padding:40px;text-align:center;color:var(--text2)}
+  .err{color:var(--crit)}
+  footer{margin-top:20px;font-size:11px;color:var(--text2);text-align:center}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;
+    background:var(--low);margin-right:5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>SAIL Safety Lens — Analytics
+    <span id="sub">Live data from Supabase</span></h1>
+  <button class="btn" id="refresh" onclick="load()">↻ Refresh</button>
+</header>
+
+<div class="toolbar">
+  <div class="tabs">
+    <button class="tab active" data-tab="ALL" onclick="setTab('ALL')">All records</button>
+    <button class="tab" data-tab="NEAR_MISS" onclick="setTab('NEAR_MISS')">Near-miss</button>
+    <button class="tab" data-tab="AI_SCAN" onclick="setTab('AI_SCAN')">AI scans</button>
+  </div>
+  <select id="range" onchange="draw()">
+    <option value="0">All time</option>
+    <option value="7">Last 7 days</option>
+    <option value="14">Last 14 days</option>
+    <option value="30">Last 30 days</option>
+  </select>
+  <span id="filters"></span>
+</div>
+
+<div id="content"><div class="msg">Loading live data…</div></div>
+
+<footer><span class="dot"></span><span id="status">Connecting…</span></footer>
+
+<script>
+const SUPABASE_URL = "https://mptdergmcakhufsmcogd.supabase.co";
+const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wdGRlcmdtY2FraHVmc21jb2dkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM1MTg0ODAsImV4cCI6MjA5OTA5NDQ4MH0.zkK7JSvp6AJ1JiVqCjd130f9PwS4412VygPhGX1ga4Y";
+
+const SEV_ORDER = ["CRITICAL","HIGH","MEDIUM","LOW","UNKNOWN"];
+const SEV_COLOR = {CRITICAL:"#ef4444",HIGH:"#f97316",MEDIUM:"#eab308",LOW:"#10b981",UNKNOWN:"#64748b"};
+const PALETTE = ["#3b82f6","#8b5cf6","#ec4899","#f97316","#eab308","#10b981",
+  "#06b6d4","#6366f1","#f43f5e","#84cc16","#14b8a6","#a855f7"];
+
+let ALL_ROWS = [];      // raw from Supabase
+let TAB = "ALL";        // ALL | NEAR_MISS | AI_SCAN
+let FILTERS = {};       // {severity, status, plant, wsa} — click-to-filter
+let charts = [];
+
+function canonPlant(p){
+  if(!p) return "Unknown";
+  const s=p.toUpperCase();
+  if(s.includes("SAFETY ORG")||s.startsWith("SSO")) return "SAIL Safety Org";
+  if(s.includes("RANCHI")||s.includes("CORPORATE")) return "Corporate – Ranchi";
+  if(s.includes("MARKETING")||s.startsWith("CMO")) return "Central Marketing Org";
+  if(s.includes("BHILAI")||s.startsWith("BSP")) return "Bhilai (BSP)";
+  if(s.includes("SALEM")||s.startsWith("SSP")) return "Salem (SSP)";
+  if(s.includes("DURGAPUR")||s.startsWith("DSP")) return "Durgapur (DSP)";
+  if(s.includes("BURNPUR")||s.startsWith("ISP")) return "Burnpur (ISP)";
+  if(s.includes("ROURKELA")||s.startsWith("RSP")) return "Rourkela (RSP)";
+  if(s.includes("BOKARO")||s.startsWith("BSL")) return "Bokaro (BSL)";
+  if(s.includes("CHANDRAPUR")) return "Chandrapur Ferro";
+  if(s.includes("ALLOY")) return "Alloy Steels";
+  return p.length>22 ? p.slice(0,22)+"…" : p;
+}
+const sevOf = r => (r.severity||"UNKNOWN").toUpperCase();
+const statOf = r => (r.status||"OPEN").toUpperCase();
+const wsaOf = r => r.wsa_category||"Unspecified";
+
+function tally(rows, keyFn){
+  const m={}; for(const r of rows){const k=keyFn(r); m[k]=(m[k]||0)+1;} return m;
+}
+function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;
+  if(html!=null)e.innerHTML=html;return e;}
+
+// Apply tab + date-range + click filters to the raw rows.
+function currentRows(){
+  let rows = ALL_ROWS;
+  if(TAB!=="ALL") rows = rows.filter(r=>(r.type||"")===TAB);
+  const days = +document.getElementById("range").value;
+  if(days>0){
+    const cut = Date.now() - days*86400000;
+    rows = rows.filter(r=>{const t=Date.parse(r.date||""); return !isNaN(t)&&t>=cut;});
+  }
+  if(FILTERS.severity) rows=rows.filter(r=>sevOf(r)===FILTERS.severity);
+  if(FILTERS.status)   rows=rows.filter(r=>statOf(r)===FILTERS.status);
+  if(FILTERS.plant)    rows=rows.filter(r=>canonPlant(r.plant)===FILTERS.plant);
+  if(FILTERS.wsa)      rows=rows.filter(r=>wsaOf(r)===FILTERS.wsa);
+  return rows;
+}
+
+function setTab(t){
+  TAB=t; FILTERS={};
+  document.querySelectorAll(".tab").forEach(b=>
+    b.classList.toggle("active", b.dataset.tab===t));
+  draw();
+}
+function setFilter(key,val){
+  if(FILTERS[key]===val) delete FILTERS[key]; else FILTERS[key]=val;
+  draw();
+}
+function clearFilters(){ FILTERS={}; draw(); }
+
+function renderChips(){
+  const box=document.getElementById("filters"); box.innerHTML="";
+  const labels={severity:"Severity",status:"Status",plant:"Plant",wsa:"WSA cause"};
+  const keys=Object.keys(FILTERS);
+  keys.forEach(k=>{
+    const chip=el("span","chip",`<b>${labels[k]}:</b> ${FILTERS[k]} <span class="x">✕</span>`);
+    chip.querySelector(".x").onclick=()=>setFilter(k,FILTERS[k]);
+    box.appendChild(chip);
+  });
+  if(keys.length>1){
+    const c=el("span","clear","clear all"); c.onclick=clearFilters; box.appendChild(c);
+  }
+}
+
+function kpiBlock(rows){
+  const total=rows.length;
+  const crit=rows.filter(r=>sevOf(r)==="CRITICAL").length;
+  const open=rows.filter(r=>statOf(r)!=="CLOSED").length;
+  const nm=rows.filter(r=>(r.type||"")==="NEAR_MISS").length;
+  const ai=rows.filter(r=>(r.type||"")==="AI_SCAN").length;
+  const rs=rows.map(r=>r.risk_score).filter(v=>typeof v==="number");
+  const avg=rs.length?Math.round(rs.reduce((a,b)=>a+b,0)/rs.length):"—";
+  let tiles=[["Records",total],["Critical",crit],["Open",open]];
+  if(TAB==="ALL") tiles.push(["Near-miss",nm],["AI scans",ai]);
+  tiles.push(["Avg risk",avg]);
+  const wrap=el("div","kpis");
+  for(const [l,n] of tiles){const k=el("div","kpi");
+    k.appendChild(el("div","n",n)); k.appendChild(el("div","l",l)); wrap.appendChild(k);}
+  return wrap;
+}
+
+function makeCard(title,hint,full){
+  const c=el("div","card"+(full?" full":""));
+  c.appendChild(el("h2",null,title));
+  if(hint) c.appendChild(el("div","hint",hint));
+  const w=el("div","chart-wrap"); const cv=document.createElement("canvas");
+  w.appendChild(cv); c.appendChild(w);
+  return {card:c,canvas:cv};
+}
+
+function drawDoughnut(cv,labels,values,colors,onClick){
+  charts.push(new Chart(cv,{type:"doughnut",
+    data:{labels,datasets:[{data:values,backgroundColor:colors,borderColor:"#1e293b",borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,
+      onClick:(e,els)=>{if(onClick&&els.length)onClick(labels[els[0].index]);},
+      plugins:{legend:{position:"right",labels:{color:"#94a3b8",font:{size:11},boxWidth:12}}}}}));
+}
+function drawBar(cv,labels,values,color,horizontal,onClick){
+  charts.push(new Chart(cv,{type:"bar",
+    data:{labels,datasets:[{data:values,backgroundColor:color,borderRadius:4}]},
+    options:{indexAxis:horizontal?"y":"x",responsive:true,maintainAspectRatio:false,
+      onClick:(e,els)=>{if(onClick&&els.length)onClick(labels[els[0].index]);},
+      plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:"#94a3b8",font:{size:10}},grid:{color:"#334155"}},
+              y:{ticks:{color:"#94a3b8",font:{size:10}},grid:{color:"#334155"}}}}}));
+}
+function drawLine(cv,labels,values){
+  charts.push(new Chart(cv,{type:"line",
+    data:{labels,datasets:[{data:values,borderColor:"#3b82f6",
+      backgroundColor:"rgba(59,130,246,.15)",fill:true,tension:.3,pointRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:"#94a3b8",font:{size:10}},grid:{color:"#334155"}},
+              y:{ticks:{color:"#94a3b8",font:{size:10}},grid:{color:"#334155"},beginAtZero:true}}}}));
+}
+
+function draw(){
+  charts.forEach(c=>c.destroy()); charts=[];
+  renderChips();
+  const rows=currentRows();
+  const content=document.getElementById("content"); content.innerHTML="";
+  content.appendChild(kpiBlock(rows));
+
+  if(!rows.length){
+    content.appendChild(el("div","msg","No records match the current filters."));
+    updateSub(rows); return;
+  }
+  const grid=el("div","grid"); content.appendChild(grid);
+  const HINT="Click a segment to filter";
+
+  const sev=tally(rows,sevOf);
+  const sevL=SEV_ORDER.filter(s=>sev[s]);
+  let c=makeCard("By severity",HINT); grid.appendChild(c.card);
+  drawDoughnut(c.canvas,sevL,sevL.map(s=>sev[s]),sevL.map(s=>SEV_COLOR[s]),
+    v=>setFilter("severity",v));
+
+  if(TAB==="ALL"){
+    const typ=tally(rows,r=>r.type==="NEAR_MISS"?"Near-miss":r.type==="AI_SCAN"?"AI scan":(r.type||"Other"));
+    const typL=Object.keys(typ);
+    c=makeCard("By type",""); grid.appendChild(c.card);
+    drawDoughnut(c.canvas,typL,typL.map(k=>typ[k]),PALETTE);
+  }
+
+  const st=tally(rows,statOf); const stL=Object.keys(st);
+  c=makeCard("By status",HINT); grid.appendChild(c.card);
+  drawDoughnut(c.canvas,stL,stL.map(k=>st[k]),
+    stL.map(s=>s==="CLOSED"?"#10b981":s==="OPEN"?"#f97316":"#3b82f6"),
+    v=>setFilter("status",v));
+
+  const pl=tally(rows,r=>canonPlant(r.plant));
+  const plS=Object.entries(pl).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  c=makeCard("By plant / unit (top 10)",HINT,true); grid.appendChild(c.card);
+  drawBar(c.canvas,plS.map(x=>x[0]),plS.map(x=>x[1]),"#3b82f6",true,
+    v=>setFilter("plant",v));
+
+  const wsa=tally(rows,wsaOf);
+  const wsaS=Object.entries(wsa).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  c=makeCard("By WSA cause (top 10)",HINT,true); grid.appendChild(c.card);
+  drawBar(c.canvas,wsaS.map(x=>x[0]),wsaS.map(x=>x[1]),"#8b5cf6",true,
+    v=>setFilter("wsa",v));
+
+  const byDay=tally(rows,r=>(r.date||"").slice(0,10));
+  const days=Object.keys(byDay).filter(d=>d).sort();
+  c=makeCard("Reports over time (by day)","",true); grid.appendChild(c.card);
+  drawLine(c.canvas,days,days.map(d=>byDay[d]));
+
+  updateSub(rows);
+}
+
+function updateSub(rows){
+  const days=[...new Set(rows.map(r=>(r.date||"").slice(0,10)).filter(Boolean))].sort();
+  const tabName={ALL:"All",NEAR_MISS:"Near-miss",AI_SCAN:"AI scans"}[TAB];
+  document.getElementById("sub").textContent =
+    `${tabName} · ${rows.length} records · ${days[0]||"—"} to ${days[days.length-1]||"—"}`;
+}
+
+async function fetchAll(){
+  const res=await fetch(
+    `${SUPABASE_URL}/rest/v1/incidents?select=type,severity,status,plant,dept,wsa_category,date,risk_score`,
+    {headers:{apikey:ANON_KEY,Authorization:"Bearer "+ANON_KEY}});
+  if(!res.ok) throw new Error("HTTP "+res.status+" — "+(await res.text()).slice(0,120));
+  return res.json();
+}
+
+async function load(){
+  const btn=document.getElementById("refresh");
+  const st=document.getElementById("status");
+  btn.disabled=true; st.textContent="Fetching live data…";
+  try{
+    ALL_ROWS=await fetchAll();
+    draw();
+    st.textContent="Live · updated "+new Date().toLocaleString();
+  }catch(e){
+    document.getElementById("content").innerHTML=
+      `<div class="msg err">Could not load data:<br>${e.message}</div>`;
+    st.textContent="Error";
+  }finally{ btn.disabled=false; }
+}
+load();
+</script>
+</body>
+</html>

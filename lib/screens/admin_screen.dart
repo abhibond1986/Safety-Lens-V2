@@ -27,6 +27,7 @@ import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
@@ -897,6 +898,35 @@ class _AdminScreenState extends State<AdminScreen>
   // ══════════════════════════════════════════════════════════════════
   //  MODULE 1 — ANALYTICS
   // ══════════════════════════════════════════════════════════════════
+  /// Open the standalone live analytics dashboard (analytics_dashboard.html).
+  /// On web it's deployed alongside the app, so we open it at a same-origin
+  /// relative path in a new tab. On mobile/desktop there's no bundled HTML to
+  /// serve, so we inform the admin it's a web-only tool.
+  Future<void> _openLiveDashboard() async {
+    if (!kIsWeb) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text(
+            'The live dashboard opens in a browser. Use the web version of the app, '
+            'or open analytics_dashboard.html directly.'),
+        duration: Duration(seconds: 4),
+      ));
+      return;
+    }
+    try {
+      final base = Uri.base; // current app URL
+      // Resolve analytics_dashboard.html relative to the app's directory.
+      final target = base.resolve('analytics_dashboard.html');
+      await launchUrl(target, mode: LaunchMode.externalApplication,
+          webOnlyWindowName: '_blank');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Could not open dashboard: $e'),
+      ));
+    }
+  }
+
   Widget _moduleAnalytics(SL sl) {
     // Compute aggregates
     final byPlant   = <String, int>{};
@@ -973,6 +1003,24 @@ class _AdminScreenState extends State<AdminScreen>
         Expanded(child: _statCard('Plants', '${byPlant.length}',
             AppColors.accent, sl)),
       ]),
+      const SizedBox(height: 12),
+
+      // ── Live interactive dashboard launcher ────────────────────
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: _openLiveDashboard,
+          icon: const Icon(Icons.open_in_new_rounded, size: 18),
+          label: const Text('Open Live Analytics Dashboard'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+      ),
       const SizedBox(height: 16),
 
       // ── Severity distribution ─────────────────────────────────

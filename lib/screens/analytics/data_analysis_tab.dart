@@ -18,6 +18,37 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   List<String> _wsaCategories = [];
   bool _loading = true;
 
+  // ── Interactive filters ──────────────────────────────────────────────
+  // Type toggle: 'ALL' | 'AI_SCAN' | 'NEAR_MISS'. Plant: null = all plants.
+  String _typeFilter = 'ALL';
+  String? _plantFilter;
+
+  /// The incident set every chart/summary reads from, after applying the
+  /// active type + plant filters to the raw [_incidents].
+  List<Map<String, dynamic>> get _view {
+    return _incidents.where((i) {
+      if (_typeFilter != 'ALL' &&
+          (i['type']?.toString().toUpperCase() ?? '') != _typeFilter) {
+        return false;
+      }
+      if (_plantFilter != null &&
+          (i['plant']?.toString() ?? 'Other') != _plantFilter) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  /// Distinct plant names present in the data (for the filter dropdown).
+  List<String> get _plantOptions {
+    final set = <String>{};
+    for (final i in _incidents) {
+      set.add(i['plant']?.toString() ?? 'Other');
+    }
+    final list = set.toList()..sort();
+    return list;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -44,7 +75,7 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   // Severity counts
   Map<String, int> get _severityCounts {
     final map = <String, int>{'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0};
-    for (final i in _incidents) {
+    for (final i in _view) {
       final sev = (i['severity']?.toString() ?? 'MEDIUM').toUpperCase();
       map[sev] = (map[sev] ?? 0) + 1;
     }
@@ -54,7 +85,7 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   // Plant-wise counts
   Map<String, int> get _plantCounts {
     final map = <String, int>{};
-    for (final i in _incidents) {
+    for (final i in _view) {
       final plant = i['plant']?.toString() ?? 'Other';
       map[plant] = (map[plant] ?? 0) + 1;
     }
@@ -66,7 +97,7 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   // Category counts — mapped to custom WSA list via fuzzy matching
   Map<String, int> get _categoryCounts {
     final map = <String, int>{};
-    for (final i in _incidents) {
+    for (final i in _view) {
       final raw = (i['wsaCategory']?.toString() ?? '').trim();
       if (raw.isEmpty) continue;
       final matched = _matchWsaCategory(raw);
@@ -107,9 +138,9 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   }
 
   // Type counts
-  int get _aiScanCount => _incidents.where(
+  int get _aiScanCount => _view.where(
       (i) => i['type']?.toString().toUpperCase() == 'AI_SCAN').length;
-  int get _nearMissCount => _incidents.where(
+  int get _nearMissCount => _view.where(
       (i) => i['type']?.toString().toUpperCase() == 'NEAR_MISS').length;
 
   @override
@@ -123,11 +154,23 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
           style: TextStyle(color: sl.text3, fontSize: 14)));
     }
 
+    final hasView = _view.isNotEmpty;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Interactive filter bar ──────────────────────────────────
+          _filterBar(sl),
+          const SizedBox(height: 16),
+          if (!hasView)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 40),
+              child: Center(child: Text('No records match these filters',
+                  style: TextStyle(color: sl.text3, fontSize: 14))),
+            )
+          else ...[
           // Summary row
           _summaryCards(sl),
           const SizedBox(height: 20),
@@ -161,7 +204,106 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
           const SizedBox(height: 12),
           _responseTimeCards(sl),
           const SizedBox(height: 20),
+          ],
         ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  //  FILTER BAR — type toggle (All / AI Scan / Near Miss) + plant picker
+  // ═══════════════════════════════════════════════════════════════
+  Widget _filterBar(SL sl) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: sl.glassColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: sl.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Type segmented toggle
+          Row(
+            children: [
+              _typeChip(sl, 'All', 'ALL'),
+              const SizedBox(width: 6),
+              _typeChip(sl, 'AI Scan', 'AI_SCAN'),
+              const SizedBox(width: 6),
+              _typeChip(sl, 'Near Miss', 'NEAR_MISS'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Plant dropdown
+          Row(
+            children: [
+              Icon(Icons.factory_outlined, size: 16, color: sl.text3),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: _plantFilter,
+                    isExpanded: true,
+                    isDense: true,
+                    dropdownColor: sl.glassColor,
+                    style: TextStyle(fontSize: 12.5, color: sl.text1),
+                    hint: Text('All plants',
+                        style: TextStyle(fontSize: 12.5, color: sl.text2)),
+                    items: [
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('All plants',
+                            style: TextStyle(fontSize: 12.5, color: sl.text1)),
+                      ),
+                      ..._plantOptions.map((p) => DropdownMenuItem<String?>(
+                            value: p,
+                            child: Text(p,
+                                style: TextStyle(fontSize: 12.5, color: sl.text1),
+                                overflow: TextOverflow.ellipsis),
+                          )),
+                    ],
+                    onChanged: (v) => setState(() => _plantFilter = v),
+                  ),
+                ),
+              ),
+              if (_plantFilter != null || _typeFilter != 'ALL')
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _plantFilter = null;
+                    _typeFilter = 'ALL';
+                  }),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text('Clear',
+                        style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _typeChip(SL sl, String label, String value) {
+    final active = _typeFilter == value;
+    return GestureDetector(
+      onTap: () => setState(() => _typeFilter = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? AppColors.accent : sl.border.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: active ? Colors.white : sl.text2)),
       ),
     );
   }
@@ -173,9 +315,9 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   }
 
   Widget _summaryCards(SL sl) {
-    final total = _incidents.length;
+    final total = _view.length;
     final critical = _severityCounts['CRITICAL'] ?? 0;
-    final open = _incidents.where(
+    final open = _view.where(
         (i) => i['status']?.toString().toUpperCase() == 'OPEN').length;
     return Row(
       children: [
@@ -292,7 +434,7 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   //  TYPE PIE CHART
   // ═══════════════════════════════════════════════════════════════
   Widget _typePieChart(SL sl) {
-    final total = _incidents.length;
+    final total = _view.length;
     if (total == 0) return const SizedBox();
 
     return Container(
@@ -472,7 +614,7 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
   // ═══════════════════════════════════════════════════════════════
   Map<String, int> get _deptCounts {
     final map = <String, int>{};
-    for (final i in _incidents) {
+    for (final i in _view) {
       final dept = i['dept']?.toString() ?? '';
       if (dept.isEmpty) continue;
       map[dept] = (map[dept] ?? 0) + 1;
@@ -559,7 +701,7 @@ class _DataAnalysisTabState extends State<DataAnalysisTab> {
     double avgToClosed = 0;
     int countInv = 0, countAct = 0, countClose = 0;
 
-    for (final i in _incidents) {
+    for (final i in _view) {
       final opened = DateTime.tryParse(i['date']?.toString() ?? '');
       if (opened == null) continue;
 
