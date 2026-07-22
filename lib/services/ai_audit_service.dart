@@ -184,7 +184,13 @@ Respond ONLY with JSON.''';
 
       final base64Image = base64Encode(bytes);
       final dataUrl = 'data:image/jpeg;base64,$base64Image';
-      const model = 'meta-llama/llama-4-scout-17b-16e-instruct';
+      // Configurable so a decommissioned model name can be fixed from settings
+      // without an app rebuild. If Groq retires this default and returns 404
+      // ("Audit model failed — skipping"), set 'groq_audit_model' in prefs to a
+      // current vision model from https://console.groq.com/docs/models
+      final model = (prefs.getString('groq_audit_model') ?? '').trim().isNotEmpty
+          ? prefs.getString('groq_audit_model')!.trim()
+          : 'meta-llama/llama-4-maverick-17b-128e-instruct';
 
       final response = await http.post(
         Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
