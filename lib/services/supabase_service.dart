@@ -193,19 +193,38 @@ class SupabaseService {
   static Future<String?> uploadIncidentImage(
       String incidentId, Uint8List bytes) async {
     if (!isReady || incidentId.isEmpty || bytes.isEmpty) return null;
+    final path = 'img_$incidentId.jpg';
+    // NOTE: upsert:true issues an UPDATE on storage.objects, which requires an
+    // UPDATE policy the bucket may not have (only INSERT+SELECT). So try a plain
+    // insert first (works with the default policies for a NEW image), and only
+    // fall back to upsert for a genuine overwrite. This lets image storage work
+    // even before supabase_dashboard_setup.sql adds the UPDATE/DELETE policies.
     try {
-      final path = 'img_$incidentId.jpg';
       await _db.storage.from(SupabaseConfig.imageBucket).uploadBinary(
             path,
             bytes,
             fileOptions: const FileOptions(
               contentType: 'image/jpeg',
-              upsert: true, // overwrite if the same incident is re-saved
+              upsert: false, // plain insert — succeeds with INSERT policy alone
             ),
           );
       return _db.storage.from(SupabaseConfig.imageBucket).getPublicUrl(path);
     } catch (_) {
-      return null;
+      // Object already exists (re-save) → needs an overwrite via upsert, which
+      // requires the UPDATE policy from supabase_dashboard_setup.sql.
+      try {
+        await _db.storage.from(SupabaseConfig.imageBucket).uploadBinary(
+              path,
+              bytes,
+              fileOptions: const FileOptions(
+                contentType: 'image/jpeg',
+                upsert: true,
+              ),
+            );
+        return _db.storage.from(SupabaseConfig.imageBucket).getPublicUrl(path);
+      } catch (_) {
+        return null;
+      }
     }
   }
 
