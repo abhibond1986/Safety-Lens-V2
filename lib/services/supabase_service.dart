@@ -132,6 +132,26 @@ class SupabaseService {
     }
   }
 
+  /// Like [fetchIncidents] but returns null on ANY failure (network, auth,
+  /// timeout) so callers can distinguish "server is genuinely empty" from
+  /// "couldn't reach the server". An empty-but-successful fetch returns [].
+  /// Used by server-authoritative reconciliation, which must NEVER delete the
+  /// local cache just because a request failed.
+  static Future<List<Map<String, dynamic>>?> fetchIncidentsOrNull() async {
+    if (!isReady) return null;
+    try {
+      final rows = await _db
+          .from('incidents')
+          .select()
+          .order('date', ascending: false);
+      return (rows as List)
+          .map((r) => _fromRow(Map<String, dynamic>.from(r as Map)))
+          .toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Insert or update one incident (keyed by id). Returns true on success.
   static Future<bool> upsertIncident(Map<String, dynamic> incident) async {
     if (!isReady) return false;

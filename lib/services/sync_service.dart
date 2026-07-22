@@ -707,6 +707,76 @@ class SyncService {
       };
     }
 
+    // ★ Supabase path: server-authoritative reconcile.
+    // The server is the single source of truth for the shared incident set.
+    // Order matters: (1) drain the queue so genuinely-new offline incidents
+    // reach the server FIRST (they'll then survive the reconcile); (2) pull the
+    // full server set; (3) delete any local incident the server no longer has
+    // (covers admin wipes / deletes made on other devices); (4) merge server
+    // rows over local. We use fetchIncidentsOrNull so a network failure (null)
+    // never triggers a destructive reconcile.
+    if (SupabaseConfig.enabled) {
+      final pushed = await drainPendingQueue();
+
+      final serverRows = await SupabaseService.fetchIncidentsOrNull();
+      if (serverRows == null) {
+        // Couldn't reach the server — do NOT touch local data.
+        return {
+          'ok': false,
+          'error': 'Could not reach Supabase — local data left unchanged.',
+          'pushed': pushed,
+        };
+      }
+
+      final serverIds = <String>{};
+      for (final r in serverRows) {
+        final id = r['id']?.toString() ?? '';
+        if (id.isNotEmpty) serverIds.add(id);
+      }
+
+      // (3) Drop local incidents that no longer exist on the server.
+      final removed = await LocalDB.reconcileWithServer(serverIds);
+      // Server confirmed its full set → prune tombstones it no longer knows
+      // about (they're now truly gone) so they can't linger forever.
+      await LocalDB.pruneIncidentTombstones(serverIds);
+
+      // (4) Merge server rows over local (server wins on conflicts).
+      final activeTombstones = LocalDB.deletedIncidentIds();
+      final localMap = <String, Map<String, dynamic>>{};
+      for (final l in await LocalDB.getIncidents()) {
+        final id = l['id']?.toString() ?? '';
+        if (id.isNotEmpty) localMap[id] = l;
+      }
+      for (final remote in serverRows) {
+        final id = remote['id']?.toString() ?? '';
+        if (id.isEmpty || activeTombstones.contains(id)) continue;
+        if (!localMap.containsKey(id)) {
+          localMap[id] = remote;
+        } else {
+          final merged = Map<String, dynamic>.from(localMap[id]!);
+          remote.forEach((k, v) {
+            if (v != null && v.toString().isNotEmpty) merged[k] = v;
+          });
+          localMap[id] = merged;
+        }
+      }
+      await LocalDB.replaceAllIncidents(localMap.values.toList());
+
+      // Refresh cached users too.
+      final users = await fetchUsers();
+      if (users.isNotEmpty) await LocalDB.cacheUsers(users);
+
+      await _markSyncTime();
+      return {
+        'ok': true,
+        'pushed': pushed,
+        'pulled': serverRows.length,
+        'removed': removed,
+        'users': users.length,
+        'syncTime': DateTime.now().toIso8601String(),
+      };
+    }
+
     // Push any queued offline writes
     final pushed = await drainPendingQueue();
 

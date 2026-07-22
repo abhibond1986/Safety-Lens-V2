@@ -523,6 +523,32 @@ class LocalDB {
     await addDeletedIncidentId(id);
   }
 
+  /// Server-authoritative reconciliation: drop every locally-stored incident
+  /// whose id is NOT in [serverIds]. Used after the backend confirms its full
+  /// set of incidents so a device can't keep showing rows that were deleted
+  /// server-side (e.g. after an admin wipe).
+  ///
+  /// SAFETY: the caller MUST only pass a set fetched successfully from the
+  /// server. Passing a stale/empty set due to a network error would wipe good
+  /// local data — that's why the sync path uses [SupabaseService
+  /// .fetchIncidentsOrNull] and skips reconcile when it returns null.
+  ///
+  /// Returns the number of local incidents removed.
+  static Future<int> reconcileWithServer(Set<String> serverIds) async {
+    final raw = _prefs.getString(_kIncidents);
+    if (raw == null) return 0;
+    final list = (jsonDecode(raw) as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+    final before = list.length;
+    list.removeWhere((i) => !serverIds.contains(i['id']?.toString() ?? ''));
+    final removed = before - list.length;
+    if (removed > 0) {
+      await _prefs.setString(_kIncidents, jsonEncode(list));
+    }
+    return removed;
+  }
+
   // ═══════════════════════════════════════════════════════════════
   //  ★ v35: UPDATE INCIDENT AUDIT DATA
   //  Merges audit fields (auditStatus, auditScore, etc.) into
