@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../main.dart' show AppColors, SL;
 import '../../services/local_db.dart';
+import '../../services/realtime_sync.dart';
 import '../incident_detail_screen.dart';
 
 class OverviewTab extends StatefulWidget {
@@ -20,6 +21,17 @@ class _OverviewTabState extends State<OverviewTab> {
   void initState() {
     super.initState();
     _load();
+    RealtimeSync.incidentsRevision.addListener(_onRealtime);
+  }
+
+  @override
+  void dispose() {
+    RealtimeSync.incidentsRevision.removeListener(_onRealtime);
+    super.dispose();
+  }
+
+  void _onRealtime() {
+    if (mounted) _load();
   }
 
   Future<void> _load() async {

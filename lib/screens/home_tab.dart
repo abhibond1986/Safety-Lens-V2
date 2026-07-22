@@ -16,6 +16,7 @@ import '../services/local_db.dart';
 import '../services/admin_master_data.dart';
 import '../services/sync_service.dart';
 import '../services/i18n.dart';
+import '../services/realtime_sync.dart';
 import 'reports_tab.dart';
 import 'admin_screen.dart';
 import '../widgets/universal_app_bar.dart';
@@ -52,12 +53,27 @@ class _HomeTabState extends State<HomeTab> {
     super.initState();
     I18n.instance.addListener(_rebuild);
     _load();
+    RealtimeSync.incidentsRevision.addListener(_onRealtime);
   }
 
   @override
   void dispose() {
     I18n.instance.removeListener(_rebuild);
+    RealtimeSync.incidentsRevision.removeListener(_onRealtime);
     super.dispose();
+  }
+
+  void _onRealtime() {
+    if (mounted) _loadLocalOnly();
+  }
+
+  /// Refresh from the local cache only (realtime already updated LocalDB) —
+  /// avoids a redundant fullSync round-trip on every live change.
+  Future<void> _loadLocalOnly() async {
+    final inc = await LocalDB.getIncidents();
+    final plants = await AdminMasterData.getPlants();
+    if (!mounted) return;
+    setState(() { _incidents = inc; _plantDefs = plants; _loading = false; });
   }
 
   void _rebuild() { if (mounted) setState(() {}); }

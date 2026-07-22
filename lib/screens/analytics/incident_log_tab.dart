@@ -8,6 +8,7 @@ import '../../services/image_storage.dart';
 import '../../services/admin_master_data.dart';
 import '../../services/pdf_export.dart';
 import '../../services/sync_service.dart';
+import '../../services/realtime_sync.dart';
 import '../incident_detail_screen.dart';
 import '../reports_tab.dart';
 
@@ -58,6 +59,18 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
     super.initState();
     _applyPendingFilters();
     _load();
+    // Live refresh when any device adds/edits/deletes an incident.
+    RealtimeSync.incidentsRevision.addListener(_onRealtime);
+  }
+
+  @override
+  void dispose() {
+    RealtimeSync.incidentsRevision.removeListener(_onRealtime);
+    super.dispose();
+  }
+
+  void _onRealtime() {
+    if (mounted) _load();
   }
 
   /// ★ v35: Apply pending filters set by Home tab navigation

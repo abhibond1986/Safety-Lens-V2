@@ -31,6 +31,14 @@ class SupabaseService {
 
   static SupabaseClient get _db => Supabase.instance.client;
 
+  /// Public accessor so other services (e.g. realtime) can reuse the client.
+  static SupabaseClient get client => _db;
+
+  /// Convert a DB incident row (snake_case) to the app map (camelCase).
+  /// Exposed for the realtime layer, which receives raw rows from Postgres.
+  static Map<String, dynamic> incidentFromRow(Map<String, dynamic> row) =>
+      _fromRow(row);
+
   // ══════════════════════════════════════════════════════════════════════════
   //  FIELD MAPPING — app (camelCase) ↔ DB (snake_case)
   // ══════════════════════════════════════════════════════════════════════════
@@ -137,11 +145,19 @@ class SupabaseService {
     }
   }
 
-  /// Hard-delete an incident by id. Returns true on success.
+  /// Hard-delete an incident by id. Also removes its evidence image from
+  /// Storage so no orphaned file is left behind. Returns true on success.
   static Future<bool> deleteIncident(String id) async {
     if (!isReady || id.isEmpty) return false;
     try {
       await _db.from('incidents').delete().eq('id', id);
+      // Best-effort image cleanup — never let a missing/absent file fail the
+      // delete (the row is already gone, which is what matters).
+      try {
+        await _db.storage
+            .from(SupabaseConfig.imageBucket)
+            .remove(['img_$id.jpg']);
+      } catch (_) {}
       return true;
     } catch (_) {
       return false;

@@ -10,6 +10,7 @@ import 'services/admin_master_data.dart';
 import 'services/app_updater.dart';
 import 'services/image_storage.dart';
 import 'services/background_sync.dart';
+import 'services/realtime_sync.dart';
 import 'services/i18n.dart';  // ← ADDED: fixes "I18n not defined" error
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
@@ -43,6 +44,9 @@ void main() async {
   AppUpdater.init();
   // ★ v25: Periodic background sync — retries pending items every 5 minutes
   BackgroundSync.start();
+  // ★ Live cross-device sync: push incident/AI-hazard/near-miss add-edit-delete
+  //   to every connected user in real time (no-op unless Supabase is enabled).
+  RealtimeSync.start().catchError((_) {});
   runApp(const SafetyLensApp());
 }
 

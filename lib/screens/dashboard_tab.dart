@@ -11,6 +11,7 @@ import '../main.dart';
 import '../services/local_db.dart';
 import '../services/sync_service.dart';
 import '../services/admin_master_data.dart';
+import '../services/realtime_sync.dart';
 import 'admin_screen.dart';
 
 class DashboardTab extends StatefulWidget {
@@ -59,6 +60,17 @@ class _DashboardTabState extends State<DashboardTab> {
     super.initState();
     _loadAll();
     _loadPlantsMaster();
+    RealtimeSync.incidentsRevision.addListener(_onRealtime);
+  }
+
+  @override
+  void dispose() {
+    RealtimeSync.incidentsRevision.removeListener(_onRealtime);
+    super.dispose();
+  }
+
+  void _onRealtime() {
+    if (mounted) _loadLocal();
   }
 
   Future<void> _loadPlantsMaster() async {

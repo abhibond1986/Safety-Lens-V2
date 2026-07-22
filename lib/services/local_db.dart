@@ -55,6 +55,15 @@ class LocalDB {
     await _writeSet(_kDeletedIncidentIds, s);
   }
 
+  /// Clear a single incident tombstone — used when a realtime INSERT/UPDATE
+  /// arrives for an id that was previously deleted on this device, so the
+  /// re-created record is allowed to surface again.
+  static Future<void> removeDeletedIncidentId(String id) async {
+    if (id.trim().isEmpty) return;
+    final s = _readSet(_kDeletedIncidentIds);
+    if (s.remove(id.trim())) await _writeSet(_kDeletedIncidentIds, s);
+  }
+
   static Future<void> addDeletedUsername(String username) async {
     if (username.trim().isEmpty) return;
     final s = _readSet(_kDeletedUsernames)..add(username.trim());
