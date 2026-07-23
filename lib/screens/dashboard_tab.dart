@@ -746,9 +746,13 @@ class _DashboardTabState extends State<DashboardTab> {
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, color: color, size: 22),
           const SizedBox(height: 5),
-          Text(label, textAlign: TextAlign.center,
-            style: TextStyle(color: color, fontSize: 9,
-                fontWeight: FontWeight.w600, height: 1.3)),
+          Flexible(
+            child: Text(label, textAlign: TextAlign.center,
+              style: TextStyle(color: color, fontSize: 9,
+                  fontWeight: FontWeight.w600, height: 1.3),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis),
+          ),
         ]))));
 
   Widget _miniBadge(String text, Color color, {required VoidCallback onTap}) =>

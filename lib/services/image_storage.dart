@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image/image.dart' as img;
 
 class ImageStorage {
   static Directory? _imageDir;
@@ -169,6 +170,21 @@ class ImageStorage {
       return total;
     } catch (_) {
       return 0;
+    }
+  }
+
+  /// Generate a thumbnail from image bytes
+  /// Returns base64-encoded JPEG thumbnail (60px wide, ~2-4KB)
+  static String? generateThumbnail(Uint8List imageBytes) {
+    try {
+      final decoded = img.decodeImage(imageBytes);
+      if (decoded == null) return null;
+      final thumb = img.copyResize(decoded, width: 60);
+      final jpgBytes = img.encodeJpg(thumb, quality: 50);
+      return base64Encode(jpgBytes);
+    } catch (e) {
+      print('[ImageStorage] Thumbnail generation failed: $e');
+      return null;
     }
   }
 }

@@ -765,9 +765,9 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
       return _typeIconWidget(typeIcon, typeColor);
     }
 
-    // Load asynchronously
+    // Load asynchronously and generate thumbnail if needed
     return FutureBuilder<Uint8List?>(
-      future: ImageStorage.getImageForIncident(inc),
+      future: _loadAndCacheThumbnail(inc),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.done && snapshot.data != null) {
           _imageCache[incId] = snapshot.data;
@@ -783,5 +783,26 @@ class _IncidentLogTabState extends State<IncidentLogTab> {
             child: CircularProgressIndicator(strokeWidth: 1.5, color: typeColor.withOpacity(0.5))));
       },
     );
+  }
+
+  /// Load image and generate thumbnail on-the-fly for efficient display
+  Future<Uint8List?> _loadAndCacheThumbnail(Map<String, dynamic> inc) async {
+    try {
+      // Get the full image from storage
+      final imageBytes = await ImageStorage.getImageForIncident(inc);
+      if (imageBytes == null) return null;
+
+      // Generate a small thumbnail for display (more efficient than showing full image)
+      final thumbnail = ImageStorage.generateThumbnail(imageBytes);
+      if (thumbnail != null) {
+        return base64Decode(thumbnail);
+      }
+
+      // Fallback: return original if thumbnail generation fails
+      return imageBytes;
+    } catch (e) {
+      print('[IncidentLog] Failed to load thumbnail: $e');
+      return null;
+    }
   }
 }
