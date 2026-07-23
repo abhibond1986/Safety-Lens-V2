@@ -374,9 +374,8 @@ class SyncService {
   static Future<Map<String, dynamic>?> pullMasterData() async {
     if (SupabaseConfig.enabled) {
       final raw = await SupabaseService.fetchMasterData();
-      if (raw.isEmpty) return null;
       // Map DB keys → the camelCase keys AdminMasterData.syncFromBackend expects.
-      return {
+      final out = <String, dynamic>{
         if (raw['plants'] != null)      'plants':      raw['plants'],
         if (raw['departments'] != null) 'departments': raw['departments'],
         if (raw['wsa_causes'] != null)  'wsaCauses':   raw['wsa_causes'],
@@ -384,6 +383,24 @@ class SyncService {
         if (raw['statuses'] != null)    'statuses':    raw['statuses'],
         if (raw['obs_types'] != null)   'obsTypes':    raw['obs_types'],
       };
+
+      // ★ CRITICAL: AI API keys (OpenRouter/Gemini/Groq) do NOT live in the
+      // Supabase master_data table — they live server-side in the Apps Script
+      // Script Properties. Without them the device can't reach OpenRouter and
+      // every image scan silently falls back to OFFLINE analysis.
+      // So always pull the keys from Apps Script, even under Supabase.
+      try {
+        final keys = await _fetchApiKeysFromAppsScript();
+        if (keys != null) {
+          for (final k in const ['openRouterApiKey', 'geminiApiKey', 'groqApiKey', 'geminiModel']) {
+            if (keys[k] != null && keys[k].toString().isNotEmpty) {
+              out[k] = keys[k];
+            }
+          }
+        }
+      } catch (_) {}
+
+      return out.isEmpty ? null : out;
     }
     if (!await isConfigured) return null;
     try {
@@ -391,6 +408,30 @@ class SyncService {
       final resp = await _postWithRedirect(url, {'action': 'getMasterData'});
       if (resp != null && resp.statusCode == 200) {
         final parsed = jsonDecode(resp.body);
+        if (parsed['ok'] == true && parsed['data'] != null) {
+          return Map<String, dynamic>.from(parsed['data'] as Map);
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fetch ONLY the AI API keys from Apps Script (getMasterData injects them
+  /// from Script Properties). Used when Supabase is the primary backend but the
+  /// keys still need to come from the Apps Script AI proxy. Returns the raw
+  /// `data` map (with openRouterApiKey/geminiApiKey/groqApiKey/geminiModel) or
+  /// null on any failure.
+  static Future<Map<String, dynamic>?> _fetchApiKeysFromAppsScript() async {
+    try {
+      final url = await getBackendUrl();
+      if (url.isEmpty || !url.startsWith('https://')) return null;
+      final resp = await _postWithRedirect(url, {'action': 'getMasterData'});
+      if (resp != null && resp.statusCode == 200) {
+        final bodyText = resp.body.trim();
+        if (bodyText.startsWith('<') || bodyText.startsWith('<!')) return null;
+        final parsed = jsonDecode(bodyText);
         if (parsed['ok'] == true && parsed['data'] != null) {
           return Map<String, dynamic>.from(parsed['data'] as Map);
         }

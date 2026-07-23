@@ -2041,6 +2041,49 @@ class _AIScanTabState extends State<AIScanTab> {
     'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3,
   };
 
+  /// Small pill showing whether the analysis came from the live online AI
+  /// or the offline knowledge-base fallback. Reads the flags GeminiVision
+  /// attaches to every result (`_isOnline`, `_offline_reason`, `_fromCache`).
+  Widget _analysisSourceBadge(SL sl) {
+    final online     = _result?['_isOnline'] == true;
+    final fromCache  = _result?['_fromCache'] == true;
+    final reason     = _result?['_offline_reason']?.toString() ?? '';
+
+    final Color color = online ? AppColors.green : AppColors.amber;
+    final IconData icon = online
+        ? Icons.cloud_done_outlined
+        : Icons.cloud_off_outlined;
+    final String label = online
+        ? (fromCache ? 'Online AI Analysis (cached)' : 'Online AI Analysis')
+        : 'Offline Analysis — limited';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.45)),
+      ),
+      child: Row(children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 8),
+        Expanded(child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+            if (!online) Text(
+              reason.isNotEmpty
+                  ? 'AI unavailable — showing example guidance. Connect to the internet and rescan for a real assessment.'
+                  : 'Showing example guidance. Connect to the internet and rescan for a real assessment.',
+              style: TextStyle(color: sl.text3, fontSize: 9.5, fontWeight: FontWeight.w500)),
+          ],
+        )),
+      ]),
+    );
+  }
+
   Widget _resultView(SL sl) {
     final overallRisk = _result!['overallRisk']?.toString() ?? 'MEDIUM';
     final score       = _result!['riskScore']    ?? 50;
@@ -2071,6 +2114,10 @@ class _AIScanTabState extends State<AIScanTab> {
     return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+
+      // ★ Online/offline source badge — makes it obvious whether this report
+      // came from the live AI or the offline knowledge-base fallback.
+      _analysisSourceBadge(sl),
 
       if (_isSaved) Container(
         margin: const EdgeInsets.only(bottom: 10),
